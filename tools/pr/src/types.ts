@@ -27,8 +27,7 @@ export type Bucket =
 
 export type ForbiddenHit =
   | "restores-apps/nextjs"
-  | "restores-packages/shared"
-  | "touches-root-package.json";
+  | "restores-packages/shared";
 
 // --- gh `pr list --json` chunked shapes ----------------------------------
 
