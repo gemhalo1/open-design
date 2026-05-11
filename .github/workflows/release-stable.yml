@@ -129,7 +129,7 @@ jobs:
 
   build_mac:
     name: Build release mac arm64
-    needs: metadata
+    needs: [metadata, verify]
     runs-on: macos-14
     env:
       GH_TOKEN: ${{ github.token }}
@@ -333,7 +333,7 @@ jobs:
 
   build_mac_intel:
     name: Build release mac intel x64
-    needs: metadata
+    needs: [metadata, verify]
     runs-on: macos-15-intel
     env:
       GH_TOKEN: ${{ github.token }}
@@ -404,7 +404,7 @@ jobs:
 
   build_win:
     name: Build release win x64
-    needs: metadata
+    needs: [metadata, verify]
     runs-on: windows-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -589,7 +589,7 @@ jobs:
 
   build_linux:
     name: Build release linux x64
-    needs: metadata
+    needs: [metadata, verify]
     # Linux AppImage packaging is temporarily excluded from stable releases.
     # Keep the job definition in place so the Linux lane can be re-enabled once
     # the containerized pnpm bootstrap is fixed and reviewed.

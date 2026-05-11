@@ -132,12 +132,10 @@ async function runToolsDevSuite(
   let context: ToolsDevSuiteContext | null = null;
   let diagnostics: unknown = null;
   let caughtError: unknown = null;
-  let started = false;
   let success = false;
 
   try {
     const start = await toolsDev.startToolsDevWeb(suite, runtime);
-    started = true;
     const webUrl = assertRuntimeUrl(start.web?.status.url, 'web');
     const status = await toolsDev.inspectToolsDevStatus(suite);
     assertToolsDevStatus(suite, status);
@@ -169,15 +167,32 @@ async function runToolsDevSuite(
     });
     throw error;
   } finally {
-    if (started) {
-      await toolsDev.stopToolsDevWeb(suite).catch((error: unknown) => {
-        diagnostics = {
-          diagnostics,
-          stopError: error instanceof Error ? error.message : String(error),
-        };
-      });
+    // startToolsDevWeb may have spawned namespace processes even if it threw before
+    // resolving, so cleanup must run unconditionally — otherwise orphans poison the
+    // next smoke run on a shared CI runner.
+    let stopError: unknown = null;
+    try {
+      await toolsDev.stopToolsDevWeb(suite);
+    } catch (error) {
+      stopError = error;
+    }
+    if (stopError != null) {
+      diagnostics = {
+        diagnostics,
+        stopError: stopError instanceof Error ? stopError.message : String(stopError),
+      };
+      // If the test body already failed, the catch block rethrew it; treat the stop
+      // failure as a side effect. If the body succeeded, the stop failure is the
+      // test failure — silent leaks are worse than a noisy assertion.
+      if (caughtError == null) {
+        success = false;
+        caughtError = stopError;
+      }
     }
     await suite.finalize({ diagnostics, error: caughtError, success });
+    if (stopError != null && caughtError === stopError) {
+      throw stopError;
+    }
   }
   return suite.report.root;
 }
