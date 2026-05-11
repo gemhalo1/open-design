@@ -16,13 +16,13 @@ Token names follow the current product language in `index.css` for core surfaces
 - Accent tokens keep the `accent-*` scale because user custom accent writes the same CSS variables at runtime.
 - Status tokens use semantic names in Tailwind: `success`, `info`, `discovery`, `danger`, `warning`.
 - Tailwind utility names should read as project concepts: `bg-panel`, `text-muted`, `border-border-strong`, `text-danger`, `bg-success-surface`, `bg-selection-overlay`, `rounded-card`, and `shadow-token-sm`.
-- Radius and shadow utilities use project theme aliases backed by `--radius*` and `--shadow*`; font, spacing, and typography scale use Tailwind's native utilities such as `font-mono`, `gap-3`, and `text-sm`.
+- Radius and shadow utilities use project theme aliases backed by `--radius*` and `--shadow*`; font and spacing use Tailwind's native utilities such as `font-mono` and `gap-3`. Typography generally uses the native Tailwind scale, with exact project aliases for existing 13px and 13.5px UI where visual parity requires those sizes.
 
 ## Design decision: token-backed color, radius, and shadow
 
 Project-owned tokens cover colors, radius, and shadow because color carries Open Design's brand and theme behavior, while existing cards, popovers, modals, inputs, and controls depend on project radius and shadow variables for visual stability.
 
-Radius and shadow aliases resolve to the current CSS variables, including dark-theme shadow overrides. Font, spacing, and type scale use Tailwind's native system to keep TSX class names familiar during migration:
+Radius and shadow aliases resolve to the current CSS variables, including dark-theme shadow overrides. Font and spacing use Tailwind's native system to keep TSX class names familiar during migration; type uses native utilities plus exact `text-ui-13` and `text-ui-13_5` aliases for existing 13px and 13.5px component copy:
 
 ```tsx
 className="rounded-card shadow-token-sm font-mono bg-panel text-text border border-border"
@@ -40,13 +40,13 @@ The implementation should add these source variables before using the correspond
   --accent-foreground: #fff;
   --warning-border: color-mix(in srgb, var(--amber) 35%, transparent);
   --overlay: rgba(28, 27, 26, 0.42);
-  --selection-overlay: rgba(59, 130, 246, 0.18);
-  --selection-outline: rgba(59, 130, 246, 0.55);
-  --inspect-overlay: rgba(59, 130, 246, 0.12);
+  --selection-overlay: rgba(22, 119, 255, 0.18);
+  --selection-outline: rgba(22, 119, 255, 0.55);
+  --inspect-overlay: rgba(37, 99, 235, 0.12);
 }
 ```
 
-The blue selection/inspect values are product interaction tokens for preview annotation overlays. File color conversion helpers that transport user-authored colors remain allowlisted exceptions.
+The blue selection/inspect values are product interaction tokens for preview annotation overlays. Selection/comment tokens preserve the current FileViewer `#1677ff` / `rgba(22, 119, 255, …)` family; inspect overlay keeps the current edit-mode bridge `rgba(37, 99, 235, …)` value. File color conversion helpers that transport user-authored colors remain allowlisted exceptions.
 
 ## `@theme` block
 
@@ -122,6 +122,10 @@ The blue selection/inspect values are product interaction tokens for preview ann
   --shadow-token-sm: var(--shadow-sm);
   --shadow-token-md: var(--shadow-md);
   --shadow-token-lg: var(--shadow-lg);
+
+  /* Exact existing UI type sizes */
+  --text-ui-13: 13px;
+  --text-ui-13_5: 13.5px;
 }
 ```
 
@@ -217,6 +221,7 @@ The blue selection/inspect values are product interaction tokens for preview ann
 | Existing CSS variable | Tailwind behavior | Utility examples | Intended use |
 | --- | --- | --- | --- |
 | `--sans`, `--serif`, `--mono` | Keep as CSS variables for base/global CSS. Use Tailwind native font utilities in migrated TSX. | `font-sans`, `font-serif`, `font-mono` | UI text, editorial moments, code/file paths. |
+| Existing 13px / 13.5px component text | Use exact project text-size aliases where native `text-xs` or `text-sm` would create visible drift. | `text-ui-13`, `text-ui-13_5` | Compact labels, metadata, and controls currently sized at 13px or 13.5px in `index.css`. |
 
 ## Utility vocabulary
 
@@ -241,6 +246,7 @@ Use this vocabulary for TSX migrations.
 - Radius: `rounded-control`, `rounded-card`, `rounded-panel`, `rounded-token-pill`.
 - Shadows: `shadow-token-xs`, `shadow-token-sm`, `shadow-token-md`, `shadow-token-lg`.
 - Fonts: `font-sans`, `font-serif`, `font-mono`.
+- Type: native Tailwind type utilities for standard sizes, plus `text-ui-13` and `text-ui-13_5` when matching existing 13px or 13.5px UI exactly.
 
 ## Migration rules
 
@@ -248,13 +254,14 @@ Use this vocabulary for TSX migrations.
 2. Keep raw CSS variables as the visual source in `index.css`; Tailwind `@theme` tokens should reference `var(--*)` for theme-sensitive values.
 3. Use status names in TSX. Examples: `text-danger`, `bg-success-surface`, `border-info-border`.
 4. Use project-backed radius and shadow utilities for migrated components that currently depend on `--radius*` or `--shadow*`; examples include `rounded-card`, `rounded-panel`, `shadow-token-sm`, and `shadow-token-md`.
-5. Use complete static class maps for dynamic variants. Avoid fragment interpolation such as `bg-${status}-surface`; prefer maps such as `{ success: 'bg-success-surface text-success', danger: 'bg-danger-surface text-danger' }`. Add an explicit safelist only when runtime-generated classes are required.
-6. Use `selection`/`inspect` tokens for preview annotation overlays in app UI and edit-mode integration. Keep file color conversion helpers allowlisted only when they transport user-authored colors.
-7. Keep brand assets, SVG illustration colors, sketch/canvas user colors, and file color conversion helpers as documented exceptions.
-8. Add one color token before repeating the same arbitrary color value in multiple components.
-9. Keep complex one-off gradients and `color-mix()` expressions local during migration only when they encode component-specific art direction; promote repeated patterns into the interaction/status tokens above.
-10. Treat CSS-wide/special keywords such as `transparent`, `currentColor` / `currentcolor`, `inherit`, `initial`, `unset`, and `revert` as non-token color semantics for transparent fills, SVG/current-color inheritance, and reset/inherit states. The guard should exempt these keywords while still rejecting real unapproved named colors in app UI chrome.
-11. Add style guard fixtures for the keyword exemptions and for at least one rejected real named color so the guard distinguishes CSS semantics from unapproved palette names.
+5. Use exact type aliases `text-ui-13` and `text-ui-13_5`, or inherited type size when the parent already supplies the exact current size, for migrated component text currently defined as 13px or 13.5px in `index.css`.
+6. Use complete static class maps for dynamic variants. Avoid fragment interpolation such as `bg-${status}-surface`; prefer maps such as `{ success: 'bg-success-surface text-success', danger: 'bg-danger-surface text-danger' }`. Add an explicit safelist only when runtime-generated classes are required.
+7. Use `selection`/`inspect` tokens for preview annotation overlays in app UI and edit-mode integration. Keep file color conversion helpers allowlisted only when they transport user-authored colors.
+8. Keep brand assets, SVG illustration colors, sketch/canvas user colors, and file color conversion helpers as documented exceptions.
+9. Add one color token before repeating the same arbitrary color value in multiple components.
+10. Keep complex one-off gradients and `color-mix()` expressions local during migration only when they encode component-specific art direction; promote repeated patterns into the interaction/status tokens above.
+11. Treat CSS-wide/special keywords such as `transparent`, `currentColor` / `currentcolor`, `inherit`, `initial`, `unset`, and `revert` as non-token color semantics for transparent fills, SVG/current-color inheritance, and reset/inherit states. The guard should exempt these keywords while still rejecting real unapproved named colors in app UI chrome.
+12. Add style guard fixtures for the keyword exemptions and for at least one rejected real named color so the guard distinguishes CSS semantics from unapproved palette names.
 
 ## Existing conflicts and exception handling
 

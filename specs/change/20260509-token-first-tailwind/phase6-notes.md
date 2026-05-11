@@ -6,4 +6,4 @@
 
 ## Verification
 
-<!-- Commands run and results; final visual regression baseline/current/diff artifacts; pixel diff threshold; approved deviations -->
+<!-- Commands run and results; final baseline/development service URLs; final baseline/development namespace names; full agent comparison scenario coverage; theme/accent matrix covered; observed drift; approved deviations -->
