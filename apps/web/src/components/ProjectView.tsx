@@ -978,12 +978,13 @@ export function ProjectView({
   useEffect(() => {
     if (!daemonLive || !activeConversationId || streaming) return;
     let cancelled = false;
+    const reattachConversationId = activeConversationId;
 
     const attachRecoverableRuns = async () => {
       const activeRuns = messages.some(
         (m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus) && !m.runId,
       )
-        ? await listActiveChatRuns(project.id, activeConversationId)
+        ? await listActiveChatRuns(project.id, reattachConversationId)
         : [];
       if (cancelled) return;
       const activeByMessage = new Map(
@@ -1034,7 +1035,7 @@ export function ProjectView({
         if (!isTerminalRunStatus(status.status)) {
           abortRef.current = controller;
           cancelRef.current = cancelController;
-          markStreamingConversation(activeConversationId);
+          markStreamingConversation(reattachConversationId);
         }
 
         let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1088,7 +1089,7 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               if (abortRef.current === controller) abortRef.current = null;
               if (cancelRef.current === cancelController) cancelRef.current = null;
-              clearStreamingMarker(activeConversationId);
+              clearStreamingMarker(reattachConversationId);
               persistNow({ telemetryFinalized: true });
               void refreshProjectFiles();
               onProjectsRefresh();
@@ -1109,7 +1110,7 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               if (abortRef.current === controller) abortRef.current = null;
               if (cancelRef.current === cancelController) cancelRef.current = null;
-              clearStreamingMarker(activeConversationId);
+              clearStreamingMarker(reattachConversationId);
               persistNow({ telemetryFinalized: true });
             },
           },
@@ -1132,7 +1133,7 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               if (abortRef.current === controller) abortRef.current = null;
               if (cancelRef.current === cancelController) cancelRef.current = null;
-              clearStreamingMarker(activeConversationId);
+              clearStreamingMarker(reattachConversationId);
               persistNow({ telemetryFinalized: true });
             }
           },
@@ -1197,6 +1198,7 @@ export function ProjectView({
       if (messagesConversationIdRef.current !== activeConversationId) return;
       if (currentConversationBusy) return;
       if (!prompt.trim() && attachments.length === 0 && commentAttachments.length === 0) return;
+      const runConversationId = activeConversationId;
       setError(null);
       const startedAt = Date.now();
       const userMsg: ChatMessage = {
@@ -1245,7 +1247,7 @@ export function ProjectView({
       ) => {
         setConversations((curr) =>
           curr.map((conversation) =>
-            conversation.id === activeConversationId
+            conversation.id === runConversationId
               ? {
                   ...conversation,
                   updatedAt: endedAt ?? startedAt,
@@ -1267,7 +1269,7 @@ export function ProjectView({
       activeCompletionNotificationRunsRef.current.add(assistantId);
       const nextHistory = [...messages, userMsg];
       setMessages([...nextHistory, assistantMsg]);
-      markStreamingConversation(activeConversationId);
+      markStreamingConversation(runConversationId);
       updateConversationLatestRun(config.mode === 'daemon' ? 'running' : 'queued');
       setArtifact(null);
       savedArtifactRef.current = null;
@@ -1286,10 +1288,10 @@ export function ProjectView({
         if (title) {
           setConversations((curr) =>
             curr.map((c) =>
-              c.id === activeConversationId ? { ...c, title } : c,
+              c.id === runConversationId ? { ...c, title } : c,
             ),
           );
-          void patchConversation(project.id, activeConversationId, { title });
+          void patchConversation(project.id, runConversationId, { title });
         }
       }
 
@@ -1453,7 +1455,7 @@ export function ProjectView({
             if (commentAttachments.length > 0) {
               void patchAttachedStatuses(commentAttachments, 'failed');
             }
-            clearStreamingMarker(activeConversationId);
+            clearStreamingMarker(runConversationId);
             updateConversationLatestRun('failed', endedAt);
             abortRef.current = null;
             cancelRef.current = null;
@@ -1474,7 +1476,7 @@ export function ProjectView({
           if (commentAttachments.length > 0) {
             void patchAttachedStatuses(commentAttachments, 'needs_review');
           }
-          clearStreamingMarker(activeConversationId);
+          clearStreamingMarker(runConversationId);
           updateConversationLatestRun(finalRunStatus ?? 'succeeded', endedAt);
           abortRef.current = null;
           cancelRef.current = null;
@@ -1521,7 +1523,7 @@ export function ProjectView({
           if (commentAttachments.length > 0) {
             void patchAttachedStatuses(commentAttachments, 'failed');
           }
-          clearStreamingMarker(activeConversationId);
+          clearStreamingMarker(runConversationId);
           updateConversationLatestRun('failed', endedAt);
           abortRef.current = null;
           cancelRef.current = null;
@@ -1547,7 +1549,7 @@ export function ProjectView({
           cancelSignal: cancelController.signal,
           handlers,
           projectId: project.id,
-          conversationId: activeConversationId,
+          conversationId: runConversationId,
           assistantMessageId: assistantId,
           clientRequestId: randomUUID(),
           skillId: project.skillId ?? null,
@@ -1622,7 +1624,7 @@ export function ProjectView({
               body: JSON.stringify({
                 userMessage: userText,
                 projectId: project.id,
-                conversationId: activeConversationId,
+                conversationId: runConversationId,
                 chatProvider: byokChatProvider,
               }),
             });
@@ -1653,7 +1655,7 @@ export function ProjectView({
                 userMessage: userText,
                 assistantMessage: accumulatedAssistantText,
                 projectId: project.id,
-                conversationId: activeConversationId,
+                conversationId: runConversationId,
                 chatProvider: byokChatProvider,
               }),
             }).catch(() => {
