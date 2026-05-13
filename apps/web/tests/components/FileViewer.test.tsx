@@ -1046,7 +1046,7 @@ describe('FileViewer tweaks toolbar', () => {
     const queue = screen.getByRole('button', { name: 'Queue' }) as HTMLButtonElement;
     expect(queue.disabled).toBe(false);
     expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
-    expect(screen.getByText('Queues while working').getAttribute('title')).toBe('当前正有任务在执行');
+    expect(screen.queryByText('Queues while working')).toBeNull();
   });
 });
 

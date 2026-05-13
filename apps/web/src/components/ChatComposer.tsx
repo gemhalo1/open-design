@@ -625,7 +625,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (streaming) {
               if (uploaded.length > 0) setStaged((s) => [...s, ...uploaded]);
               if (visualAttachment) setStagedVisualComments((current) => [...current, visualAttachment!]);
-              if (detail.note && !visualAttachment) setDraft((d) => (d ? `${d}\n${detail.note}` : detail.note));
+              if (detail.note) setDraft((d) => (d ? `${d}\n${detail.note}` : detail.note));
               textareaRef.current?.focus();
               return;
             }
@@ -640,7 +640,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             return;
           }
 
-          if (detail.note && !visualAttachment) {
+          if (detail.note) {
             setDraft((d) => (d ? `${d}\n${detail.note}` : detail.note));
             textareaRef.current?.focus();
           }
@@ -760,6 +760,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     function removeStaged(p: string) {
       setStaged((s) => s.filter((a) => a.path !== p));
+      setStagedVisualComments((current) => current.filter((attachment) => attachment.screenshotPath !== p));
     }
 
     function removeCommentAttachment(id: string) {
@@ -1294,9 +1295,11 @@ function StagedCommentAttachments({
   onRemove: (id: string) => void;
   t: TranslateFn;
 }) {
+  const visibleAttachments = attachments.filter((attachment) => attachment.selectionKind !== 'visual');
+  if (visibleAttachments.length === 0) return null;
   return (
     <div className="staged-row comment-staged-row" data-testid="staged-comment-attachments">
-      {attachments.map((a) => (
+      {visibleAttachments.map((a) => (
         <div key={a.id} className="staged-chip staged-comment">
           <span className="staged-name" title={`${a.screenshotPath ? `${a.screenshotPath}: ` : ''}${a.elementId}: ${a.comment}`}>
             <strong>{a.selectionKind === 'visual' ? 'Visual mark' : a.elementId}</strong>

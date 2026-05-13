@@ -434,18 +434,22 @@ export function PreviewDrawOverlay({
             </button>
           ) : null}
           <input
+            className="preview-draw-note-input"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             disabled={sending}
             placeholder="Type anywhere to add a note"
             style={{
-              background: 'transparent',
-              border: 'none',
+              background: 'rgba(218, 97, 56, 0.18)',
+              border: '1px solid rgba(248, 150, 104, 0.82)',
+              borderRadius: 999,
               outline: 'none',
+              boxShadow: '0 0 0 3px rgba(218, 97, 56, 0.22)',
               color: 'inherit',
               width: 280,
               padding: '4px 8px',
               fontSize: 13,
+              transition: 'background 120ms ease, border-color 120ms ease, box-shadow 120ms ease',
             }}
             onKeyDown={(e) => { if (e.key === 'Enter') void send('queue'); }}
           />
@@ -468,11 +472,7 @@ export function PreviewDrawOverlay({
               'Queue'
             )}
           </button>
-          {sendDisabled ? (
-            <span title={sendDisabledReason} style={{ opacity: 0.7, fontSize: 12 }}>
-              Queues while working
-            </span>
-          ) : (
+          {!sendDisabled ? (
             <button
               type="button"
               onClick={() => void send('send')}
@@ -492,7 +492,7 @@ export function PreviewDrawOverlay({
                 'Send'
               )}
             </button>
-          )}
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -998,9 +998,9 @@ function UserMessage({
           })}
         </div>
       ) : null}
-      {commentAttachments.length > 0 ? (
+      {commentAttachments.some((attachment) => attachment.selectionKind !== 'visual') ? (
         <div className="user-attachments comment-history-attachments">
-          {commentAttachments.map((a) => (
+          {commentAttachments.filter((attachment) => attachment.selectionKind !== 'visual').map((a) => (
             <span key={a.id} className="user-attachment staged-comment">
               <span className="staged-name" title={`${a.elementId}: ${a.comment}`}>
                 <strong>{a.selectionKind === 'visual' ? 'Visual mark' : a.elementId}</strong>

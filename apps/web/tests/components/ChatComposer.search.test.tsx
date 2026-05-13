@@ -119,7 +119,7 @@ describe('ChatComposer /search command', () => {
     });
   });
 
-  it('queues draw screenshots with visual target chips while streaming', async () => {
+  it('queues draw screenshots with hidden visual target context while streaming', async () => {
     const onSend = vi.fn();
     mockedUploadProjectFiles.mockResolvedValue({
       uploaded: [{ path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image' }],
@@ -148,21 +148,23 @@ describe('ChatComposer /search command', () => {
       },
     }));
 
-    await waitFor(() => expect(screen.getByText('Visual mark')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('drawing.png')).toBeTruthy());
+    expect(screen.queryByText('Visual mark')).toBeNull();
     expect(screen.getByText('drawing.png')).toBeTruthy();
-    expect(screen.getByText('tighten this area')).toBeTruthy();
-    expect((screen.getByTestId('chat-composer-input') as HTMLTextAreaElement).value).toBe('');
+    expect(screen.queryByTestId('staged-comment-attachments')).toBeNull();
+    expect((screen.getByTestId('chat-composer-input') as HTMLTextAreaElement).value).toBe('tighten this area');
     expect(onSend).not.toHaveBeenCalled();
   });
 
   it('previews a staged image attachment from its chip', () => {
+    const longName = 'drawing-2026-05-13T09-25-03-040Z-with-extra-long-name.png';
     render(
       <ChatComposer
         projectId="project-1"
         projectFiles={[
           {
-            name: 'drawing.png',
-            path: 'uploads/drawing.png',
+            name: longName,
+            path: `uploads/${longName}`,
             kind: 'image',
             mime: 'image/png',
             size: 1234,
@@ -178,21 +180,28 @@ describe('ChatComposer /search command', () => {
 
     const input = screen.getByTestId('chat-composer-input');
     fireEvent.change(input, { target: { value: '@drawing' } });
-    fireEvent.click(screen.getByText('uploads/drawing.png'));
+    fireEvent.click(screen.getByText(`uploads/${longName}`));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Preview drawing.png' }));
+    const chip = screen.getByTestId('staged-attachments').querySelector('.staged-chip.staged-image');
+    const previewTrigger = screen.getByRole('button', { name: `Preview ${longName}` });
+    expect(chip?.contains(previewTrigger)).toBe(true);
+    expect(chip?.contains(screen.getByRole('button', { name: `Remove ${longName}` }))).toBe(true);
+    expect(previewTrigger.querySelector('img')).toBeTruthy();
+    expect(previewTrigger.querySelector('.staged-name')?.textContent).toBe(longName);
 
-    const dialog = screen.getByRole('dialog', { name: 'drawing.png' });
+    fireEvent.click(previewTrigger);
+
+    const dialog = screen.getByRole('dialog', { name: longName });
     expect(dialog).toBeTruthy();
     expect(dialog.classList.contains('staged-preview-modal')).toBe(true);
     expect(dialog.querySelector('.staged-preview-card')).toBeTruthy();
     expect(dialog.querySelector('.staged-preview-head')).toBeTruthy();
-    const previewImage = screen.getByRole('img', { name: 'drawing.png' }) as HTMLImageElement;
-    expect(previewImage.src).toContain('/api/projects/project-1/raw/uploads/drawing.png');
+    const previewImage = screen.getByRole('img', { name: longName }) as HTMLImageElement;
+    expect(previewImage.src).toContain(`/api/projects/project-1/raw/uploads/${longName}`);
     expect(dialog.querySelector('.staged-preview-card > img')).toBe(previewImage);
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.queryByRole('dialog', { name: 'drawing.png' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: longName })).toBeNull();
   });
 
   it('keeps staged image preview modal styling available', () => {
@@ -200,6 +209,10 @@ describe('ChatComposer /search command', () => {
 
     expect(css).toContain('.staged-preview-modal');
     expect(css).toContain('position: fixed;');
+    expect(css).toContain('.staged-preview-trigger');
+    expect(css).toContain('display: inline-flex;');
+    expect(css).toContain('flex: 1 1 auto;');
+    expect(css).toContain('.staged-preview-trigger .staged-name');
     expect(css).toContain('.staged-preview-card');
     expect(css).toContain('max-height: calc(100vh - 48px);');
     expect(css).toContain('.staged-preview-head');

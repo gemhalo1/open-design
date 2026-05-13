@@ -1,5 +1,6 @@
 import type {
   ChatCommentAttachment,
+  ChatCommentSelectionKind,
   ChatMessage,
   PreviewCommentMember,
   PreviewComment,
@@ -244,7 +245,7 @@ export function simplePositionLabel(position: PreviewComment['position']): strin
 }
 
 export function selectionKindLabel(
-  selectionKind: PreviewCommentSelectionKind | undefined,
+  selectionKind: ChatCommentSelectionKind | undefined,
   memberCount?: number,
 ): string {
   if (selectionKind === 'visual') return 'Visual mark';
