@@ -150,13 +150,16 @@
       }
       h2 {
         font-size: var(--text-3xl);
-        /* 36px hero tracking is -0.72px (-0.02em); proportional
-           override since the schema only carries one tracking slot. */
+        /* 36px section heading: line-height 1.20, tracking -0.72px (-0.02em).
+           Overrides the shared 1.10 (--leading-tight) set on h1/h2/h3 above. */
+        line-height: 1.20;
         letter-spacing: -0.02em;
       }
       h3 {
         font-size: var(--text-2xl);
-        /* 26px tracking is -0.325px (-0.0125em). */
+        /* 26px sub-heading: line-height 1.25, tracking -0.325px (-0.0125em).
+           Overrides the shared 1.10 (--leading-tight) set on h1/h2/h3 above. */
+        line-height: 1.25;
         letter-spacing: -0.0125em;
       }
       p { margin: 0; }
