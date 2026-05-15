@@ -28,6 +28,13 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.zh-CN.md">简体中文</a> · <b>繁體中文</b> · <a href="README.ko.md">한국어</a> · <a href="README.ja-JP.md">日本語</a> · <a href="README.ar.md">العربية</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.tr.md">Türkçe</a></p>
 
+> [!IMPORTANT]
+> ### 🔥 `0.8.0-preview` 已發佈。設計的舊世界，到此為止。
+>
+> 開源、agent-native 的 Figma 替代品 —— 上線兩週，40k stars 在身，且仍在加速。**剩下的路，需要你和我們一起推完。**
+>
+> → [**讀公告 · 下載安裝包 · 加入這場運動**](https://github.com/nexu-io/open-design/discussions/1727) · 可與你現有的 0.7 並行安裝。
+
 ---
 
 ## 為什麼要做這個

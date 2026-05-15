@@ -30,6 +30,13 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ko.md">한국어</a> · <b>日本語</b> · <a href="README.ar.md">العربية</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.tr.md">Türkçe</a></p>
 
+> [!IMPORTANT]
+> ### 🔥 `0.8.0-preview` が公開されました。デザインの旧時代は、ここで終わります。
+>
+> オープンソースで agent-native な Figma の代替 —— 2 週間で 40k stars、ここまで来ました。**残りの道のりは、あなたと一緒に進みたい。**
+>
+> → [**告知を読む · インストーラーを入手 · このムーブメントに参加**](https://github.com/nexu-io/open-design/discussions/1727) · 現在の 0.7 と並行してインストールできます。
+
 ---
 
 ## なぜこれを作ったのか

@@ -29,6 +29,13 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <b>한국어</b> · <a href="README.ja-JP.md">日本語</a> · <a href="README.ar.md">العربية</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.tr.md">Türkçe</a></p>
 
+> [!IMPORTANT]
+> ### 🔥 `0.8.0-preview`가 도착했습니다. 디자인의 옛 시대는 여기서 끝납니다.
+>
+> 오픈소스이자 agent-native한 Figma 대안 — 2주 만에 40k stars로 여기까지 왔습니다. **남은 길은 당신과 함께 가야 합니다.**
+>
+> → [**공지 읽기 · 인스톨러 다운로드 · 무브먼트에 합류**](https://github.com/nexu-io/open-design/discussions/1727) · 현재 사용 중인 0.7과 나란히 설치됩니다.
+
 ---
 
 ## 왜 만들었는가
