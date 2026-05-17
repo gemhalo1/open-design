@@ -1049,6 +1049,31 @@ const PLUGIN_REGISTRY_DIR = resolveDaemonResourceDir(
 const OFFICIAL_MARKETPLACE_ID = 'official';
 const OFFICIAL_PLUGIN_SOURCE_REPO = 'github:nexu-io/open-design@main';
 
+export function isStaticSpaFallbackRequest(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  if (req.path === '/api' || req.path.startsWith('/api/')) return false;
+  if (req.path === '/artifacts' || req.path.startsWith('/artifacts/')) return false;
+  if (req.path === '/frames' || req.path.startsWith('/frames/')) return false;
+  if (req.path === '/_next' || req.path.startsWith('/_next/')) return false;
+
+  const accept = req.get?.('accept') ?? '';
+  return accept.length === 0 || accept.includes('text/html') || accept.includes('*/*');
+}
+
+export function resolveStaticSpaFallbackPath(req, staticDir) {
+  const indexPath = path.join(staticDir, 'index.html');
+  if (!fs.existsSync(indexPath) || !isStaticSpaFallbackRequest(req)) return null;
+  return indexPath;
+}
+
+export function registerStaticSpaFallback(app, staticDir) {
+  app.get('*', (req, res, next) => {
+    const indexPath = resolveStaticSpaFallbackPath(req, staticDir);
+    if (indexPath == null) return next();
+    res.sendFile(indexPath);
+  });
+}
+
 function defaultMarketplaceSeedConfig(id) {
   return {
     trust: id === OFFICIAL_MARKETPLACE_ID ? 'official' : 'restricted',
@@ -1414,6 +1439,120 @@ export function createAgentRuntimeToolPrompt(
     tokenLine,
     '- Prefer project wrapper commands through `OD_NODE_BIN` + `OD_BIN` over raw HTTP. The wrappers read these environment values automatically.',
   ].join('\n');
+}
+
+function normalizeRunContextSelection(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const stringList = (items) => {
+    if (!Array.isArray(items)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const item of items) {
+      if (typeof item !== 'string') continue;
+      const trimmed = item.trim();
+      if (!trimmed || seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+    return out;
+  };
+  return {
+    skillIds: stringList(value.skillIds),
+    pluginIds: stringList(value.pluginIds),
+    mcpServerIds: stringList(value.mcpServerIds),
+    connectorIds: stringList(value.connectorIds),
+  };
+}
+
+function mergeRunContextSelections(...contexts) {
+  const merged = { skillIds: [], pluginIds: [], mcpServerIds: [], connectorIds: [] };
+  for (const context of contexts) {
+    const normalized = normalizeRunContextSelection(context);
+    for (const key of Object.keys(merged)) {
+      const seen = new Set(merged[key]);
+      for (const id of normalized[key] ?? []) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          merged[key].push(id);
+        }
+      }
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(merged).filter(([, ids]) => ids.length > 0),
+  );
+}
+
+function projectMetadataContextSelection(metadata) {
+  if (!metadata || typeof metadata !== 'object') return {};
+  return {
+    pluginIds: Array.isArray(metadata.contextPlugins)
+      ? metadata.contextPlugins.map((item) => item?.id).filter((id) => typeof id === 'string')
+      : [],
+    mcpServerIds: Array.isArray(metadata.contextMcpServers)
+      ? metadata.contextMcpServers.map((item) => item?.id).filter((id) => typeof id === 'string')
+      : [],
+    connectorIds: Array.isArray(metadata.contextConnectors)
+      ? metadata.contextConnectors.map((item) => item?.id).filter((id) => typeof id === 'string')
+      : [],
+  };
+}
+
+function formatContextRefList(ids, refs, titleKey = 'title') {
+  const byId = new Map();
+  if (Array.isArray(refs)) {
+    for (const ref of refs) {
+      if (ref && typeof ref.id === 'string') byId.set(ref.id, ref);
+    }
+  }
+  return ids
+    .map((id) => {
+      const ref = byId.get(id);
+      const label =
+        typeof ref?.[titleKey] === 'string' && ref[titleKey].trim()
+          ? ref[titleKey].trim()
+          : typeof ref?.label === 'string' && ref.label.trim()
+            ? ref.label.trim()
+            : typeof ref?.name === 'string' && ref.name.trim()
+              ? ref.name.trim()
+              : id;
+      const meta = [
+        ref?.provider,
+        ref?.transport,
+        ref?.status,
+        ref?.accountLabel,
+      ].filter((value) => typeof value === 'string' && value.trim()).join(' · ');
+      return `- ${label} (\`${id}\`)${meta ? ` — ${meta}` : ''}`;
+    })
+    .join('\n');
+}
+
+function renderRunContextPrompt(selection, metadata) {
+  const context = mergeRunContextSelections(projectMetadataContextSelection(metadata), selection);
+  const lines = [];
+  if (Array.isArray(context.pluginIds) && context.pluginIds.length > 0) {
+    lines.push('### Selected plugins');
+    lines.push(
+      'The user selected these plugins as run context. When an active plugin snapshot is pinned, follow that executable plugin block; otherwise combine these plugins as requested references.',
+    );
+    lines.push(formatContextRefList(context.pluginIds, metadata?.contextPlugins ?? [], 'title'));
+  }
+  if (Array.isArray(context.mcpServerIds) && context.mcpServerIds.length > 0) {
+    lines.push('### Selected MCP servers');
+    lines.push(
+      'The user selected these MCP servers for this run. Prefer their tools when they are mounted and relevant before asking where data should come from.',
+    );
+    lines.push(formatContextRefList(context.mcpServerIds, metadata?.contextMcpServers ?? [], 'label'));
+  }
+  if (Array.isArray(context.connectorIds) && context.connectorIds.length > 0) {
+    lines.push('### Selected connectors');
+    lines.push(
+      'The user selected these connectors for this run. Discover available read-only connector tools first with `"$OD_NODE_BIN" "$OD_BIN" tools connectors list --format compact`, then execute relevant tools through `tools connectors execute`; do not ask for a data source that is already selected.',
+    );
+    lines.push(formatContextRefList(context.connectorIds, metadata?.contextConnectors ?? [], 'name'));
+  }
+  if (lines.length === 0) return '';
+  return ['## Selected run context', ...lines].join('\n');
 }
 
 export function normalizeProjectDisplayStatus(status) {
@@ -8074,6 +8213,7 @@ export async function startServer({
       model,
       reasoning,
       research,
+      context,
     } = chatBody;
     if (typeof projectId === 'string' && projectId) run.projectId = projectId;
     if (typeof conversationId === 'string' && conversationId)
@@ -8200,6 +8340,7 @@ export async function startServer({
       typeof projectId === 'string' && projectId
         ? getProject(db, projectId)
         : null;
+    const runContextPrompt = renderRunContextPrompt(context, projectRecord?.metadata);
     const linkedDirs = (() => {
       if (!Array.isArray(projectRecord?.metadata?.linkedDirs)) return [];
       const v = validateLinkedDirs(projectRecord.metadata.linkedDirs);
@@ -8403,7 +8544,7 @@ export async function startServer({
       research,
       message,
     );
-    const clientInstructionPrompt = [researchCommandContract, systemPrompt]
+    const clientInstructionPrompt = [researchCommandContract, runContextPrompt, systemPrompt]
       .map((part) => (typeof part === 'string' ? part.trim() : ''))
       .filter(Boolean)
       .join('\n\n---\n\n');
@@ -9782,6 +9923,28 @@ export async function startServer({
     }
 
     const now = startedAt;
+    const routineContext = normalizeRunContextSelection(routine.context);
+    const routineSkillId = routine.skillId ?? routineContext.skillIds?.[0] ?? null;
+    const contextMetadata = {
+      ...(routineContext.pluginIds?.length
+        ? {
+            contextPlugins: routineContext.pluginIds.map((id) => {
+              const plugin = getInstalledPlugin(db, id);
+              return {
+                id,
+                title: plugin?.title ?? id,
+                ...(plugin?.manifest?.description ? { description: plugin.manifest.description } : {}),
+              };
+            }),
+          }
+        : {}),
+      ...(routineContext.mcpServerIds?.length
+        ? { contextMcpServers: routineContext.mcpServerIds.map((id) => ({ id })) }
+        : {}),
+      ...(routineContext.connectorIds?.length
+        ? { contextConnectors: routineContext.connectorIds.map((id) => ({ id, name: id })) }
+        : {}),
+    };
     const stamp = formatLocalProjectTimestamp(new Date(now).toISOString());
     let projectId;
     let projectName;
@@ -9796,10 +9959,17 @@ export async function startServer({
       insertProject(db, {
         id: projectId,
         name: projectName,
-        skillId: routine.skillId ?? null,
+        skillId: routineSkillId,
         designSystemId: appConfig.designSystemId ?? null,
         pendingPrompt: null,
-        metadata: { kind: 'other', intent: 'routine', routineId: routine.id, trigger },
+        metadata: {
+          kind: 'other',
+          intent: 'automation',
+          automationId: routine.id,
+          routineId: routine.id,
+          trigger,
+          ...contextMetadata,
+        },
         createdAt: now,
         updatedAt: now,
       });
@@ -9837,13 +10007,51 @@ export async function startServer({
     emitProjectEvent(projectId, conversationCreatedEvent);
 
     const assistantMessageId = `routine-assistant-${randomUUID()}`;
+    let resolvedRoutineSnapshot = null;
+    const primaryPluginId = routineContext.pluginIds?.[0] ?? null;
+    if (primaryPluginId) {
+      const registry = await loadPluginRegistryView();
+      const resolved = resolvePluginSnapshot({
+        db,
+        body: {
+          pluginId: primaryPluginId,
+          pluginInputs: { prompt: routine.prompt },
+        },
+        projectId,
+        conversationId,
+        registry,
+        activeProjectDesignSystem:
+          typeof appConfig.designSystemId === 'string' && appConfig.designSystemId.length > 0
+            ? { id: appConfig.designSystemId }
+            : undefined,
+      });
+      if (resolved && !resolved.ok) {
+        throw new Error(`Automation plugin ${primaryPluginId} could not be applied: ${JSON.stringify(resolved.body)}`);
+      }
+      resolvedRoutineSnapshot = resolved;
+    }
+
     const run = design.runs.create({
       projectId,
       conversationId,
       assistantMessageId,
       clientRequestId: `routine-${trigger}-${randomUUID()}`,
       agentId,
+      ...(resolvedRoutineSnapshot?.ok
+        ? {
+            appliedPluginSnapshotId: resolvedRoutineSnapshot.snapshotId,
+            pluginId: resolvedRoutineSnapshot.snapshot.pluginId,
+          }
+        : {}),
     });
+    if (resolvedRoutineSnapshot?.ok) {
+      try {
+        const { linkSnapshotToRun } = await import('./plugins/snapshots.js');
+        linkSnapshotToRun(db, resolvedRoutineSnapshot.snapshotId, run.id);
+      } catch {
+        // Snapshot linking is best-effort; the in-memory run still carries it.
+      }
+    }
     upsertMessage(db, conversationId, {
       id: `routine-user-${run.id}`,
       role: 'user',
@@ -9867,8 +10075,9 @@ export async function startServer({
       conversationId: run.conversationId,
       assistantMessageId: run.assistantMessageId,
       clientRequestId: run.clientRequestId,
-      skillId: routine.skillId ?? null,
+      skillId: routineSkillId,
       designSystemId: appConfig.designSystemId ?? null,
+      context: routineContext,
       model: modelPrefs.model ?? null,
       reasoning: modelPrefs.reasoning ?? null,
       message: routine.prompt,
@@ -9959,6 +10168,8 @@ export async function startServer({
     lifecycle: { isDaemonShuttingDown: () => daemonShuttingDown },
 
   });
+
+  registerStaticSpaFallback(app, STATIC_DIR);
 
   // Wait for `listen` to bind so callers always see the resolved URL —
   // critical when port=0 (ephemeral port) and when the embedding sidecar

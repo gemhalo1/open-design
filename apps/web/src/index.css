@@ -22630,7 +22630,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   background: rgba(255, 255, 255, 0.18);
 }
 
-/* ---------------- Routines (Settings → Routines) ---------------- */
+/* ---------------- Routines (Settings → Automations) ---------------- */
 
 .routines-section .section-head { align-items: flex-start; }
 .routines-section .section-head > .btn {

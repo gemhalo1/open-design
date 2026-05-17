@@ -1,4 +1,9 @@
 import type { ChatMessage, ChatRunStatus } from './chat.js';
+import type {
+  ProjectContextConnectorRef,
+  ProjectContextMcpServerRef,
+  ProjectContextPluginRef,
+} from './context.js';
 
 export type ProjectKind =
   | 'prototype'
@@ -119,7 +124,9 @@ export interface ProjectMetadata {
   // Plugins selected through @ mentions on Home. These are additive
   // context references; the explicit "Use plugin" snapshot, when present,
   // remains the primary executable plugin for the run.
-  contextPlugins?: Array<{ id: string; title: string; description?: string }>;
+  contextPlugins?: ProjectContextPluginRef[];
+  contextMcpServers?: ProjectContextMcpServerRef[];
+  contextConnectors?: ProjectContextConnectorRef[];
 }
 
 export interface Project {

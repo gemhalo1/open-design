@@ -108,6 +108,12 @@ describe('routine routes', () => {
             timezone: 'UTC',
           },
           target: { mode: 'reuse', projectId: 'proj-1' },
+          context: {
+            skillIds: ['live-artifact'],
+            pluginIds: ['od-new-generation'],
+            mcpServerIds: ['figma-mcp'],
+            connectorIds: ['github'],
+          },
           enabled: true,
         }),
       });
@@ -118,15 +124,28 @@ describe('routine routes', () => {
           id: string;
           name: string;
           target: { mode: string; projectId: string };
+          context: {
+            skillIds?: string[];
+            pluginIds?: string[];
+            mcpServerIds?: string[];
+            connectorIds?: string[];
+          };
           nextRunAt: number;
         };
       };
       expect(json.routine.name).toBe('Weekly digest');
       expect(json.routine.target).toEqual({ mode: 'reuse', projectId: 'proj-1' });
+      expect(json.routine.context).toEqual({
+        skillIds: ['live-artifact'],
+        pluginIds: ['od-new-generation'],
+        mcpServerIds: ['figma-mcp'],
+        connectorIds: ['github'],
+      });
       expect(json.routine.nextRunAt).toBe(new Date('2026-05-13T01:00:00.000Z').getTime());
 
       const stored = getRoutine(db, json.routine.id);
       expect(stored?.projectId).toBe('proj-1');
+      expect(JSON.parse(stored?.contextJson ?? '{}')).toEqual(json.routine.context);
       expect(rescheduleOne).toHaveBeenCalledWith(json.routine.id);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -171,6 +171,7 @@ function describeModelChip(
 
 interface Props {
   skills: SkillSummary[];
+  designTemplates: SkillSummary[];
   designSystems: DesignSystemSummary[];
   projects: Project[];
   templates: ProjectTemplate[];
@@ -243,6 +244,7 @@ interface Props {
 
 export function EntryShell({
   skills,
+  designTemplates,
   designSystems,
   projects,
   templates,
@@ -380,6 +382,12 @@ export function EntryShell({
       kind: payload.projectKind ?? 'prototype',
       ...(payload.contextPlugins && payload.contextPlugins.length > 0
         ? { contextPlugins: payload.contextPlugins }
+        : {}),
+      ...(payload.contextMcpServers && payload.contextMcpServers.length > 0
+        ? { contextMcpServers: payload.contextMcpServers }
+        : {}),
+      ...(payload.contextConnectors && payload.contextConnectors.length > 0
+        ? { contextConnectors: payload.contextConnectors }
         : {}),
     };
     onCreateProject({
@@ -728,6 +736,7 @@ export function EntryShell({
                 promptHandoff={homePromptHandoff}
                 skills={skills}
                 skillsLoading={skillsLoading}
+                connectors={connectors}
               />
             ) : null}
             {view === 'projects' ? (
@@ -752,8 +761,10 @@ export function EntryShell({
             ) : null}
             {view === 'tasks' ? (
               <TasksView
-                config={config}
-                onOpenOrbitSettings={() => onOpenSettings('orbit')}
+                skills={skills}
+                designTemplates={designTemplates}
+                connectors={connectors}
+                connectorsLoading={connectorsLoading}
               />
             ) : null}
             {view === 'plugins' ? (

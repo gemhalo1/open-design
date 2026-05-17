@@ -154,7 +154,7 @@ const PROJECT_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'follow']);
 // automations headlessly without going through the web UI.
 const AUTOMATION_STRING_FLAGS = new Set([
   'daemon-url', 'name', 'prompt', 'prompt-file', 'schedule', 'target',
-  'project', 'skill', 'agent', 'limit',
+  'project', 'skill', 'agent', 'limit', 'plugin', 'mcp', 'connector',
 ]);
 const AUTOMATION_BOOLEAN_FLAGS = new Set([
   'help', 'h', 'json', 'disabled', 'enabled',
@@ -4833,7 +4833,12 @@ function parseAutomationTarget(flags) {
     return { mode: 'create_each_run' };
   }
   const value = String(raw);
-  if (value === 'worktree' || value === 'create-each-run' || value === 'create_each_run') {
+  if (
+    value === 'worktree' ||
+    value === 'new-project' ||
+    value === 'create-each-run' ||
+    value === 'create_each_run'
+  ) {
     return { mode: 'create_each_run' };
   }
   if (value === 'reuse') {
@@ -4849,7 +4854,7 @@ function parseAutomationTarget(flags) {
     return { mode: 'reuse', projectId };
   }
   throw new Error(
-    `--target must be "worktree" or "reuse=<projectId>" (got "${value}")`,
+    `--target must be "new-project" or "reuse=<projectId>" (got "${value}")`,
   );
 }
 
@@ -4868,7 +4873,34 @@ function describeAutomationScheduleForCli(schedule) {
 function describeAutomationTargetForCli(target) {
   if (!target) return '-';
   if (target.mode === 'reuse') return `reuse=${target.projectId}`;
-  return 'worktree';
+  return 'new-project';
+}
+
+function splitAutomationIds(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) return [];
+  const seen = new Set();
+  const out = [];
+  for (const part of value.split(',')) {
+    const id = part.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function automationContextFromFlags(flags) {
+  const skillIds = splitAutomationIds(flags.skill);
+  const pluginIds = splitAutomationIds(flags.plugin);
+  const mcpServerIds = splitAutomationIds(flags.mcp);
+  const connectorIds = splitAutomationIds(flags.connector);
+  const context = {
+    ...(skillIds.length > 0 ? { skillIds } : {}),
+    ...(pluginIds.length > 0 ? { pluginIds } : {}),
+    ...(mcpServerIds.length > 0 ? { mcpServerIds } : {}),
+    ...(connectorIds.length > 0 ? { connectorIds } : {}),
+  };
+  return Object.keys(context).length > 0 ? context : null;
 }
 
 function formatAutomationRow(r) {
@@ -4912,13 +4944,17 @@ function printAutomationHelp() {
   od automation get <id>                                     Print one automation.
   od automation create --name "<title>" --prompt "<text>"
                        --schedule <spec>
-                       [--target worktree|reuse=<projectId>]
+                       [--target new-project|reuse=<projectId>]
                        [--disabled] [--json]
                        [--prompt-file <path|->] (alternative to --prompt)
-                       [--skill <id>] [--agent <id>]
+                       [--skill <id>[,<id>]] [--plugin <id>[,<id>]]
+                       [--mcp <id>[,<id>]] [--connector <id>[,<id>]]
+                       [--agent <id>]
   od automation update <id> [--name ...] [--prompt ...]
                             [--schedule ...] [--target ...]
-                            [--enabled|--disabled]              Patch fields.
+                            [--skill ...] [--plugin ...] [--mcp ...]
+                            [--connector ...] [--enabled|--disabled]
+                            Patch fields.
   od automation run <id>                                       Trigger a manual run; prints projectId/conversationId.
   od automation runs <id> [--limit 10]                         Print run history.
   od automation pause <id>                                     Mark disabled.
@@ -4963,8 +4999,24 @@ async function runAutomation(args) {
   const writeJson = (data) =>
     process.stdout.write(JSON.stringify(data, null, 2) + '\n');
 
+  const positionalArgs = (values) => {
+    const out = [];
+    for (let i = 0; i < values.length; i++) {
+      const value = values[i];
+      if (!value) continue;
+      if (value.startsWith('--')) {
+        const eq = value.indexOf('=');
+        const key = eq >= 0 ? value.slice(2, eq) : value.slice(2);
+        if (eq < 0 && AUTOMATION_STRING_FLAGS.has(key)) i++;
+        continue;
+      }
+      out.push(value);
+    }
+    return out;
+  };
+
   const requireId = (label) => {
-    const id = rest.find((a) => !a.startsWith('-'));
+    const id = positionalArgs(rest)[0];
     if (!id) {
       console.error(`Usage: od automation ${label} <id>`);
       process.exit(2);
@@ -5068,7 +5120,10 @@ async function runAutomation(args) {
         target,
         enabled: !flags.disabled,
       };
-      if (flags.skill) body.skillId = String(flags.skill);
+      const context = automationContextFromFlags(flags);
+      const skillIds = splitAutomationIds(flags.skill);
+      if (skillIds.length > 0) body.skillId = skillIds[0];
+      if (context) body.context = context;
       if (flags.agent) body.agentId = String(flags.agent);
       let resp;
       try {
@@ -5115,8 +5170,14 @@ async function runAutomation(args) {
       }
       if (flags.disabled) patch.enabled = false;
       if (flags.enabled) patch.enabled = true;
+      const context = automationContextFromFlags(flags);
+      if (context) {
+        const skillIds = splitAutomationIds(flags.skill);
+        if (skillIds.length > 0) patch.skillId = skillIds[0];
+        patch.context = context;
+      }
       if (Object.keys(patch).length === 0) {
-        console.error('update needs at least one of --name --prompt(--prompt-file) --schedule --target --enabled --disabled');
+        console.error('update needs at least one of --name --prompt(--prompt-file) --schedule --target --skill --plugin --mcp --connector --enabled --disabled');
         process.exit(2);
       }
       let resp;
