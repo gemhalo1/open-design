@@ -183,6 +183,17 @@ describe('DesignSystemCreationFlow', () => {
         pendingPrompt: expect.stringContaining('ui_kits/app/'),
       }),
     );
+    expect(mocks.patchProject).toHaveBeenCalledWith(
+      project.id,
+      expect.objectContaining({
+        pendingPrompt: expect.stringContaining('tools connectors design-system-package-audit --path .'),
+      }),
+    );
+    expect(mocks.writeProjectTextFile).toHaveBeenCalledWith(
+      project.id,
+      'context/source-context.md',
+      expect.stringContaining('tools connectors design-system-package-audit --path .'),
+    );
     expect(window.sessionStorage.getItem(`od:auto-send-first:${project.id}`)).toBe('1');
     expect(onCreated).toHaveBeenCalledWith(project.id);
     expect(onSystemsRefresh).toHaveBeenCalled();

@@ -226,6 +226,105 @@ describe('connectors tool CLI', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('passes a Claude Design-style design-system package audit', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'od-package-audit-pass-'));
+    process.chdir(tmpDir);
+    await mkdir(path.join(tmpDir, 'preview'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'ui_kits/app'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'assets'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'fonts/ubuntu'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'context/local-code/cherry/files/src'), { recursive: true });
+    await writeFile(path.join(tmpDir, 'DESIGN.md'), '# Cherry Studio Design System\n');
+    await writeFile(path.join(tmpDir, 'README.md'), '# Cherry Studio Design System\n');
+    await writeFile(path.join(tmpDir, 'SKILL.md'), '# Cherry Studio Design System\n');
+    await writeFile(path.join(tmpDir, 'colors_and_type.css'), ':root { --color-primary: #00b96b; }\n');
+    for (const fileName of [
+      'colors-primary.html',
+      'colors-theme-light.html',
+      'typography-specimens.html',
+      'spacing-tokens.html',
+      'components-buttons.html',
+      'brand-assets.html',
+    ]) {
+      await writeFile(path.join(tmpDir, 'preview', fileName), '<!doctype html><title>Preview</title>');
+    }
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), '<!doctype html><title>UI kit</title>');
+    await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
+    await writeFile(path.join(tmpDir, 'assets/logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    await writeFile(path.join(tmpDir, 'fonts/ubuntu/Ubuntu-Regular.ttf'), Buffer.from('font-data'));
+    await writeFile(path.join(tmpDir, 'context/source-context.md'), [
+      '# Design System Source Context',
+      '',
+      '## GitHub Repositories',
+      '',
+      '- None linked.',
+      '',
+      '## Local Code',
+      '',
+      'Linked folders readable by the local agent:',
+      '- /tmp/cherry',
+    ].join('\n'));
+    await writeFile(path.join(tmpDir, 'context/local-code/cherry.md'), [
+      '# Local Design Evidence: cherry',
+      '',
+      'Snapshot files written: 2',
+      '',
+      '### Brand assets and icons',
+      '- assets/logo.png -> `context/local-code/cherry/files/assets/logo.png` (binary asset)',
+      '',
+      '### Fonts',
+      '- fonts/ubuntu/Ubuntu-Regular.ttf -> `context/local-code/cherry/files/fonts/ubuntu/Ubuntu-Regular.ttf` (binary asset)',
+    ].join('\n'));
+    await writeFile(path.join(tmpDir, 'context/local-code/cherry/files/src/tokens.css'), ':root { --color-primary: #00b96b; }');
+
+    const result = await runConnectorsToolCli(['design-system-package-audit', '--path', tmpDir]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(stdoutOutput.join(''))).toMatchObject({
+      ok: true,
+      errors: [],
+    });
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('fails a design-system package audit when evidence-backed artifacts are missing', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'od-package-audit-fail-'));
+    process.chdir(tmpDir);
+    await mkdir(path.join(tmpDir, 'preview'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'ui_kits/generated_interface'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'context'), { recursive: true });
+    await writeFile(path.join(tmpDir, 'DESIGN.md'), '# Incomplete\n');
+    await writeFile(path.join(tmpDir, 'preview/typography-scale.html'), '<!doctype html>');
+    await writeFile(path.join(tmpDir, 'ui_kits/generated_interface/index.html'), '<!doctype html>');
+    await writeFile(path.join(tmpDir, 'context/source-context.md'), [
+      '# Design System Source Context',
+      '',
+      '## GitHub Repositories',
+      '',
+      '- https://github.com/acme/ui',
+      '',
+      '## Local Code',
+      '',
+      'Linked folders readable by the local agent:',
+      '- /tmp/acme-ui',
+    ].join('\n'));
+
+    const result = await runConnectorsToolCli(['design-system-package-audit', '--path', tmpDir]);
+
+    expect(result.exitCode).toBe(1);
+    const output = JSON.parse(stdoutOutput.join(''));
+    expect(output.ok).toBe(false);
+    expect(output.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'missing_required_file', path: 'README.md' }),
+      expect.objectContaining({ code: 'missing_github_evidence' }),
+      expect.objectContaining({ code: 'missing_local_evidence' }),
+      expect.objectContaining({ code: 'old_generated_interface' }),
+    ]));
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
   it('falls back to bounded connector directory browsing when the repository tree is too large', async () => {
     const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'od-connectors-cli-'));
     process.chdir(tmpDir);

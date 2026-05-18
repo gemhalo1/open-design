@@ -38,6 +38,7 @@ const CONNECTORS_USAGE = `Usage:
   od tools connectors execute --connector <id> --tool <name> --input input.json
   od tools connectors github-design-context --repo owner/repo [--ref main] [--output context/github/owner-repo.md] [--max-files 48] [--require-connector]
   od tools connectors local-design-context --path /path/to/project [--output context/local-code/project.md] [--max-files 48]
+  od tools connectors design-system-package-audit --path /path/to/project
 
 Environment:
   OD_NODE_BIN     Node-compatible runtime for agent wrapper invocations
@@ -120,6 +121,23 @@ interface LocalDesignEvidence {
   files: GithubSnapshotFile[];
   readme?: { path: string; content: string };
   warnings: string[];
+}
+
+type DesignSystemAuditSeverity = 'error' | 'warning';
+
+interface DesignSystemAuditIssue {
+  severity: DesignSystemAuditSeverity;
+  code: string;
+  message: string;
+  path?: string;
+}
+
+interface DesignSystemPackageAudit {
+  ok: boolean;
+  projectPath: string;
+  filesInspected: number;
+  errors: DesignSystemAuditIssue[];
+  warnings: DesignSystemAuditIssue[];
 }
 
 interface ProcessRunResult {
@@ -1046,6 +1064,31 @@ async function listLocalRepoFiles(root: string): Promise<string[]> {
   return files.sort((left, right) => left.localeCompare(right));
 }
 
+async function listAuditFiles(root: string): Promise<string[]> {
+  const files: string[] = [];
+  const walk = async (dir: string) => {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const absolutePath = path.join(dir, entry.name);
+      const relativePath = path.relative(root, absolutePath).split(path.sep).join('/');
+      const normalized = relativePath.toLowerCase();
+      if (entry.isDirectory()) {
+        if (shouldSkipAuditPath(`${normalized}/`)) continue;
+        await walk(absolutePath);
+        continue;
+      }
+      if (entry.isFile() && !shouldSkipAuditPath(normalized)) files.push(relativePath);
+    }
+  };
+  await walk(root);
+  return files.sort((left, right) => left.localeCompare(right));
+}
+
+function shouldSkipAuditPath(normalizedPath: string): boolean {
+  return /(^|\/)(node_modules|vendor|dist|coverage|\.next|\.nuxt|\.git|out|target|storybook-static)\//u.test(normalizedPath)
+    || /(^|\/)(package-lock\.json|pnpm-lock\.ya?ml|yarn\.lock|bun\.lockb|\.ds_store)$/u.test(normalizedPath);
+}
+
 async function writeGithubDesignEvidence(outputPath: string, evidence: GithubDesignEvidence): Promise<GithubDesignEvidence> {
   const resolvedOutputPath = path.resolve(outputPath);
   const snapshotRoot = githubSnapshotRoot(resolvedOutputPath, evidence.repo);
@@ -1390,6 +1433,157 @@ async function runLocalDesignContext(options: ParsedOptions): Promise<ToolCliRes
   return { exitCode: 0 };
 }
 
+async function runDesignSystemPackageAudit(options: ParsedOptions): Promise<ToolCliResult> {
+  const projectPath = path.resolve(options.localPath ?? '.');
+  const audit = await auditDesignSystemPackage(projectPath);
+  writeJson(audit);
+  return { exitCode: audit.ok ? 0 : 1 };
+}
+
+async function auditDesignSystemPackage(projectPath: string): Promise<DesignSystemPackageAudit> {
+  const projectStat = await stat(projectPath);
+  if (!projectStat.isDirectory()) {
+    throw new Error(`design-system-package-audit requires --path to be a directory: ${projectPath}`);
+  }
+  const files = await listAuditFiles(projectPath);
+  const fileSet = new Set(files);
+  const issues: DesignSystemAuditIssue[] = [];
+  const addIssue = (severity: DesignSystemAuditSeverity, code: string, message: string, issuePath?: string) => {
+    issues.push({
+      severity,
+      code,
+      message,
+      ...(issuePath === undefined ? {} : { path: issuePath }),
+    });
+  };
+  const requireFile = (filePath: string, message: string) => {
+    if (!fileSet.has(filePath)) addIssue('error', 'missing_required_file', message, filePath);
+  };
+
+  requireFile('DESIGN.md', 'Claude Design-style packages need DESIGN.md as the canonical system rules.');
+  requireFile('README.md', 'Claude Design-style packages need README.md so the system is reusable outside the current run.');
+  requireFile('SKILL.md', 'Claude Design-style packages need SKILL.md with agent-facing usage instructions.');
+  requireFile('colors_and_type.css', 'Claude Design-style packages need colors_and_type.css for reusable color, type, spacing, radius, and state tokens.');
+
+  const previewFiles = files.filter((filePath) => /^preview\/.+\.html$/u.test(filePath));
+  if (previewFiles.length < 6) {
+    addIssue('error', 'insufficient_preview_cards', `Expected at least 6 focused preview HTML cards, found ${previewFiles.length}.`, 'preview/');
+  }
+  requirePreviewCategory(previewFiles, /^preview\/colors-[^/]+\.html$/u, 'missing_color_preview', 'Expected at least one focused color preview card such as preview/colors-primary.html.', addIssue);
+  requirePreviewCategory(previewFiles, /^preview\/typography-specimens\.html$/u, 'missing_typography_preview', 'Expected preview/typography-specimens.html.', addIssue);
+  requirePreviewCategory(previewFiles, /^preview\/spacing-[^/]+\.html$/u, 'missing_spacing_preview', 'Expected at least one focused spacing preview card such as preview/spacing-tokens.html.', addIssue);
+  requirePreviewCategory(previewFiles, /^preview\/components-[^/]+\.html$/u, 'missing_component_preview', 'Expected at least one focused component preview card such as preview/components-buttons.html.', addIssue);
+
+  const oldPreviewFiles = previewFiles.filter((filePath) => /preview\/(colors-node-types|colors-ui-palette|typography-scale|spacing-system|logo-variants)\.html$/u.test(filePath));
+  if (oldPreviewFiles.length > 0) {
+    addIssue('warning', 'old_generic_preview_names', `Replace old generic preview names with Claude-style focused cards: ${oldPreviewFiles.join(', ')}.`, 'preview/');
+  }
+  if (files.some((filePath) => filePath.startsWith('ui_kits/generated_interface/'))) {
+    addIssue('error', 'old_generated_interface', 'Replace ui_kits/generated_interface/ with the reusable Claude-style ui_kits/app/ package.', 'ui_kits/generated_interface/');
+  }
+
+  requireFile('ui_kits/app/index.html', 'Claude Design-style packages need an applied interface kit at ui_kits/app/index.html.');
+  if (!fileSet.has('ui_kits/app/README.md')) {
+    addIssue('warning', 'missing_ui_kit_readme', 'Add ui_kits/app/README.md so future projects know how to reuse the applied UI kit.', 'ui_kits/app/README.md');
+  }
+
+  const sourceManifest = await readAuditText(projectPath, 'context/source-context.md');
+  const evidenceNotes = files.filter((filePath) => /^context\/(github|local-code)\/[^/]+\.md$/u.test(filePath));
+  const evidenceTexts = await Promise.all(evidenceNotes.map(async (filePath) => ({
+    filePath,
+    text: await readAuditText(projectPath, filePath) ?? '',
+  })));
+  const evidenceText = evidenceTexts.map((item) => item.text).join('\n');
+  if (sourceManifest !== undefined) {
+    if (manifestHasLinkedGithub(sourceManifest) && !evidenceNotes.some((filePath) => filePath.startsWith('context/github/'))) {
+      addIssue('error', 'missing_github_evidence', 'Linked GitHub repositories require context/github/*.md evidence notes before final design-system files are trusted.', 'context/github/');
+    }
+    if (manifestHasLinkedLocalFolder(sourceManifest) && !evidenceNotes.some((filePath) => filePath.startsWith('context/local-code/'))) {
+      addIssue('error', 'missing_local_evidence', 'Linked local folders require context/local-code/*.md evidence notes before final design-system files are trusted.', 'context/local-code/');
+    }
+  }
+  for (const evidence of evidenceTexts) {
+    if (/Snapshot files written:\s*0\b/iu.test(evidence.text)) {
+      addIssue('error', 'empty_evidence_snapshot', 'Evidence note reports zero snapshot files; rerun bounded intake before drafting final artifacts.', evidence.filePath);
+    }
+  }
+  if (evidenceNotes.length > 0 && !files.some((filePath) => /^context\/(github|local-code)\/[^/]+\/files\//u.test(filePath))) {
+    addIssue('error', 'missing_evidence_snapshot_files', 'Evidence notes exist but no command-written snapshot files were found under context/github/*/files/ or context/local-code/*/files/.', 'context/');
+  }
+
+  const hasAssetEvidence = evidenceHasAssets(evidenceText) || files.some((filePath) => /^context\/(github|local-code)\/.+\/files\/.+\.(svg|png|jpe?g|webp|ico)$/iu.test(filePath));
+  const hasFontEvidence = evidenceHasFonts(evidenceText) || files.some((filePath) => /^context\/(github|local-code)\/.+\/files\/.+\.(ttf|otf|woff2?)$/iu.test(filePath));
+  if (hasAssetEvidence) {
+    if (!files.some((filePath) => /^assets\/.+\.(svg|png|jpe?g|webp|ico)$/iu.test(filePath))) {
+      addIssue('error', 'missing_preserved_assets', 'Source evidence includes brand assets; preserve selected logos/icons/avatars under assets/.', 'assets/');
+    }
+    if (!fileSet.has('preview/brand-assets.html')) {
+      addIssue('error', 'missing_brand_assets_preview', 'Source evidence includes brand assets; add preview/brand-assets.html.', 'preview/brand-assets.html');
+    }
+  }
+  if (hasFontEvidence && !files.some((filePath) => /^fonts\/.+\.(ttf|otf|woff2?|css)$/iu.test(filePath))) {
+    addIssue('error', 'missing_preserved_fonts', 'Source evidence includes font files; preserve selected fonts under fonts/ and bind them in colors_and_type.css.', 'fonts/');
+  }
+
+  const errors = issues.filter((issue) => issue.severity === 'error');
+  const warnings = issues.filter((issue) => issue.severity === 'warning');
+  return {
+    ok: errors.length === 0,
+    projectPath,
+    filesInspected: files.length,
+    errors,
+    warnings,
+  };
+}
+
+function requirePreviewCategory(
+  previewFiles: string[],
+  pattern: RegExp,
+  code: string,
+  message: string,
+  addIssue: (severity: DesignSystemAuditSeverity, code: string, message: string, path?: string) => void,
+): void {
+  if (!previewFiles.some((filePath) => pattern.test(filePath))) {
+    addIssue('error', code, message, 'preview/');
+  }
+}
+
+async function readAuditText(projectPath: string, relativePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(path.join(projectPath, relativePath), 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+function manifestHasLinkedGithub(manifest: string): boolean {
+  const section = markdownSection(manifest, 'GitHub Repositories');
+  return section !== undefined && /github\.com[:/][^\s]+|^- https?:\/\/github\.com\//imu.test(section) && !/- None linked\./iu.test(section);
+}
+
+function manifestHasLinkedLocalFolder(manifest: string): boolean {
+  const section = markdownSection(manifest, 'Local Code');
+  return section !== undefined
+    && /Linked folders readable by the local agent:\s*\n- (?!none\.)(.+)/iu.test(section);
+}
+
+function markdownSection(markdown: string, title: string): string | undefined {
+  const lines = markdown.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${title}`.toLowerCase());
+  if (start === -1) return undefined;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^##\s+/u.test(line));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+}
+
+function evidenceHasAssets(evidenceText: string): boolean {
+  return /### Brand assets and icons|## Binary Assets Preserved|\.(svg|png|jpe?g|webp|ico)\b/iu.test(evidenceText);
+}
+
+function evidenceHasFonts(evidenceText: string): boolean {
+  return /### Fonts|\.(ttf|otf|woff2?)\b/iu.test(evidenceText);
+}
+
 async function requestJson(baseUrl: URL, token: string, pathname: string, init: RequestInit = {}): Promise<{ status: number; body: unknown }> {
   const response = await fetch(endpoint(baseUrl, pathname), {
     ...init,
@@ -1524,6 +1718,15 @@ export async function runConnectorsToolCli(args: string[]): Promise<ToolCliResul
   if (options.command === 'local-design-context') {
     try {
       return await runLocalDesignContext(options);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return fail(message);
+    }
+  }
+
+  if (options.command === 'design-system-package-audit') {
+    try {
+      return await runDesignSystemPackageAudit(options);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return fail(message);
