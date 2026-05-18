@@ -92,6 +92,22 @@ interface GithubDesignEvidence {
   warnings: string[];
 }
 
+type GithubEvidenceInventoryCategory =
+  | 'Product docs and manifests'
+  | 'Brand assets and icons'
+  | 'Fonts'
+  | 'Theme, tokens, and styling'
+  | 'App shell and navigation'
+  | 'Chat and input surfaces'
+  | 'Reusable components'
+  | 'Other design evidence';
+
+interface GithubEvidenceInventorySection {
+  title: GithubEvidenceInventoryCategory;
+  description: string;
+  files: GithubSnapshotFile[];
+}
+
 interface ProcessRunResult {
   ok: boolean;
   stdout: string;
@@ -447,6 +463,8 @@ function scoreDesignFile(repoPath: string): number {
   if (/(^|\/)(globals?|index|style|styles|app|root)\.(css|scss|less)$/u.test(normalized)) score += 88;
   if (/^(build|assets?|public|resources)\/(cherry[-_])?(logo|icon|tray[_-]?icon|avatar|wordmark|brand|mark)[^/]*\.(svg|png|jpe?g|webp|ico)$/u.test(normalized)) score += 150;
   if (/^(fonts?|assets?\/fonts?|public\/fonts?|resources\/fonts?)\/.*\.(ttf|otf|woff2?)$/u.test(normalized)) score += 145;
+  if (/\/assets\/fonts?\/.*\.(ttf|otf|woff2?|css)$/u.test(normalized)) score += 145;
+  if (/\/assets\/fonts?\/.*ubuntu.*\.(ttf|otf|woff2?|css)$/u.test(normalized)) score += 18;
   if (/(^|\/)(build|assets?|public|resources|fonts?)\/.*(logo|icon|avatar|tray|brand|wordmark|mark)[^/]*\.(svg|png|jpe?g|webp|ico)$/u.test(normalized)) score += 86;
   if (/(^|\/)(build|assets?|public|resources|fonts?)\/.*\.(ttf|otf|woff2?)$/u.test(normalized)) score += 84;
   if (/\/(context|providers?|theme|styles?|config|utils?)\//u.test(normalized)) score += 70;
@@ -930,6 +948,7 @@ async function writeGithubDesignEvidence(outputPath: string, evidence: GithubDes
 }
 
 function renderGithubDesignEvidenceMarkdown(evidence: GithubDesignEvidence): string {
+  const inventory = buildGithubEvidenceInventory(evidence);
   const lines = [
     `# GitHub Design Evidence: ${evidence.repo.owner}/${evidence.repo.repo}`,
     '',
@@ -951,6 +970,17 @@ function renderGithubDesignEvidenceMarkdown(evidence: GithubDesignEvidence): str
   }
   if (evidence.readme) {
     lines.push('', `## README (${evidence.readme.path})`, '', '```md', excerpt(evidence.readme.content), '```');
+  }
+  if (inventory.length > 0) {
+    lines.push('', '## Source Evidence Inventory', '');
+    for (const section of inventory) {
+      lines.push(`### ${section.title}`, '', section.description, '');
+      for (const file of section.files) {
+        const kind = file.binary ? 'binary asset' : 'source';
+        lines.push(`- ${file.repoPath}${file.outputPath ? ` -> \`${file.outputPath}\`` : ''} (${kind})`);
+      }
+      lines.push('');
+    }
   }
   if (evidence.files.length > 0) {
     lines.push('', '## Files Inspected', '');
@@ -978,11 +1008,79 @@ function renderGithubDesignEvidenceMarkdown(evidence: GithubDesignEvidence): str
     '## Next Design-System Work',
     '',
     '- Use these source paths and snapshots as evidence before writing `DESIGN.md`.',
+    '- Convert the inventory above into a Claude Design-style package: `README.md`, `SKILL.md`, `colors_and_type.css`, `preview/colors-*`, `preview/typography-specimens.html`, `preview/spacing-*`, `preview/components-*`, `preview/brand-assets.html`, `ui_kits/app/`, and preserved `assets/` or `fonts/` when evidence exists.',
     '- Extract concrete colors, typography, spacing, radius, component behavior, assets, and product tone only when supported by inspected files.',
     '- If evidence is missing or ambiguous, mark that uncertainty instead of inventing tokens.',
     '',
   );
   return lines.join('\n');
+}
+
+function buildGithubEvidenceInventory(evidence: GithubDesignEvidence): GithubEvidenceInventorySection[] {
+  const descriptions: Record<GithubEvidenceInventoryCategory, string> = {
+    'Product docs and manifests': 'Use these to understand product purpose, dependency stack, scripts, and public naming.',
+    'Brand assets and icons': 'Preserve these into `assets/` or `build/` references and reflect them in `preview/brand-assets.html`.',
+    Fonts: 'Preserve source font files or declarations into `fonts/` and bind them in `colors_and_type.css` when applicable.',
+    'Theme, tokens, and styling': 'Extract concrete color, typography, spacing, radius, shadow, and theme-variable values from these files.',
+    'App shell and navigation': 'Use these to recreate the product frame, navigation density, sidebars, window chrome, and layout rhythm.',
+    'Chat and input surfaces': 'Use these for the applied UI-kit surface and interaction model when the product includes chat or composer flows.',
+    'Reusable components': 'Use these to derive buttons, inputs, cards, dialogs, avatars, selectors, menus, and feedback states.',
+    'Other design evidence': 'Inspect these only after the primary design evidence above has been used.',
+  };
+  const order: GithubEvidenceInventoryCategory[] = [
+    'Product docs and manifests',
+    'Brand assets and icons',
+    'Fonts',
+    'Theme, tokens, and styling',
+    'App shell and navigation',
+    'Chat and input surfaces',
+    'Reusable components',
+    'Other design evidence',
+  ];
+  const grouped = new Map<GithubEvidenceInventoryCategory, GithubSnapshotFile[]>();
+  for (const file of evidence.files) {
+    const category = githubEvidenceInventoryCategory(file.repoPath);
+    const files = grouped.get(category) ?? [];
+    files.push(file);
+    grouped.set(category, files);
+  }
+  return order
+    .map((title) => {
+      const files = grouped.get(title) ?? [];
+      return { title, description: descriptions[title], files };
+    })
+    .filter((section) => section.files.length > 0);
+}
+
+function githubEvidenceInventoryCategory(repoPath: string): GithubEvidenceInventoryCategory {
+  const normalized = repoPath.toLowerCase();
+  if (/(^|\/)(readme\.(md|mdx|txt|rst)|package\.json)$/u.test(normalized)) {
+    return 'Product docs and manifests';
+  }
+  if (/(^|\/)(assets?|public|resources|build)\/.*(logo|icon|avatar|tray|brand|wordmark|mark)[^/]*\.(svg|png|jpe?g|webp|ico)$/u.test(normalized)) {
+    return 'Brand assets and icons';
+  }
+  if (/(^|\/)(fonts?|assets?\/fonts?|public\/fonts?|resources\/fonts?)\/.*\.(ttf|otf|woff2?)$/u.test(normalized) || /\.(ttf|otf|woff2?)$/u.test(normalized)) {
+    return 'Fonts';
+  }
+  if (/(^|\/)(tailwind|theme|themes?|themeprovider|antdprovider|tokens?|colors?|typography|design-system|design|constant|constants|env|style|styles)\.(config\.)?(ts|tsx|js|jsx|json|css|scss|less|md)$/u.test(normalized)
+    || /\/(context|providers?|theme|styles?|config|utils?)\//u.test(normalized)
+    || /\.(css|scss|less)$/u.test(normalized)) {
+    return 'Theme, tokens, and styling';
+  }
+  if (/\/(app|layout|shell|navbar|sidebar|nav|chrome)\//u.test(normalized)
+    || /(navbar|sidebar|layout|shell|window|workspace)\.(tsx|ts|jsx|js|css|scss)$/u.test(normalized)) {
+    return 'App shell and navigation';
+  }
+  if (/\/(chat|inputbar|composer|message|assistants?|topics?|models?)\//u.test(normalized)
+    || /(chat|inputbar|composer|message|assistant|topic|selectmodel|updateapp|model)\.(tsx|ts|jsx|js|css|scss)$/u.test(normalized)) {
+    return 'Chat and input surfaces';
+  }
+  if (/\/(components?|ui|primitives?)\//u.test(normalized)
+    || /(button|card|dialog|modal|input|form|table|badge|avatar|toast|menu|tabs|popover|select|settings)\.(tsx|ts|jsx|js|css|scss)$/u.test(normalized)) {
+    return 'Reusable components';
+  }
+  return 'Other design evidence';
 }
 
 function excerpt(content: string): string {

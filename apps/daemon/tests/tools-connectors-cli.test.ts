@@ -158,7 +158,11 @@ describe('connectors tool CLI', () => {
       method: 'connector',
       outputPath: 'context/github/acme-ui.md',
     }));
-    await expect(readFile(path.join(tmpDir, 'context/github/acme-ui.md'), 'utf8')).resolves.toContain('GitHub connector was used');
+    const evidenceNote = await readFile(path.join(tmpDir, 'context/github/acme-ui.md'), 'utf8');
+    expect(evidenceNote).toContain('GitHub connector was used');
+    expect(evidenceNote).toContain('Source Evidence Inventory');
+    expect(evidenceNote).toContain('Theme, tokens, and styling');
+    expect(evidenceNote).toContain('Reusable components');
     await expect(readFile(path.join(tmpDir, 'context/github/acme-ui/files/src/components/Button.tsx'), 'utf8')).resolves.toContain('rounded-md');
     expect(fetchMock).toHaveBeenCalledWith(
       'http://127.0.0.1:7456/api/tools/connectors/execute',
@@ -409,6 +413,7 @@ printf 'font-data' > "$last/fonts/ubuntu/Ubuntu-Regular.ttf"
         'context/github/acme-rate-limited-ui/files/package.json',
         'context/github/acme-rate-limited-ui/files/build/icon.png',
         'context/github/acme-rate-limited-ui/files/build/logo.png',
+        'context/github/acme-rate-limited-ui/files/fonts/ubuntu/Ubuntu-Regular.ttf',
         'context/github/acme-rate-limited-ui/files/src/styles.css',
       ]),
       warnings: expect.arrayContaining([
@@ -416,12 +421,19 @@ printf 'font-data' > "$last/fonts/ubuntu/Ubuntu-Regular.ttf"
         expect.stringContaining('GitHub connector bounded intake produced no snapshot files.'),
       ]),
     }));
-    await expect(readFile(path.join(tmpDir, 'context/github/acme-rate-limited-ui.md'), 'utf8')).resolves.toContain('shallow local clone fallback');
-    await expect(readFile(path.join(tmpDir, 'context/github/acme-rate-limited-ui.md'), 'utf8')).resolves.toContain('Binary Assets Preserved');
-    await expect(readFile(path.join(tmpDir, 'context/github/acme-rate-limited-ui.md'), 'utf8')).resolves.toContain('build/icon.png');
+    const evidenceNote = await readFile(path.join(tmpDir, 'context/github/acme-rate-limited-ui.md'), 'utf8');
+    expect(evidenceNote).toContain('shallow local clone fallback');
+    expect(evidenceNote).toContain('Source Evidence Inventory');
+    expect(evidenceNote).toContain('Brand assets and icons');
+    expect(evidenceNote).toContain('Fonts');
+    expect(evidenceNote).toContain('Binary Assets Preserved');
+    expect(evidenceNote).toContain('build/icon.png');
+    expect(evidenceNote).toContain('Claude Design-style package');
     await expect(readFile(path.join(tmpDir, 'context/github/acme-rate-limited-ui/files/src/styles.css'), 'utf8')).resolves.toContain('--color-brand');
     const iconBytes = await readFile(path.join(tmpDir, 'context/github/acme-rate-limited-ui/files/build/icon.png'));
     expect(iconBytes.length).toBeGreaterThan(0);
+    const fontBytes = await readFile(path.join(tmpDir, 'context/github/acme-rate-limited-ui/files/fonts/ubuntu/Ubuntu-Regular.ttf'));
+    expect(fontBytes.length).toBeGreaterThan(0);
 
     await rm(tmpDir, { recursive: true, force: true });
   });
