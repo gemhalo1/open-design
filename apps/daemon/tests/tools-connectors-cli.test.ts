@@ -150,6 +150,43 @@ function auditHtml(title: string): string {
 `;
 }
 
+function auditUiKitIndex(componentFiles: string[] = AUDIT_COMPONENT_FILES): string {
+  const scripts = componentFiles
+    .map((fileName) => `  <script type="text/babel" src="components/${fileName}"></script>`)
+    .join('\n');
+  const componentNames = componentFiles.map((fileName) => fileName.replace(/\.(jsx|tsx|js|ts|html)$/u, ''));
+  const componentCards = componentNames
+    .map((componentName) => `<article><h2>${componentName}</h2><p>${componentName} is loaded from ui_kits/app/components/${componentName}.jsx and composed into this applied interface kit.</p></article>`)
+    .join('\n      ');
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cherry Studio UI kit</title>
+  <link rel="stylesheet" href="../../colors_and_type.css" />
+  <style>
+    body { margin: 0; min-height: 100vh; font-family: var(--cherry-font-sans); background: var(--cherry-bg); color: var(--cherry-fg); }
+    main { width: min(1120px, calc(100vw - 48px)); margin: 32px auto; display: grid; gap: 16px; grid-template-columns: 240px 1fr; }
+    aside, section { border: 1px solid var(--cherry-border); border-radius: var(--cherry-radius-md); background: var(--cherry-surface); padding: var(--cherry-space-4); }
+    article { border: 1px solid var(--cherry-border); border-radius: var(--cherry-radius-sm); background: var(--cherry-surface-muted); padding: var(--cherry-space-3); }
+  </style>
+</head>
+<body>
+${scripts}
+  <main>
+    <aside><strong>Cherry Studio</strong><p>Loaded modular components: ${componentFiles.join(', ')}</p></aside>
+    <section>
+      <h1>Applied modular UI kit</h1>
+      <p>This entry page loads the extracted token CSS and composes reusable component modules instead of standing alone as a generic mock.</p>
+      ${componentCards}
+    </section>
+  </main>
+</body>
+</html>
+`;
+}
+
 function auditComponent(componentName: string): string {
   return `const ${componentName}Items = [
   { id: 'primary', label: '${componentName} primary state', detail: 'Source-backed density, spacing, and active state.' },
@@ -476,7 +513,7 @@ describe('connectors tool CLI', () => {
     ]) {
       await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
     }
-    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Cherry Studio UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditUiKitIndex());
     await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
     await mkdir(path.join(tmpDir, 'ui_kits/app/components'), { recursive: true });
     for (const componentName of AUDIT_COMPONENT_FILES) {
@@ -554,7 +591,7 @@ describe('connectors tool CLI', () => {
     ]) {
       await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
     }
-    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Cherry Studio UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditUiKitIndex(['Foundation.jsx', 'Navigation.jsx', 'Workspace.jsx']));
     await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n\nUse ui_kits/app/index.html and role components.\n');
     for (const componentName of ['Foundation.jsx', 'Navigation.jsx', 'Workspace.jsx']) {
       await writeFile(
@@ -607,7 +644,7 @@ describe('connectors tool CLI', () => {
     ]) {
       await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
     }
-    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Cherry Studio UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditUiKitIndex(['App.jsx', 'Sidebar.jsx', 'ChatArea.jsx']));
     await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
     for (const componentName of ['App.jsx', 'Sidebar.jsx', 'ChatArea.jsx']) {
       await writeFile(
@@ -636,6 +673,56 @@ describe('connectors tool CLI', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('fails a design-system package audit when the UI-kit entry does not load its modules or token CSS', async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'od-package-audit-disconnected-uikit-'));
+    process.chdir(tmpDir);
+    await mkdir(path.join(tmpDir, 'preview'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'ui_kits/app/components'), { recursive: true });
+    await mkdir(path.join(tmpDir, 'context/local-code/cherry/files/src/components'), { recursive: true });
+    await writeFile(path.join(tmpDir, 'DESIGN.md'), AUDIT_DESIGN_MD);
+    await writeFile(path.join(tmpDir, 'README.md'), AUDIT_README);
+    await writeFile(path.join(tmpDir, 'SKILL.md'), AUDIT_SKILL);
+    await writeFile(path.join(tmpDir, 'colors_and_type.css'), AUDIT_TOKENS_CSS);
+    for (const fileName of [
+      'colors-primary.html',
+      'colors-theme-light.html',
+      'typography-specimens.html',
+      'spacing-tokens.html',
+      'components-buttons.html',
+      'brand-assets.html',
+    ]) {
+      await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
+    }
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Disconnected UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
+    for (const componentName of ['Foundation.jsx', 'Navigation.jsx', 'Workspace.jsx']) {
+      await writeFile(
+        path.join(tmpDir, 'ui_kits/app/components', componentName),
+        auditComponent(componentName.replace(/\.jsx$/u, '')),
+      );
+    }
+    await writeFile(path.join(tmpDir, 'context/source-context.md'), '# Design System Source Context\n\n## Local Code\n\n- /tmp/cherry\n');
+    await writeFile(path.join(tmpDir, 'context/local-code/cherry.md'), [
+      '# Local Design Evidence: cherry',
+      '',
+      'Snapshot files written: 1',
+      '',
+      '### Reusable components',
+      '- src/components/Button.tsx -> `context/local-code/cherry/files/src/components/Button.tsx` (source)',
+    ].join('\n'));
+    await writeFile(path.join(tmpDir, 'context/local-code/cherry/files/src/components/Button.tsx'), 'export function Button(){ return <button />; }');
+
+    const result = await runConnectorsToolCli(['design-system-package-audit', '--path', tmpDir]);
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(stdoutOutput.join('')).errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ui_kit_missing_token_stylesheet', path: 'ui_kits/app/index.html' }),
+      expect.objectContaining({ code: 'ui_kit_index_missing_component_references', path: 'ui_kits/app/index.html' }),
+    ]));
+
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
   it('fails a design-system package audit when chat evidence lacks UI-kit role coverage', async () => {
     const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'od-package-audit-missing-roles-'));
     process.chdir(tmpDir);
@@ -658,7 +745,7 @@ describe('connectors tool CLI', () => {
     ]) {
       await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
     }
-    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Cherry Studio UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditUiKitIndex(['App.jsx', 'Sidebar.jsx', 'ChatArea.jsx']));
     await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
     for (const componentName of ['App.jsx', 'Sidebar.jsx', 'ChatArea.jsx']) {
       await writeFile(
@@ -716,7 +803,7 @@ describe('connectors tool CLI', () => {
     ]) {
       await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
     }
-    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Cherry Studio UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditUiKitIndex());
     await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
     for (const componentName of AUDIT_COMPONENT_FILES) {
       await writeFile(
@@ -780,7 +867,7 @@ describe('connectors tool CLI', () => {
     ]) {
       await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
     }
-    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Generic UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditUiKitIndex(['Foundation.jsx', 'Navigation.jsx', 'Workspace.jsx']));
     await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
     for (const componentName of ['Foundation.jsx', 'Navigation.jsx', 'Workspace.jsx']) {
       await writeFile(
@@ -892,7 +979,7 @@ describe('connectors tool CLI', () => {
     ]) {
       await writeFile(path.join(tmpDir, 'preview', fileName), auditHtml(fileName));
     }
-    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditHtml('Cherry Studio UI kit'));
+    await writeFile(path.join(tmpDir, 'ui_kits/app/index.html'), auditUiKitIndex());
     await writeFile(path.join(tmpDir, 'ui_kits/app/README.md'), '# UI kit\n');
     await mkdir(path.join(tmpDir, 'ui_kits/app/components'), { recursive: true });
     for (const componentName of AUDIT_COMPONENT_FILES) {

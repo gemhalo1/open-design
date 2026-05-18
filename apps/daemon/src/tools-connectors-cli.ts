@@ -1590,6 +1590,29 @@ async function auditDesignSystemPackage(
   const hasChatUiEvidence = evidenceHasChatInterface(evidenceText)
     || files.some((filePath) => /^context\/(github|local-code)\/.+\/files\/.+(?:pages\/home|components\/app|inputbar|messages?|chat|assistants?|sidebar).*\.(tsx|ts|jsx|js|css|scss|less)$/iu.test(filePath));
   const uiKitComponentFiles = files.filter((filePath) => /^ui_kits\/app\/components\/.+\.(jsx|tsx|js|ts|css|html)$/iu.test(filePath));
+  const uiKitIndexText = await readAuditText(projectPath, 'ui_kits/app/index.html');
+  if (fileSet.has('colors_and_type.css') && uiKitIndexText !== undefined && !/colors_and_type\.css/iu.test(uiKitIndexText)) {
+    addIssue(
+      'error',
+      'ui_kit_missing_token_stylesheet',
+      'ui_kits/app/index.html must load colors_and_type.css so the applied interface kit uses the extracted design tokens.',
+      'ui_kits/app/index.html',
+    );
+  }
+  if (uiKitComponentFiles.length >= 3 && uiKitIndexText !== undefined) {
+    const referencedComponents = uiKitComponentFiles.filter((filePath) =>
+      uiKitIndexText.includes(path.basename(filePath)),
+    );
+    const requiredReferences = Math.min(3, uiKitComponentFiles.length);
+    if (referencedComponents.length < requiredReferences) {
+      addIssue(
+        'error',
+        'ui_kit_index_missing_component_references',
+        `ui_kits/app/index.html must load or import at least ${requiredReferences} modular UI-kit component file(s) from ui_kits/app/components/. Found ${referencedComponents.length}.`,
+        'ui_kits/app/index.html',
+      );
+    }
+  }
   if (hasComponentEvidence && uiKitComponentFiles.length < 3) {
     addIssue(
       'error',
