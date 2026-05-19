@@ -4,7 +4,7 @@ import express from 'express';
 import multer from 'multer';
 import JSZip from 'jszip';
 import { execFile, spawn } from 'node:child_process';
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -37,6 +37,25 @@ import {
   spawnEnvForAgent,
 } from './agents.js';
 import { migrateLegacyDataDirSync } from './legacy-data-migrator.js';
+import {
+  consumedImportNonces,
+  getDesktopAuthSecret,
+  isDesktopAuthGateActive,
+  isDesktopAuthRegistered,
+  pruneExpiredImportNonces,
+  resetDesktopAuthForTests,
+  setDesktopAuthSecret,
+  signDesktopImportToken,
+  verifyDesktopImportToken,
+} from './desktop-auth.js';
+export {
+  isDesktopAuthGateActive,
+  isDesktopAuthRegistered,
+  resetDesktopAuthForTests,
+  setDesktopAuthSecret,
+  signDesktopImportToken,
+  verifyDesktopImportToken,
+} from './desktop-auth.js';
 import { findSkillById, listSkills, splitDerivedSkillId } from './skills.js';
 import { validateLinkedDirs } from './linked-dirs.js';
 import { installFromTarget, uninstallById, sanitizeRepoName } from './library-install.js';
@@ -44,10 +63,20 @@ import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './nati
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
 import {
+  createUserDesignSystem,
+  deleteUserDesignSystem,
+  LEGACY_DESIGN_SYSTEM_ARTIFACTS,
+  linkUserDesignSystemProject,
   listDesignSystems,
+  listUserDesignSystemFiles,
+  listUserDesignSystemRevisions,
   readDesignSystem,
+  readUserDesignSystemFile,
   resolveDesignSystemAssets,
+  updateUserDesignSystem,
+  updateUserDesignSystemRevisionStatus,
 } from './design-systems.js';
+import { createDesignSystemGenerationJobStore } from './design-system-generation-jobs.js';
 import {
   applyDiffReviewDecisionToCwd,
   applyPlugin,
@@ -125,6 +154,7 @@ import {
   parseRolloutPhase,
   type SkillCritiquePolicy,
 } from './critique/rollout.js';
+import { narrowProjectCritiqueOverride } from './critique/spawn-inputs.js';
 import { createCopilotStreamHandler } from './copilot-stream.js';
 import { createJsonEventStreamHandler } from './json-event-stream.js';
 import { classifyAgentAuthFailure, cursorAuthGuidance } from './runtimes/auth.js';
@@ -144,13 +174,16 @@ import {
   testAgentConnection,
   testProviderConnection,
   validateBaseUrl,
+  validateBaseUrlResolved,
 } from './connectionTest.js';
 import { listProviderModels } from './providerModels.js';
 import { importClaudeDesignZip } from './claude-design-import.js';
 import {
+  defaultBaseUrlForFinalizeProtocol,
   finalizeDesignPackage,
   FinalizePackageLockedError,
   FinalizeUpstreamError,
+  isFinalizeProviderProtocol,
 } from './finalize-design.js';
 import { listPromptTemplates, readPromptTemplate } from './prompt-templates.js';
 import { buildDocumentPreview } from './document-preview.js';
@@ -236,6 +269,7 @@ import {
 import { validateArtifactManifestInput } from './artifact-manifest.js';
 import { readCurrentAppVersionInfo } from './app-version.js';
 import {
+  appendMessageStatusEvent,
   deleteConversation,
   deletePreviewComment,
   deleteProject as dbDeleteProject,
@@ -295,6 +329,7 @@ import { LiveArtifactRefreshAbortError } from './live-artifacts/refresh.js';
 import { registerConnectorRoutes } from './connectors/routes.js';
 import { registerActiveContextRoutes } from './active-context-routes.js';
 import { registerMcpRoutes } from './mcp-routes.js';
+import { registerXaiRoutes } from './xai-routes.js';
 import { registerLiveArtifactRoutes } from './live-artifact-routes.js';
 import { registerDeployRoutes, registerDeploymentCheckRoutes } from './deploy-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
@@ -369,101 +404,6 @@ export function resolveDaemonCliPath(env: NodeJS.ProcessEnv = process.env): stri
 
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
 const RESOURCE_ROOT_ENV = 'OD_RESOURCE_ROOT';
-let desktopAuthSecret: Buffer | null = null;
-let desktopAuthEverRegistered = process.env.OD_REQUIRE_DESKTOP_AUTH === '1';
-const consumedImportNonces = new Map<string, number>();
-const DESKTOP_IMPORT_TOKEN_TTL_MS = 60_000;
-const DESKTOP_IMPORT_TOKEN_FIELD_SEP = '~';
-
-export function setDesktopAuthSecret(secret: Buffer | null): void {
-  desktopAuthSecret = secret;
-  if (secret != null) {
-    desktopAuthEverRegistered = true;
-  }
-  consumedImportNonces.clear();
-}
-
-export function isDesktopAuthRegistered(): boolean {
-  return desktopAuthSecret != null;
-}
-
-export function isDesktopAuthGateActive(): boolean {
-  return desktopAuthEverRegistered;
-}
-
-export function resetDesktopAuthForTests(): void {
-  desktopAuthSecret = null;
-  desktopAuthEverRegistered = process.env.OD_REQUIRE_DESKTOP_AUTH === '1';
-  consumedImportNonces.clear();
-}
-
-function pruneExpiredImportNonces(now: number): void {
-  for (const [nonce, exp] of consumedImportNonces) {
-    if (exp <= now) consumedImportNonces.delete(nonce);
-  }
-}
-
-function timingSafeStringEquals(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
-
-export function signDesktopImportToken(
-  secret: Buffer,
-  baseDir: string,
-  options: { nonce: string; exp: string },
-): string {
-  const signature = createHmac('sha256', secret)
-    .update(`${baseDir}\n${options.nonce}\n${options.exp}`)
-    .digest('base64url');
-  return [options.nonce, options.exp, signature].join(DESKTOP_IMPORT_TOKEN_FIELD_SEP);
-}
-
-type DesktopImportTokenVerification =
-  | { ok: true; nonce: string; exp: number }
-  | { ok: false; reason: string };
-
-export function verifyDesktopImportToken(
-  secret: Buffer,
-  baseDir: string,
-  token: string,
-  now: number,
-  consumedNonces: Map<string, number>,
-): DesktopImportTokenVerification {
-  if (typeof token !== 'string' || token.length === 0) {
-    return { ok: false, reason: 'token missing' };
-  }
-  const parts = token.split(DESKTOP_IMPORT_TOKEN_FIELD_SEP);
-  if (parts.length !== 3) {
-    return { ok: false, reason: 'token shape invalid' };
-  }
-  const [nonce, expISO, signature] = parts;
-  if (nonce.length === 0 || expISO.length === 0 || signature.length === 0) {
-    return { ok: false, reason: 'token shape invalid' };
-  }
-  const expMs = Date.parse(expISO);
-  if (!Number.isFinite(expMs)) {
-    return { ok: false, reason: 'token expiry invalid' };
-  }
-  if (expMs <= now) {
-    return { ok: false, reason: 'token expired' };
-  }
-  if (expMs - now > DESKTOP_IMPORT_TOKEN_TTL_MS * 2) {
-    return { ok: false, reason: 'token expiry exceeds permitted window' };
-  }
-  const expected = createHmac('sha256', secret)
-    .update(`${baseDir}\n${nonce}\n${expISO}`)
-    .digest('base64url');
-  if (!timingSafeStringEquals(expected, signature)) {
-    return { ok: false, reason: 'token signature invalid' };
-  }
-  if (consumedNonces.has(nonce)) {
-    return { ok: false, reason: 'token nonce already used' };
-  }
-  return { ok: true, nonce, exp: expMs };
-}
 
 export function composeLiveInstructionPrompt({
   daemonSystemPrompt,
@@ -923,6 +863,32 @@ function isPathWithin(base, target) {
   );
 }
 
+export function resolveSafeProjectAttachments(cwd, attachments, opts = {}) {
+  if (!cwd || !Array.isArray(attachments)) return [];
+  const pathImpl = opts.pathImpl ?? path;
+  const existsSync = opts.existsSync ?? fs.existsSync;
+  const root = pathImpl.resolve(cwd);
+  const out = [];
+
+  for (const attachment of attachments) {
+    if (typeof attachment !== 'string' || attachment.length === 0) continue;
+    try {
+      const abs = pathImpl.resolve(root, attachment);
+      const relativePath = pathImpl.relative(root, abs);
+      const withinRoot =
+        relativePath === '' ||
+        (relativePath.length > 0 &&
+          !relativePath.startsWith('..') &&
+          !pathImpl.isAbsolute(relativePath));
+      if (withinRoot && existsSync(abs)) out.push(attachment);
+    } catch {
+      // Drop malformed paths; attachments are advisory prompt context.
+    }
+  }
+
+  return out;
+}
+
 function resolveProcessResourcesPath() {
   if (
     typeof process.resourcesPath === 'string' &&
@@ -1213,6 +1179,9 @@ for (const dir of [USER_SKILLS_DIR, USER_DESIGN_SYSTEMS_DIR, USER_DESIGN_TEMPLAT
 }
 fs.mkdirSync(CRITIQUE_ARTIFACTS_DIR, { recursive: true });
 const orbitService = new OrbitService(RUNTIME_DATA_DIR);
+const designSystemGenerationJobs = createDesignSystemGenerationJobStore({
+  root: USER_DESIGN_SYSTEMS_DIR,
+});
 let routineService = null;
 
 // In-memory OAuth state cache. Lives for the daemon process's lifetime.
@@ -1381,6 +1350,7 @@ export function createAgentRuntimeEnv(
 ): NodeJS.ProcessEnv {
   const env = {
     ...baseEnv,
+    OD_DATA_DIR: RUNTIME_DATA_DIR,
     OD_DAEMON_URL: daemonUrl,
     OD_NODE_BIN: nodeBin,
   };
@@ -2534,6 +2504,17 @@ function resolveChatRunShutdownGraceMs() {
   return Math.max(0, Math.floor(raw));
 }
 
+function resolveAcpStageTimeoutMs(): number | undefined {
+  // Per-stage silence watchdog for ACP chat sessions. Defaults are owned by
+  // `attachAcpSession` in acp.ts; this resolver only applies when an operator
+  // sets `OD_ACP_STAGE_TIMEOUT_MS`. Bounded to the same 24h ceiling as the
+  // outer chat inactivity watchdog so an oversized override doesn't get
+  // clamped to 1ms by Node's signed-32-bit delay limit.
+  const raw = Number(process.env.OD_ACP_STAGE_TIMEOUT_MS);
+  if (!Number.isFinite(raw)) return undefined;
+  return Math.min(MAX_CHAT_RUN_INACTIVITY_TIMEOUT_MS, Math.max(0, Math.floor(raw)));
+}
+
 export async function startServer({
   port = 7456,
   host = process.env.OD_BIND_HOST || '127.0.0.1',
@@ -2621,17 +2602,206 @@ export async function startServer({
     const builtIn = (await listDesignSystems(DESIGN_SYSTEMS_DIR)).map((s) => ({
       ...s,
       source: 'built-in',
+      isEditable: false,
+      status: 'published',
     }));
     let installed = [];
     try {
-      installed = (await listDesignSystems(USER_DESIGN_SYSTEMS_DIR)).map(
-        (s) => ({ ...s, source: 'installed' }),
-      );
+      installed = await listDesignSystems(USER_DESIGN_SYSTEMS_DIR, {
+        idPrefix: 'user:',
+        source: 'user',
+        isEditable: true,
+        defaultStatus: 'draft',
+      });
     } catch {
       // User directory may not exist yet or be unreadable.
     }
     const seen = new Set(builtIn.map((s) => s.id));
-    return [...builtIn, ...installed.filter((s) => !seen.has(s.id))];
+    return [
+      ...installed
+        .filter((s) => s.source === 'user')
+        .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')),
+      ...builtIn,
+      ...installed.filter((s) => s.source !== 'user' && !seen.has(s.id)),
+    ];
+  }
+
+  async function readAvailableDesignSystem(id) {
+    if (typeof id === 'string' && id.startsWith('user:')) {
+      return readDesignSystem(USER_DESIGN_SYSTEMS_DIR, id, { idPrefix: 'user:' });
+    }
+    return (
+      (await readDesignSystem(DESIGN_SYSTEMS_DIR, id))
+      ?? (await readDesignSystem(USER_DESIGN_SYSTEMS_DIR, id))
+    );
+  }
+
+  function isProjectUsableDesignSystem(summary) {
+    return summary?.status !== 'draft';
+  }
+
+  async function validateProjectDesignSystemId(id) {
+    if (id === undefined || id === null || id === '') return { ok: true, id: null };
+    if (typeof id !== 'string') {
+      return {
+        ok: false,
+        code: 'INVALID_DESIGN_SYSTEM',
+        message: 'designSystemId must be a string or null',
+      };
+    }
+    const systems = await listAllDesignSystems();
+    const summary = systems.find((system) => system.id === id);
+    if (!summary) {
+      return {
+        ok: false,
+        code: 'DESIGN_SYSTEM_NOT_FOUND',
+        message: 'design system not found',
+      };
+    }
+    if (!isProjectUsableDesignSystem(summary)) {
+      return {
+        ok: false,
+        code: 'DESIGN_SYSTEM_NOT_PUBLISHED',
+        message: 'draft design systems cannot be used by projects',
+      };
+    }
+    return { ok: true, id };
+  }
+
+  function userDesignSystemWorkspaceProjectId(id) {
+    if (typeof id !== 'string' || !id.startsWith('user:')) return null;
+    const dirId = id.slice('user:'.length);
+    if (!/^[A-Za-z0-9._-]{1,120}$/.test(dirId)) return null;
+    return `ds-${dirId}`.slice(0, 128);
+  }
+
+  function projectBackedDesignSystemProjectId(id, summary) {
+    if (typeof summary?.projectId === 'string' && isSafeId(summary.projectId)) {
+      return summary.projectId;
+    }
+    return userDesignSystemWorkspaceProjectId(id);
+  }
+
+  async function ensureUserDesignSystemWorkspaceProject(db, id) {
+    const systems = await listAllDesignSystems();
+    const summary = systems.find((s) => s.id === id && s.source === 'user');
+    if (!summary) return null;
+    const projectId = projectBackedDesignSystemProjectId(id, summary);
+    if (!projectId) return null;
+
+    const now = Date.now();
+    const metadata = {
+      kind: 'other',
+      importedFrom: 'design-system',
+      entryFile: 'DESIGN.md',
+      sourceFileName: id,
+    };
+    const existing = getProject(db, projectId);
+    const project = existing
+      ? updateProject(db, projectId, {
+          name: summary.title,
+          designSystemId: id,
+          metadata: { ...existing.metadata, ...metadata },
+          updatedAt: now,
+        })
+      : insertProject(db, {
+          id: projectId,
+          name: summary.title,
+          skillId: null,
+          designSystemId: id,
+          pendingPrompt: null,
+          metadata,
+          createdAt: now,
+          updatedAt: now,
+        });
+    if (!project) return null;
+
+    const files = await listUserDesignSystemFiles(USER_DESIGN_SYSTEMS_DIR, id);
+    if (!files) return null;
+    for (const file of files) {
+      if (file.kind === 'folder') continue;
+      const detail = await readUserDesignSystemFile(USER_DESIGN_SYSTEMS_DIR, id, file.path);
+      if (!detail) continue;
+      if (existing) {
+        try {
+          const existingFile = await readProjectFile(PROJECTS_DIR, projectId, detail.path, project.metadata);
+          if (!isReplaceableDesignSystemWorkspaceFile(detail.path, existingFile)) continue;
+        } catch (err) {
+          if (!err || err.code !== 'ENOENT') throw err;
+        }
+      }
+      await writeProjectFile(
+        PROJECTS_DIR,
+        projectId,
+        detail.path,
+        Buffer.from(detail.content, 'utf8'),
+        {},
+        project.metadata,
+      );
+    }
+    await removeLegacyDesignSystemWorkspaceArtifacts(project);
+    await linkUserDesignSystemProject(USER_DESIGN_SYSTEMS_DIR, id, project.id);
+    const projectFiles = await listFiles(PROJECTS_DIR, projectId, { metadata: project.metadata });
+    return { project, files: projectFiles };
+  }
+
+  function isReplaceableDesignSystemWorkspaceFile(filePath, file) {
+    const buffer = file?.buffer;
+    if (!Buffer.isBuffer(buffer)) return false;
+    const text = buffer.toString('utf8');
+    if (/^ui_kits\/app\/components\/.+\.(jsx|tsx|js|ts|css|html)$/u.test(filePath)) {
+      return buffer.length < 700 && /od-ui-kit-[a-z-]+/u.test(text);
+    }
+    if (!/^(DESIGN\.md|README\.md|SKILL\.md|ui_kits\/app\/README\.md)$/u.test(filePath)) {
+      return false;
+    }
+    return hasLegacyDesignSystemPackageReferences(text);
+  }
+
+  function hasLegacyDesignSystemPackageReferences(text) {
+    return /preview\/(colors-node-types|colors-ui-palette|typography-scale|spacing-system|logo-variants)\.html|ui_kits\/generated_interface(?:\/index\.html|\/)?/u.test(text);
+  }
+
+  async function removeLegacyDesignSystemWorkspaceArtifacts(project) {
+    if (project?.metadata?.importedFrom !== 'design-system') return;
+    const dir = resolveProjectDir(PROJECTS_DIR, project.id, project.metadata);
+    for (const artifact of LEGACY_DESIGN_SYSTEM_ARTIFACTS) {
+      const replacementReady = await Promise.all(
+        artifact.replacementPaths.map(async (replacementPath) => {
+          try {
+            const stats = await fs.promises.stat(path.join(dir, ...replacementPath.split('/')));
+            return stats.isFile();
+          } catch (err) {
+            if (!err || (err.code !== 'ENOENT' && err.code !== 'ENOTDIR')) throw err;
+            return false;
+          }
+        }),
+      );
+      if (!replacementReady.every(Boolean)) continue;
+      await fs.promises.rm(path.join(dir, ...artifact.legacyPath.split('/')), {
+        recursive: artifact.removeDirectory === true,
+        force: true,
+      });
+    }
+  }
+
+  async function readDesignSystemWorkspaceTextFile(db, summary, filePath) {
+    if (!summary?.projectId || !isSafeId(summary.projectId)) return null;
+    const project = getProject(db, summary.projectId);
+    if (!project) return null;
+    try {
+      const file = await readProjectFile(
+        PROJECTS_DIR,
+        project.id,
+        filePath,
+        project.metadata,
+      );
+      const text = file.buffer.toString('utf8');
+      if (text.includes('\0')) return null;
+      return text;
+    } catch {
+      return null;
+    }
   }
 
   // Chrome may strip the port from the Origin header on same-origin GET
@@ -2712,6 +2882,7 @@ export async function startServer({
         completedAt: run.completedAt,
         summary: run.summary,
         error: run.error,
+        errorCode: run.errorCode,
       });
     },
     updateRun: (id, patch) => {
@@ -3475,7 +3646,12 @@ export async function startServer({
     getAppVersion: () => cachedAppVersion,
   });
 
-  const validateExternalApiBaseUrl = (baseUrl) => validateBaseUrl(baseUrl);
+  // DNS-aware wrapper. The sync `validateBaseUrl` only inspects the literal
+  // hostname string, so a public DNS name pointing at an internal address
+  // (`internal.example.com → 10.0.0.5`) still passes. We delegate to
+  // `validateBaseUrlResolved` here so every proxy and finalize handler runs
+  // the same resolved-IP check before issuing the upstream request.
+  const validateExternalApiBaseUrl = (baseUrl) => validateBaseUrlResolved(baseUrl);
 
   const resolvedPortRef = {
     get current() {
@@ -3643,7 +3819,7 @@ export async function startServer({
   const authDeps = {
     authorizeToolRequest,
     consumedImportNonces,
-    desktopAuthSecret: () => desktopAuthSecret,
+    desktopAuthSecret: getDesktopAuthSecret,
     isDesktopAuthGateActive,
     pruneExpiredImportNonces,
     requestProjectOverride,
@@ -3651,12 +3827,14 @@ export async function startServer({
     verifyDesktopImportToken,
   };
   const finalizeDeps = {
+    defaultBaseUrlForFinalizeProtocol,
     finalizeDesignPackage,
     FinalizePackageLockedError,
     FinalizeUpstreamError,
+    isFinalizeProviderProtocol,
     redactSecrets,
   };
-  const validationDeps = { isSafeId, validateExternalApiBaseUrl, validateBaseUrl };
+  const validationDeps = { isSafeId, validateExternalApiBaseUrl, validateBaseUrl, validateProjectDesignSystemId };
   const agentDeps = {
     listProviderModels,
     testProviderConnection,
@@ -3679,6 +3857,10 @@ export async function startServer({
     paths: pathDeps,
     mcp: { pendingAuth: mcpPendingAuth, daemonUrlRef },
   });
+  registerXaiRoutes(app, {
+    http: httpDeps,
+    paths: pathDeps,
+  });
   // Project workspace
   registerActiveContextRoutes(app, {
     db,
@@ -3698,6 +3880,7 @@ export async function startServer({
     events: projectEventDeps,
     ids: idDeps,
     telemetry: { reportFinalizedMessage },
+    validation: validationDeps,
   });
   registerImportRoutes(app, {
     db,
@@ -3711,6 +3894,7 @@ export async function startServer({
     projectStore: projectStoreDeps,
     conversations: conversationDeps,
     projectFiles: projectFileDeps,
+    validation: validationDeps,
   });
 
   // Resource catalog
@@ -4211,7 +4395,7 @@ export async function startServer({
 
   app.get('/api/design-systems', async (_req, res) => {
     try {
-      const systems = await listDesignSystems(DESIGN_SYSTEMS_DIR);
+      const systems = await listAllDesignSystems();
       res.json({
         designSystems: systems.map(({ body, ...rest }) => rest),
       });
@@ -4220,12 +4404,165 @@ export async function startServer({
     }
   });
 
+  app.post('/api/design-systems', async (req, res) => {
+    try {
+      const created = await createUserDesignSystem(USER_DESIGN_SYSTEMS_DIR, req.body || {});
+      res.status(201).json({ ...created, designSystem: created });
+    } catch (err) {
+      res.status(400).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/design-systems/generation-jobs', async (req, res) => {
+    try {
+      const job = designSystemGenerationJobs.start(req.body || {});
+      res.status(202).json({ job });
+    } catch (err) {
+      res.status(400).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/design-systems/generation-jobs/:jobId', async (req, res) => {
+    try {
+      const job = designSystemGenerationJobs.get(req.params.jobId);
+      if (!job) {
+        return res.status(404).json({ error: 'design system generation job not found' });
+      }
+      res.json({ job });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/design-systems/:id/revision-jobs', async (req, res) => {
+    try {
+      const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback : '';
+      if (!feedback.trim()) return res.status(400).json({ error: 'feedback is required' });
+      const job = designSystemGenerationJobs.revise({
+        designSystemId: req.params.id,
+        feedback,
+        sectionTitle: typeof req.body?.sectionTitle === 'string' ? req.body.sectionTitle : undefined,
+        body: typeof req.body?.body === 'string' ? req.body.body : undefined,
+      });
+      res.status(202).json({ job });
+    } catch (err) {
+      res.status(400).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/design-systems/:id/revisions', async (req, res) => {
+    try {
+      const revisions = await listUserDesignSystemRevisions(
+        USER_DESIGN_SYSTEMS_DIR,
+        req.params.id,
+      );
+      if (!revisions) {
+        return res.status(404).json({ error: 'editable design system not found' });
+      }
+      res.json({ revisions });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.patch('/api/design-systems/:id/revisions/:revisionId', async (req, res) => {
+    try {
+      const status = typeof req.body?.status === 'string' ? req.body.status : '';
+      if (status !== 'accepted' && status !== 'rejected') {
+        return res.status(400).json({ error: 'status must be accepted or rejected' });
+      }
+      const revision = await updateUserDesignSystemRevisionStatus(
+        USER_DESIGN_SYSTEMS_DIR,
+        req.params.id,
+        req.params.revisionId,
+        status,
+      );
+      if (!revision) {
+        return res.status(404).json({ error: 'design system revision not found' });
+      }
+      res.json({ revision });
+    } catch (err) {
+      res.status(400).json({ error: String(err) });
+    }
+  });
+
   app.get('/api/design-systems/:id', async (req, res) => {
     try {
-      const body = await readDesignSystem(DESIGN_SYSTEMS_DIR, req.params.id);
-      if (body === null)
+      const systems = await listAllDesignSystems();
+      const summary = systems.find((s) => s.id === req.params.id);
+      const projectBody = await readDesignSystemWorkspaceTextFile(db, summary, 'DESIGN.md');
+      const body = projectBody ?? await readAvailableDesignSystem(req.params.id);
+      if (body === null || !summary)
         return res.status(404).json({ error: 'design system not found' });
-      res.json({ id: req.params.id, body });
+      const detail = { ...summary, body };
+      res.json({ ...detail, designSystem: detail });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/design-systems/:id/workspace', async (req, res) => {
+    try {
+      const workspace = await ensureUserDesignSystemWorkspaceProject(db, req.params.id);
+      if (!workspace) {
+        return res.status(404).json({ error: 'editable design system not found' });
+      }
+      res.status(201).json(workspace);
+    } catch (err) {
+      res.status(400).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/design-systems/:id/files', async (req, res) => {
+    try {
+      const files = await listUserDesignSystemFiles(USER_DESIGN_SYSTEMS_DIR, req.params.id);
+      if (!files) {
+        return res.status(404).json({ error: 'editable design system not found' });
+      }
+      res.json({ files });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/design-systems/:id/file', async (req, res) => {
+    try {
+      const requestedPath = typeof req.query.path === 'string' ? req.query.path : '';
+      const file = await readUserDesignSystemFile(
+        USER_DESIGN_SYSTEMS_DIR,
+        req.params.id,
+        requestedPath,
+      );
+      if (!file) return res.status(404).json({ error: 'design system file not found' });
+      res.json({ file });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.patch('/api/design-systems/:id', async (req, res) => {
+    try {
+      const updated = await updateUserDesignSystem(
+        USER_DESIGN_SYSTEMS_DIR,
+        req.params.id,
+        req.body || {},
+      );
+      if (!updated) {
+        return res.status(404).json({ error: 'editable design system not found' });
+      }
+      res.json({ ...updated, designSystem: updated });
+    } catch (err) {
+      res.status(400).json({ error: String(err) });
+    }
+  });
+
+  app.delete('/api/design-systems/:id', async (req, res) => {
+    try {
+      const ok = await deleteUserDesignSystem(USER_DESIGN_SYSTEMS_DIR, req.params.id);
+      if (!ok) {
+        return res.status(404).json({ error: 'editable design system not found' });
+      }
+      res.status(204).end();
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
@@ -5806,7 +6143,7 @@ export async function startServer({
   // file shows up on the next view, no rebuild needed.
   app.get('/api/design-systems/:id/preview', async (req, res) => {
     try {
-      const body = await readDesignSystem(DESIGN_SYSTEMS_DIR, req.params.id);
+      const body = await readAvailableDesignSystem(req.params.id);
       if (body === null)
         return res.status(404).type('text/plain').send('not found');
       const html = renderDesignSystemPreview(req.params.id, body);
@@ -5821,7 +6158,7 @@ export async function startServer({
   // /preview: built at request time, no caching.
   app.get('/api/design-systems/:id/showcase', async (req, res) => {
     try {
-      const body = await readDesignSystem(DESIGN_SYSTEMS_DIR, req.params.id);
+      const body = await readAvailableDesignSystem(req.params.id);
       if (body === null)
         return res.status(404).type('text/plain').send('not found');
       const html = renderDesignSystemShowcase(req.params.id, body);
@@ -7738,7 +8075,8 @@ export async function startServer({
 
     let designSystemBody;
     let designSystemTitle;
-    // Compiled (tokens.css + components.html) form of the active brand.
+    // Compiled (tokens.css + components manifest / components.html)
+    // form of the active brand.
     // Default-on as of PR-D — every chat that picks a brand with
     // `tokens.css` + `components.html` siblings (today: `default` and
     // `kami`; every other brand falls through silently because the
@@ -7751,26 +8089,37 @@ export async function startServer({
     // `true`, etc.) keeps the new default. Drift on prose-only brands
     // is pinned by `scripts/check-design-system-flag-parity.ts`.
     let designSystemTokensCss;
+    let designSystemComponentsManifest;
     let designSystemFixtureHtml;
     if (effectiveDesignSystemId) {
-      const systems = await listAllDesignSystems();
-      const summary = systems.find((s) => s.id === effectiveDesignSystemId);
+      let systems = await listAllDesignSystems();
+      let summary = systems.find((s) => s.id === effectiveDesignSystemId);
+      if (summary?.source === 'user') {
+        await ensureUserDesignSystemWorkspaceProject(db, effectiveDesignSystemId);
+        systems = await listAllDesignSystems();
+        summary = systems.find((s) => s.id === effectiveDesignSystemId);
+      }
+      const editingOwnDraftDesignSystem =
+        project?.metadata?.importedFrom === 'design-system'
+        && project.designSystemId === effectiveDesignSystemId;
       designSystemTitle = summary?.title;
-      designSystemBody =
-        (await readDesignSystem(DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)) ??
-        (await readDesignSystem(USER_DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)) ??
-        undefined;
-      // Single seam: env gate + built-in→user-installed fallback chain
-      // live together inside `resolveDesignSystemAssets` so the whole
-      // server-side asset-resolution path can be tested end-to-end
-      // from real disk fixtures (see `tests/design-system-assets.test.ts`).
-      const assets = await resolveDesignSystemAssets(
-        effectiveDesignSystemId,
-        DESIGN_SYSTEMS_DIR,
-        USER_DESIGN_SYSTEMS_DIR,
-      );
-      designSystemTokensCss = assets.tokensCss;
-      designSystemFixtureHtml = assets.fixtureHtml;
+      if (summary && (isProjectUsableDesignSystem(summary) || editingOwnDraftDesignSystem)) {
+        const workspaceBody = await readDesignSystemWorkspaceTextFile(db, summary, 'DESIGN.md');
+        const registryBody = await readAvailableDesignSystem(effectiveDesignSystemId);
+        designSystemBody = (workspaceBody ?? registryBody) ?? undefined;
+        // Single seam: env gate + built-in→user-installed fallback chain
+        // live together inside `resolveDesignSystemAssets` so the whole
+        // server-side asset-resolution path can be tested end-to-end
+        // from real disk fixtures (see `tests/design-system-assets.test.ts`).
+        const assets = await resolveDesignSystemAssets(
+          effectiveDesignSystemId,
+          DESIGN_SYSTEMS_DIR,
+          USER_DESIGN_SYSTEMS_DIR,
+        );
+        designSystemTokensCss = assets.tokensCss;
+        designSystemComponentsManifest = assets.componentsManifest;
+        designSystemFixtureHtml = assets.fixtureHtml;
+      }
     }
 
     const template =
@@ -7822,12 +8171,7 @@ export async function startServer({
     // other type (missing key, malformed value) collapses to `null`
     // so the resolver falls through to the env / phase tiers exactly
     // the way it did when the toggle had never been touched.
-    const rawProjectOverride =
-      metadata && typeof metadata === 'object'
-        ? (metadata as { critiqueTheaterEnabled?: unknown }).critiqueTheaterEnabled
-        : undefined;
-    const projectCritiqueOverride: boolean | null =
-      typeof rawProjectOverride === 'boolean' ? rawProjectOverride : null;
+    const projectCritiqueOverride = narrowProjectCritiqueOverride(metadata);
     const critiqueEnabledForRun = isCritiqueEnabled({
       phase: parseRolloutPhase(process.env.OD_CRITIQUE_ROLLOUT_PHASE),
       skillPolicy: skillCritiquePolicy,
@@ -7930,6 +8274,7 @@ export async function startServer({
       designSystemBody,
       designSystemTitle,
       designSystemTokensCss,
+      designSystemComponentsManifest,
       designSystemFixtureHtml,
       craftBody,
       craftSections,
@@ -8155,19 +8500,7 @@ export async function startServer({
     // explicit list at the bottom of the user message so the agent knows
     // to Read it.
     const safeAttachments = cwd
-      ? (Array.isArray(attachments) ? attachments : [])
-          .filter((p) => typeof p === 'string' && p.length > 0)
-          .filter((p) => {
-            try {
-              const abs = path.resolve(cwd, p);
-              return (
-                (abs === cwd || abs.startsWith(cwd + path.sep)) &&
-                fs.existsSync(abs)
-              );
-            } catch {
-              return false;
-            }
-          })
+      ? resolveSafeProjectAttachments(cwd, attachments)
       : [];
 
     // Local code agents don't accept a separate "system" channel the way the
@@ -8902,19 +9235,17 @@ export async function startServer({
           typeof projectId === 'string' && projectId ? projectId : null;
         const critiqueBus = {
           emit: (e) => {
+            // Two transports for every critique event: the run-scoped
+            // SSE send back to the originating chat run, plus the
+            // project-scoped fan-out so the Theater mount (subscribed
+            // to /api/projects/:id/events) sees it too. Route the
+            // project fan-out through emitProjectEvent so empty-sink
+            // cleanup and any future broadcast policy (rate limiting,
+            // schema validation, telemetry) apply uniformly across
+            // every project emitter (PerishCode P3 on PR #1338).
             send(e.event, e.data);
             if (critiqueProjectIdForBus) {
-              const sinks = activeProjectEventSinks.get(critiqueProjectIdForBus);
-              if (sinks && sinks.size > 0) {
-                const payload = { ...e.data, type: e.event };
-                for (const sink of Array.from(sinks)) {
-                  try {
-                    sink(payload);
-                  } catch {
-                    sinks.delete(sink);
-                  }
-                }
-              }
+              emitProjectEvent(critiqueProjectIdForBus, { ...e.data, type: e.event });
             }
           },
         };
@@ -9045,7 +9376,7 @@ export async function startServer({
         if (authFailure?.status === 'missing') {
           send('error', createSseErrorPayload(
             'AGENT_AUTH_REQUIRED',
-            cursorAuthGuidance(),
+            authFailure.message ?? cursorAuthGuidance(),
             { retryable: true },
           ));
           return;
@@ -9069,6 +9400,53 @@ export async function startServer({
         lastAgentEventPhase = summarizeAgentEventForInactivity(ev);
         noteAgentActivity();
         send('agent', ev);
+        // Stream-json input mode keeps the child's stdin open across the
+        // turn so we can answer interactive tools like `AskUserQuestion`
+        // with a real `tool_result`. The child has no other way to know
+        // the conversation is over, though — without an EOF it sits idle
+        // until the inactivity watchdog kills it. Bookkeeping here:
+        //   - tool_use(AskUserQuestion): record the id so we know we owe
+        //     the model a tool_result before the turn can end.
+        //   - turn_end (per-turn synthesized from `stop_reason`): fire on
+        //     `end_turn` etc. but NOT on `tool_use` — that stop reason
+        //     means the model paused mid-tool, not "turn complete".
+        //   - usage (session result at EOF in single-shot mode).
+        try {
+          if (run.stdinOpen) {
+            if (
+              ev &&
+              typeof ev === 'object' &&
+              ev.type === 'tool_use' &&
+              (ev.name === 'AskUserQuestion' || ev.name === 'ask_user_question') &&
+              typeof ev.id === 'string'
+            ) {
+              if (!run.pendingHostAnswers) run.pendingHostAnswers = new Set();
+              run.pendingHostAnswers.add(ev.id);
+            } else if (
+              ev &&
+              typeof ev === 'object' &&
+              ((ev.type === 'turn_end' &&
+                // `stop_reason: tool_use` means the model paused to wait
+                // for tool execution (claude-code is about to run an
+                // internal tool, or we owe a host tool_result). Either
+                // way the conversation is still in flight — do not close.
+                ev.stopReason !== 'tool_use') ||
+                ev.type === 'usage') &&
+              (!run.pendingHostAnswers || run.pendingHostAnswers.size === 0)
+            ) {
+              // Per-turn `turn_end` (synthesized from
+              // `assistant.message.stop_reason` in `claude-stream`) is the
+              // primary close signal; `usage` is the session-level result
+              // that fires at EOF in single-shot mode. Either is a valid
+              // "this turn is done" cue, but only when there's no host
+              // answer outstanding AND the model isn't paused mid-tool.
+              if (run.child && run.child.stdin && !run.child.stdin.destroyed) {
+                try { run.child.stdin.end(); } catch {}
+              }
+              run.stdinOpen = false;
+            }
+          }
+        } catch {}
       });
       child.stdout.on('data', (chunk) => claude.feed(chunk));
       child.on('close', () => claude.flush());
@@ -9128,6 +9506,7 @@ export async function startServer({
         uploadRoot: UPLOAD_DIR,
       });
     } else if (def.streamFormat === 'acp-json-rpc') {
+      const acpStageTimeoutMs = resolveAcpStageTimeoutMs();
       acpSession = attachAcpSession({
         child,
         prompt: composed,
@@ -9138,6 +9517,7 @@ export async function startServer({
           noteAgentActivity();
           send(event, data);
         },
+        ...(acpStageTimeoutMs !== undefined ? { stageTimeoutMs: acpStageTimeoutMs } : {}),
       });
     } else if (def.streamFormat === 'json-event-stream') {
       // Pipe through sendAgentEvent so the OpenCode `type:'error'` frame
@@ -9186,15 +9566,20 @@ export async function startServer({
       }
       if (
         code !== 0 &&
-        !run.cancelRequested &&
-        classifyAgentAuthFailure(agentId, `${agentStderrTail}\n${agentStdoutTail}`)?.status === 'missing'
+        !run.cancelRequested
       ) {
-        send('error', createSseErrorPayload(
-          'AGENT_AUTH_REQUIRED',
-          cursorAuthGuidance(),
-          { retryable: true },
-        ));
-        return design.runs.finish(run, 'failed', code ?? 1, signal ?? null);
+        const authFailure = classifyAgentAuthFailure(
+          agentId,
+          `${agentStderrTail}\n${agentStdoutTail}`,
+        );
+        if (authFailure?.status === 'missing') {
+          send('error', createSseErrorPayload(
+            'AGENT_AUTH_REQUIRED',
+            authFailure.message ?? cursorAuthGuidance(),
+            { retryable: true },
+          ));
+          return design.runs.finish(run, 'failed', code ?? 1, signal ?? null);
+        }
       }
       // Empty-output guard: a clean `code === 0` exit on a stream we are
       // tracking, with no error frame and no substantive event, means the
@@ -9261,8 +9646,86 @@ export async function startServer({
       design.runs.finish(run, status, code, signal);
     });
     if (writePromptToChildStdin && child.stdin) {
-      child.stdin.end(composed, 'utf8');
+      const promptInputFormat = def.promptInputFormat ?? 'text';
+      if (promptInputFormat === 'stream-json') {
+        // Wrap the prompt as an Anthropic user message and write it as one
+        // JSONL line. Do NOT close stdin: claude-code keeps reading further
+        // messages until EOF, which is what lets us inject a `tool_result`
+        // block later when the user answers an `AskUserQuestion` card. The
+        // stdin is closed implicitly when the child exits (run terminates,
+        // user cancels, or the model finishes without an outstanding tool
+        // call).
+        const userMessage = JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: composed }],
+          },
+        });
+        try {
+          child.stdin.write(`${userMessage}\n`, 'utf8');
+        } catch (err) {
+          // Swallow EPIPE here for the same reason as the listener above —
+          // a fast-exiting child has already routed its failure through
+          // stderr / exit handlers.
+          if (err && err.code !== 'EPIPE') throw err;
+        }
+        run.stdinOpen = true;
+      } else {
+        child.stdin.end(composed, 'utf8');
+      }
     }
+  };
+
+  // Send a `tool_result` content block into a still-running stream-json
+  // child. Used for interactive tools that the host answers (currently:
+  // Claude's `AskUserQuestion`). The run must still be active and its
+  // stdin must still be open — we never re-spawn a closed child.
+  const submitToolResultToRun = (runId, toolUseId, content, isError = false) => {
+    const run = design.runs.get(runId);
+    if (!run) return { ok: false, reason: 'not_found' };
+    if (design.runs.isTerminal(run.status)) {
+      return { ok: false, reason: 'run_terminal' };
+    }
+    if (!run.child || !run.child.stdin || run.child.stdin.destroyed) {
+      return { ok: false, reason: 'stdin_closed' };
+    }
+    if (!run.stdinOpen) {
+      return { ok: false, reason: 'stdin_text_mode' };
+    }
+    if (typeof toolUseId !== 'string' || !toolUseId) {
+      return { ok: false, reason: 'bad_tool_use_id' };
+    }
+    const safeContent = typeof content === 'string' ? content : String(content ?? '');
+    const userMessage = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: safeContent,
+            is_error: !!isError,
+          },
+        ],
+      },
+    });
+    try {
+      run.child.stdin.write(`${userMessage}\n`, 'utf8');
+    } catch (err) {
+      return { ok: false, reason: 'write_failed', error: err && err.message };
+    }
+    if (run.pendingHostAnswers) {
+      run.pendingHostAnswers.delete(toolUseId);
+      if (run.pendingHostAnswers.size === 0 && run.stdinOpen) {
+        if (run.child && run.child.stdin && !run.child.stdin.destroyed) {
+          try { run.child.stdin.end(); } catch {}
+        }
+        run.stdinOpen = false;
+      }
+    }
+    return { ok: true };
   };
 
   orbitService.setRunHandler(async ({
@@ -9737,11 +10200,27 @@ export async function startServer({
 
     const completion = (async () => {
       const finalStatus = await design.runs.wait(run);
+      const failureError = finalStatus.status === 'failed'
+        ? (typeof finalStatus.error === 'string' && finalStatus.error.trim() ? finalStatus.error.trim() : null)
+        : null;
+      const failureErrorCode = finalStatus.status === 'failed'
+        ? (typeof finalStatus.errorCode === 'string' && finalStatus.errorCode.trim() ? finalStatus.errorCode.trim() : null)
+        : null;
+      if (failureError) {
+        appendMessageStatusEvent(db, assistantMessageId, {
+          label: 'error',
+          detail: failureError,
+        });
+      }
       db.prepare(`UPDATE messages SET run_status = ?, ended_at = ? WHERE id = ?`)
         .run(finalStatus.status, Date.now(), assistantMessageId);
       return {
         status: finalStatus.status,
-        summary: `Routine "${routine.name}" ${finalStatus.status}.`,
+        summary: failureError
+          ? `Routine "${routine.name}" failed: ${failureError}`
+          : `Routine "${routine.name}" ${finalStatus.status}.`,
+        error: failureError ?? undefined,
+        errorCode: failureErrorCode ?? undefined,
       };
     })();
 
@@ -9786,7 +10265,7 @@ export async function startServer({
     routines: { routineService },
     validation: validationDeps,
     finalize: finalizeDeps,
-    chat: { startChatRun },
+    chat: { startChatRun, submitToolResultToRun },
     agents: agentDeps,
     critique: critiqueDeps,
     lifecycle: { isDaemonShuttingDown: () => daemonShuttingDown },
@@ -9809,7 +10288,7 @@ export async function startServer({
     db,
     design,
     http: httpDeps,
-    chat: { startChatRun },
+    chat: { startChatRun, submitToolResultToRun },
     agents: agentDeps,
     critique: critiqueDeps,
     validation: validationDeps,

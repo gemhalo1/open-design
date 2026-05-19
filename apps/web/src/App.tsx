@@ -18,6 +18,10 @@ import { migrateCustomPetAtlas } from './components/pet/pets';
 import { ProjectView } from './components/ProjectView';
 import { WorkspaceTabsBar } from './components/WorkspaceTabsBar';
 import {
+  DesignSystemCreationFlow,
+  DesignSystemDetailView,
+} from './components/DesignSystemFlow';
+import {
   SettingsDialog,
   switchApiProtocolConfig,
   updateCurrentApiProtocolConfig,
@@ -528,6 +532,11 @@ export function App() {
     setProjects(list);
   }, []);
 
+  const refreshDesignSystems = useCallback(async () => {
+    const list = await fetchDesignSystems();
+    setDesignSystems(list);
+  }, []);
+
   const refreshTemplates = useCallback(async () => {
     const list = await listTemplates();
     setTemplates(list);
@@ -899,7 +908,6 @@ export function App() {
 
   const handleImportFolder = useCallback(async (baseDir: string) => {
     const result = await importFolderProject({ baseDir });
-    if (!result) return;
     setProjects((curr) => [result.project, ...curr.filter((p) => p.id !== result.project.id)]);
     navigate({
       kind: 'project',
@@ -1183,6 +1191,44 @@ export function App() {
     appMain = <MarketplaceView />;
   } else if (route.kind === 'marketplace-detail') {
     appMain = <PluginDetailView pluginId={route.pluginId} />;
+  } else if (route.kind === 'design-system-create') {
+    appMain = (
+      <DesignSystemCreationFlow
+        onBack={() => navigate({ kind: 'home', view: 'design-systems' })}
+        onCreated={(projectId, project) => {
+          if (project) {
+            setProjects((curr) => [
+              project,
+              ...curr.filter((p) => p.id !== project.id),
+            ]);
+          }
+          navigate({ kind: 'project', projectId, conversationId: null, fileName: null });
+        }}
+        onProjectPrepared={(project) => {
+          setProjects((curr) => [
+            project,
+            ...curr.filter((p) => p.id !== project.id),
+          ]);
+        }}
+        onSystemsRefresh={refreshDesignSystems}
+        config={config}
+        onOpenConnectorsTab={() => openSettings('composio')}
+      />
+    );
+  } else if (route.kind === 'design-system-detail') {
+    appMain = (
+      <DesignSystemDetailView
+        id={route.designSystemId}
+        selectedId={config.designSystemId}
+        config={config}
+        agents={agents}
+        onBack={() => navigate({ kind: 'home', view: 'design-systems' })}
+        onOpenProject={(projectId) => navigate({ kind: 'project', projectId, conversationId: null, fileName: null })}
+        onSetDefault={handleChangeDefaultDesignSystem}
+        onSystemsRefresh={refreshDesignSystems}
+        onProjectsRefresh={refreshProjects}
+      />
+    );
   } else if (activeProject) {
     appMain = (
       <ProjectView
@@ -1248,6 +1294,9 @@ export function App() {
         onDeleteProject={handleDeleteProject}
         onRenameProject={handleRenameProject}
         onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
+        onCreateDesignSystem={() => navigate({ kind: 'design-system-create' })}
+        onOpenDesignSystem={(id: string) => navigate({ kind: 'design-system-detail', designSystemId: id })}
+        onDesignSystemsRefresh={refreshDesignSystems}
         onPersistComposioKey={handleConfigPersistComposioKey}
         onOpenSettings={openSettings}
       />
