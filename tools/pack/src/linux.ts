@@ -468,6 +468,7 @@ async function writeAssembledApp(
     `${JSON.stringify(
       {
         appVersion: version,
+        bundleEpoch: version,
         namespace: config.namespace,
         nodeCommandRelative: "open-design/bin/node",
         ...(config.telemetryRelayUrl == null ? {} : { telemetryRelayUrl: config.telemetryRelayUrl }),

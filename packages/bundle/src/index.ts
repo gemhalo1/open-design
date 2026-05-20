@@ -17,10 +17,16 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 export const BUNDLE_BASE_PATH_ENV = "OD_BUNDLE_BASE_PATH";
 export const BUNDLE_DESCRIPTOR_FILE = "bundle.json";
 export const BUNDLE_DESCRIPTOR_SCHEMA_VERSION = 1;
+export const BUNDLE_DESCRIPTOR_SCHEMA_VERSION_V2 = 2;
 export const BUNDLE_METADATA_FILE = "metadata.json";
 export const BUNDLE_OBJECTS_DIR = "objects";
 export const BUNDLE_STAGING_DIR = ".staging";
 export const BUNDLE_STORE_VERSION = 1;
+
+const BUNDLE_EPOCH_PATTERN = "\\d+\\.\\d+\\.\\d+(?:-[A-Za-z][A-Za-z0-9-]*\\.(?:0|[1-9]\\d*))?";
+const BUNDLE_EPOCH_RE = new RegExp(`^${BUNDLE_EPOCH_PATTERN}$`);
+const BUNDLE_EPOCH_VERSION_RE = new RegExp(`^(${BUNDLE_EPOCH_PATTERN})\\.([a-z][a-z0-9-]*)\\.([1-9]\\d*)$`);
+const BUNDLE_SLUG_RE = /^[a-z][a-z0-9-]*$/;
 
 export type BundleRef = {
   key: string;
@@ -29,12 +35,31 @@ export type BundleRef = {
 
 export type BundleEntryKind = "js" | "tsx";
 
-export type BundleArtifactDescriptor = {
+export type BundleArtifactDescriptorV1 = {
   entry: {
     kind: BundleEntryKind;
     path: string;
   };
   schemaVersion: typeof BUNDLE_DESCRIPTOR_SCHEMA_VERSION;
+};
+
+export type BundleArtifactDescriptorV2 = Record<string, unknown> & {
+  entry: {
+    kind: BundleEntryKind;
+    path: string;
+  };
+  key: string;
+  schemaVersion: typeof BUNDLE_DESCRIPTOR_SCHEMA_VERSION_V2;
+  version: string;
+};
+
+export type BundleArtifactDescriptor = BundleArtifactDescriptorV1 | BundleArtifactDescriptorV2;
+
+export type BundleEpochVersion = {
+  epoch: string;
+  sequence: number;
+  slug: string;
+  version: string;
 };
 
 export type BundleArtifact = {
@@ -135,6 +160,53 @@ export function validateBundleVersion(version: string): string {
   return version;
 }
 
+export function validateBundleEpoch(epoch: string): string {
+  if (!BUNDLE_EPOCH_RE.test(epoch)) {
+    throw new BundleStoreError(
+      "bundle-epoch-invalid",
+      `bundle epoch must use X.Y.Z or X.Y.Z-<channel>.N: ${epoch}`,
+    );
+  }
+  return epoch;
+}
+
+export function parseBundleEpochVersion(version: string): BundleEpochVersion {
+  const safeVersion = validateBundleVersion(version);
+  const match = BUNDLE_EPOCH_VERSION_RE.exec(safeVersion);
+  if (match == null) {
+    throw new BundleStoreError(
+      "bundle-version-invalid",
+      `bundle version must use <epoch>.<bundle_slug>.M with epoch X.Y.Z or X.Y.Z-<channel>.N: ${version}`,
+    );
+  }
+
+  const sequence = Number(match[3]);
+  if (!Number.isSafeInteger(sequence)) {
+    throw new BundleStoreError("bundle-version-invalid", `bundle version sequence is too large: ${version}`);
+  }
+
+  return {
+    epoch: validateBundleEpoch(match[1] ?? ""),
+    sequence,
+    slug: match[2] ?? "",
+    version: safeVersion,
+  };
+}
+
+export function createBundleEpochVersion(input: {
+  epoch: string;
+  sequence: number;
+  slug: string;
+}): string {
+  if (!Number.isSafeInteger(input.sequence) || input.sequence < 1) {
+    throw new BundleStoreError("bundle-version-invalid", `bundle version sequence must be a positive integer: ${input.sequence}`);
+  }
+  if (!BUNDLE_SLUG_RE.test(input.slug)) {
+    throw new BundleStoreError("bundle-version-invalid", `bundle slug must be lowercase alphanumeric or hyphenated: ${input.slug}`);
+  }
+  return parseBundleEpochVersion(`${validateBundleEpoch(input.epoch)}.${input.slug}.${input.sequence}`).version;
+}
+
 export function validateBundleRef(ref: BundleRef): BundleRef {
   if (!isRecord(ref)) {
     throw new BundleStoreError("bundle-ref-invalid", "bundle ref must be an object");
@@ -145,35 +217,60 @@ export function validateBundleRef(ref: BundleRef): BundleRef {
   };
 }
 
-export function validateBundleDescriptor(value: unknown): BundleArtifactDescriptor {
-  if (!isRecord(value) || value.schemaVersion !== BUNDLE_DESCRIPTOR_SCHEMA_VERSION) {
-    throw new BundleStoreError("bundle-descriptor-invalid", "bundle descriptor must contain schemaVersion=1");
-  }
-
-  const entry = value.entry;
-  if (!isRecord(entry)) {
+function validateBundleDescriptorEntry(value: unknown): BundleArtifactDescriptor["entry"] {
+  if (!isRecord(value)) {
     throw new BundleStoreError("bundle-descriptor-invalid", "bundle descriptor entry must be an object");
   }
 
-  if (entry.kind !== "js" && entry.kind !== "tsx") {
+  if (value.kind !== "js" && value.kind !== "tsx") {
     throw new BundleStoreError("bundle-entry-kind-invalid", "bundle descriptor entry kind must be js or tsx");
   }
 
-  if (typeof entry.path !== "string" || entry.path.length === 0) {
+  if (typeof value.path !== "string" || value.path.length === 0) {
     throw new BundleStoreError("bundle-entry-path-invalid", "bundle descriptor entry path must be a non-empty string");
   }
-  assertNoNullBytes(entry.path, "bundle descriptor entry path");
-  if (isAbsolute(entry.path)) {
+  assertNoNullBytes(value.path, "bundle descriptor entry path");
+  if (isAbsolute(value.path)) {
     throw new BundleStoreError("bundle-entry-path-invalid", "bundle descriptor entry path must be relative");
   }
 
   return {
-    entry: {
-      kind: entry.kind,
-      path: entry.path.split("\\").join("/"),
-    },
-    schemaVersion: BUNDLE_DESCRIPTOR_SCHEMA_VERSION,
+    kind: value.kind,
+    path: value.path.split("\\").join("/"),
   };
+}
+
+export function validateBundleDescriptor(value: unknown): BundleArtifactDescriptor {
+  if (!isRecord(value)) {
+    throw new BundleStoreError("bundle-descriptor-invalid", "bundle descriptor must contain schemaVersion=1 or schemaVersion=2");
+  }
+  if (value.schemaVersion !== BUNDLE_DESCRIPTOR_SCHEMA_VERSION && value.schemaVersion !== BUNDLE_DESCRIPTOR_SCHEMA_VERSION_V2) {
+    throw new BundleStoreError("bundle-descriptor-invalid", "bundle descriptor must contain schemaVersion=1 or schemaVersion=2");
+  }
+
+  const entry = validateBundleDescriptorEntry(value.entry);
+
+  if (value.schemaVersion === BUNDLE_DESCRIPTOR_SCHEMA_VERSION) {
+    return {
+      entry,
+      schemaVersion: BUNDLE_DESCRIPTOR_SCHEMA_VERSION,
+    };
+  }
+
+  if (typeof value.key !== "string") {
+    throw new BundleStoreError("bundle-descriptor-invalid", "schemaVersion=2 bundle descriptor key must be a string");
+  }
+  if (typeof value.version !== "string") {
+    throw new BundleStoreError("bundle-descriptor-invalid", "schemaVersion=2 bundle descriptor version must be a string");
+  }
+
+  return {
+    ...value,
+    entry,
+    key: validateBundleKey(value.key),
+    schemaVersion: BUNDLE_DESCRIPTOR_SCHEMA_VERSION_V2,
+    version: parseBundleEpochVersion(value.version).version,
+  } as BundleArtifactDescriptorV2;
 }
 
 export function bundleRefsEqual(left: BundleRef, right: BundleRef): boolean {

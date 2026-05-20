@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, lstat, mkdir, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -11,9 +12,12 @@ import { createPackageManagerInvocation } from "@open-design/platform";
 import {
   BUNDLE_DESCRIPTOR_FILE,
   BUNDLE_DESCRIPTOR_SCHEMA_VERSION,
+  BUNDLE_DESCRIPTOR_SCHEMA_VERSION_V2,
   addBundle,
+  createBundleEpochVersion,
   deleteBundle,
   listBundles,
+  parseBundleEpochVersion,
   replaceBundle,
   resolveBundle,
   resolveBundleArtifact,
@@ -63,8 +67,10 @@ type KeyOption = {
 };
 
 type PackOptions = JsonOption & {
+  key?: string;
   out?: string;
   replace?: boolean;
+  version?: string;
 };
 
 type AddOptions = BasePathOption & KeyOption & {
@@ -74,11 +80,20 @@ type AddOptions = BasePathOption & KeyOption & {
 
 type RefOptions = BasePathOption & KeyOption;
 
+type PublishOptions = BasePathOption & JsonOption & {
+  epoch?: string;
+  out?: string;
+  replace?: boolean;
+  replaceOutput?: boolean;
+};
+
 export type PackBundleInput = {
   app: string;
+  key?: string;
   outPath: string;
   replace?: boolean;
   sourcePath: string;
+  version?: string;
 };
 
 export type StoreBundleInput = {
@@ -86,6 +101,23 @@ export type StoreBundleInput = {
   bundlePath: string;
   key?: string;
   replace?: boolean;
+  version?: string;
+};
+
+export type PublishBundleInput = {
+  app: string;
+  basePath: string;
+  epoch: string;
+  outPath?: string;
+  replace?: boolean;
+  replaceOutput?: boolean;
+  sourcePath: string;
+};
+
+export type PublishBundleResult = {
+  artifact: BundleArtifact;
+  ref: BundleRef;
+  resolved: BundleResolved;
   version: string;
 };
 
@@ -110,6 +142,13 @@ function output(payload: unknown, options: JsonOption, heading: string): void {
     process.stdout.write(`bundle: ${payload.ref.key}@${payload.ref.version}\n`);
     process.stdout.write(`path: ${payload.path}\n`);
     process.stdout.write(`metadata: ${payload.metadataPath}\n`);
+    return;
+  }
+  if (isPublishBundleResult(payload)) {
+    process.stdout.write(`bundle: ${payload.ref.key}@${payload.ref.version}\n`);
+    process.stdout.write(`path: ${payload.resolved.path}\n`);
+    process.stdout.write(`entry: ${payload.artifact.descriptor.entry.kind} ${payload.artifact.entryPath}\n`);
+    process.stdout.write(`metadata: ${payload.resolved.metadataPath}\n`);
     return;
   }
   if (Array.isArray(payload)) {
@@ -140,6 +179,10 @@ function isBundleResolved(value: unknown): value is BundleResolved {
   return isRecord(value) && isRecord(value.ref) && typeof value.path === "string" && typeof value.metadataPath === "string";
 }
 
+function isPublishBundleResult(value: unknown): value is PublishBundleResult {
+  return isRecord(value) && isBundleArtifact(value.artifact) && isBundleResolved(value.resolved) && isRecord(value.ref);
+}
+
 function containsPath(root: string, candidate: string): boolean {
   const rel = path.relative(root, candidate);
   return rel === "" || (rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel));
@@ -149,6 +192,23 @@ function requireSupportedApp(app: string): BundleApp {
   if (app === WEB_APP) return app;
   if (app === DAEMON_APP) return app;
   throw new Error(`unsupported bundle app: ${app} (expected: daemon or web)`);
+}
+
+function defaultKeyForApp(app: BundleApp): string {
+  return app === WEB_APP ? WEB_BUNDLE_KEY : DAEMON_BUNDLE_KEY;
+}
+
+function slugForApp(app: BundleApp): string {
+  return app;
+}
+
+function requireBundleVersionForApp(app: BundleApp, version: string): string {
+  const parsed = parseBundleEpochVersion(version);
+  const expectedSlug = slugForApp(app);
+  if (parsed.slug !== expectedSlug) {
+    throw new Error(`bundle version slug must be ${expectedSlug} for ${app}: ${version}`);
+  }
+  return parsed.version;
 }
 
 function requireOption(value: string | undefined, name: string): string {
@@ -167,6 +227,12 @@ function normalizeRef(input: { key?: string; refOrVersion: string }): BundleRef 
     : input.key ?? WEB_BUNDLE_KEY;
   const version = key === input.refOrVersion.slice(0, at) ? input.refOrVersion.slice(at + 1) : input.refOrVersion;
   return validateBundleRef({ key, version });
+}
+
+function descriptorRef(descriptor: BundleArtifactDescriptor): BundleRef | null {
+  return descriptor.schemaVersion === BUNDLE_DESCRIPTOR_SCHEMA_VERSION_V2
+    ? { key: descriptor.key, version: descriptor.version }
+    : null;
 }
 
 async function assertDirectoryRoot(root: string, label: string): Promise<void> {
@@ -795,6 +861,26 @@ async function releaseDescriptorForApp(app: BundleApp, sourcePath: string, outPa
   return await emitDaemonRuntime(sourcePath, outPath);
 }
 
+function releaseDescriptorWithOptionalRef(input: {
+  app: BundleApp;
+  descriptor: BundleArtifactDescriptor;
+  key?: string;
+  version?: string;
+}): BundleArtifactDescriptor {
+  if (input.key == null && input.version == null) return input.descriptor;
+  const version = requireBundleVersionForApp(input.app, requireOption(input.version, "--version"));
+  const key = validateBundleRef({ key: input.key ?? defaultKeyForApp(input.app), version }).key;
+  return {
+    ...input.descriptor,
+    ...(input.app === WEB_APP
+      ? { web: { outputMode: "standalone", standaloneRoot: WEB_STANDALONE_BUNDLE_ROOT } }
+      : {}),
+    key,
+    schemaVersion: BUNDLE_DESCRIPTOR_SCHEMA_VERSION_V2,
+    version,
+  };
+}
+
 export async function validateBundlePath(bundlePath: string): Promise<BundleArtifact> {
   return await resolveBundleArtifact(path.resolve(bundlePath));
 }
@@ -820,7 +906,12 @@ export async function packBundle(input: PackBundleInput): Promise<BundleArtifact
   await mkdir(path.dirname(outPath), { recursive: true });
   await mkdir(outPath, { recursive: true });
   if (app === WEB_APP) await copyWebStandaloneRuntime(sourcePath, outPath);
-  const descriptor = await releaseDescriptorForApp(app, sourcePath, outPath);
+  const descriptor = releaseDescriptorWithOptionalRef({
+    app,
+    descriptor: await releaseDescriptorForApp(app, sourcePath, outPath),
+    key: input.key,
+    version: input.version,
+  });
   // Source roots may carry a dev bundle.json; packed bundles always get a
   // release descriptor selected by tools-bundle.
   await writeFile(path.join(outPath, BUNDLE_DESCRIPTOR_FILE), `${JSON.stringify(descriptor, null, 2)}\n`, "utf8");
@@ -830,14 +921,82 @@ export async function packBundle(input: PackBundleInput): Promise<BundleArtifact
 
 export async function addBundleToStore(input: StoreBundleInput): Promise<BundleResolved> {
   const bundlePath = path.resolve(input.bundlePath);
-  await validateBundlePath(bundlePath);
-  const ref = validateBundleRef({ key: input.key ?? WEB_BUNDLE_KEY, version: input.version });
+  const artifact = await validateBundlePath(bundlePath);
+  const embeddedRef = descriptorRef(artifact.descriptor);
+  const version = input.version ?? embeddedRef?.version;
+  if (version == null) throw new Error("--version is required when bundle.json does not contain schemaVersion=2 ref metadata");
+  const ref = validateBundleRef({ key: input.key ?? embeddedRef?.key ?? WEB_BUNDLE_KEY, version });
+  if (embeddedRef != null && (embeddedRef.key !== ref.key || embeddedRef.version !== ref.version)) {
+    throw new Error(`store ref ${ref.key}@${ref.version} must match bundle descriptor ref ${embeddedRef.key}@${embeddedRef.version}`);
+  }
   const write = input.replace === true ? replaceBundle : addBundle;
   return await write({
     basePath: path.resolve(input.basePath),
     ref,
     sourcePath: bundlePath,
   });
+}
+
+async function nextBundleSequence(input: {
+  basePath: string;
+  epoch: string;
+  key: string;
+  slug: string;
+}): Promise<number> {
+  const entries = await listBundleStore(input.basePath);
+  let maxSequence = 0;
+  for (const entry of entries) {
+    if (entry.ref.key !== input.key) continue;
+    try {
+      const parsed = parseBundleEpochVersion(entry.ref.version);
+      if (parsed.epoch === input.epoch && parsed.slug === input.slug) {
+        maxSequence = Math.max(maxSequence, parsed.sequence);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return maxSequence + 1;
+}
+
+export async function publishBundle(input: PublishBundleInput): Promise<PublishBundleResult> {
+  const app = requireSupportedApp(input.app);
+  const basePath = path.resolve(input.basePath);
+  const key = defaultKeyForApp(app);
+  const slug = slugForApp(app);
+  const version = createBundleEpochVersion({
+    epoch: input.epoch,
+    sequence: await nextBundleSequence({ basePath, epoch: input.epoch, key, slug }),
+    slug,
+  });
+  const tempRoot = input.outPath == null ? await mkdtemp(path.join(tmpdir(), `od-tools-bundle-publish-${app}-`)) : null;
+  const outPath = path.resolve(input.outPath ?? path.join(tempRoot ?? "", "bundle"));
+
+  try {
+    await packBundle({
+      app,
+      key,
+      outPath,
+      replace: input.replaceOutput,
+      sourcePath: input.sourcePath,
+      version,
+    });
+    const resolved = await addBundleToStore({
+      basePath,
+      bundlePath: outPath,
+      key,
+      replace: input.replace,
+      version,
+    });
+    return {
+      artifact: await validateBundlePath(resolved.path),
+      ref: resolved.ref,
+      resolved,
+      version,
+    };
+  } finally {
+    if (tempRoot != null) await rm(tempRoot, { force: true, recursive: true });
+  }
 }
 
 export async function listBundleStore(basePath: string): Promise<BundleEntry[]> {
@@ -881,20 +1040,43 @@ export function createCli(): ReturnType<typeof cac> {
 
   cli.command("pack <app> <sourcePath>", "Create a local direct bundle from an app source tree")
     .option("--out <path>", "bundle output path")
+    .option("--version <version>", "emit schemaVersion=2 descriptor ref using <epoch>.<bundle_slug>.M")
+    .option("--key <key>", "bundle key for schemaVersion=2 descriptor ref")
     .option("--replace", "replace an existing output path")
     .option("--json", "print JSON")
     .action(async (app: string, sourcePath: string, options: PackOptions) => {
       output(await packBundle({
         app,
+        key: options.key,
         outPath: requireOption(options.out, "--out"),
         replace: options.replace,
         sourcePath,
+        version: options.version,
       }), options, "tools-bundle pack");
+    });
+
+  cli.command("publish <app> <sourcePath>", "Pack an app bundle and add the next epoch version to a packages/bundle store")
+    .option("--bundle-base-path <path>", "bundle store base path")
+    .option("--epoch <epoch>", "host epoch X.Y.Z or X.Y.Z-<channel>.N")
+    .option("--out <path>", "optional direct bundle output path to keep for inspection")
+    .option("--replace-output", "replace an existing --out path")
+    .option("--replace", "replace store entry if the computed key/version already exists")
+    .option("--json", "print JSON")
+    .action(async (app: string, sourcePath: string, options: PublishOptions) => {
+      output(await publishBundle({
+        app,
+        basePath: resolveBasePath(options),
+        epoch: requireOption(options.epoch, "--epoch"),
+        outPath: options.out,
+        replace: options.replace,
+        replaceOutput: options.replaceOutput,
+        sourcePath,
+      }), options, "tools-bundle publish");
     });
 
   cli.command("add <bundlePath>", "Add a direct bundle to a packages/bundle store")
     .option("--bundle-base-path <path>", "bundle store base path")
-    .option("--version <version>", "bundle version")
+    .option("--version <version>", "bundle version; optional when bundle.json contains schemaVersion=2 ref metadata")
     .option("--key <key>", `bundle key (default: ${WEB_BUNDLE_KEY}; daemon convention: ${DAEMON_BUNDLE_KEY})`)
     .option("--replace", "replace an existing bundle with the same key/version")
     .option("--json", "print JSON")
@@ -904,7 +1086,7 @@ export function createCli(): ReturnType<typeof cac> {
         bundlePath,
         key: options.key,
         replace: options.replace,
-        version: requireOption(options.version, "--version"),
+        version: options.version,
       }), options, "tools-bundle add");
     });
 

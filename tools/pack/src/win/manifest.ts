@@ -28,6 +28,7 @@ function createPackagedConfig(
 ): Record<string, unknown> {
   return {
     appVersion: packagedVersion,
+    bundleEpoch: packagedVersion,
     ...entrypoints,
     namespace: config.namespace,
     ...(config.telemetryRelayUrl == null ? {} : { telemetryRelayUrl: config.telemetryRelayUrl }),

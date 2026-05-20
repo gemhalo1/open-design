@@ -9,7 +9,9 @@ import {
   addBundle,
   deleteBundle,
   deleteBundleKey,
+  createBundleEpochVersion,
   listBundles,
+  parseBundleEpochVersion,
   replaceBundle,
   resolveBundleArtifact,
   resolveBundleEntryPath,
@@ -74,6 +76,32 @@ describe("bundle refs", () => {
   });
 });
 
+describe("bundle epoch versions", () => {
+  it("parses host epoch, bundle slug, and monotonic sequence", () => {
+    expect(parseBundleEpochVersion("0.8.0.web.1")).toEqual({
+      epoch: "0.8.0",
+      sequence: 1,
+      slug: "web",
+      version: "0.8.0.web.1",
+    });
+    expect(parseBundleEpochVersion("0.8.0-beta.4.web.12")).toEqual({
+      epoch: "0.8.0-beta.4",
+      sequence: 12,
+      slug: "web",
+      version: "0.8.0-beta.4.web.12",
+    });
+    expect(parseBundleEpochVersion("0.8.0-alpha.0.web.1").epoch).toBe("0.8.0-alpha.0");
+    expect(createBundleEpochVersion({ epoch: "0.8.0-beta.4", sequence: 3, slug: "web" })).toBe("0.8.0-beta.4.web.3");
+  });
+
+  it("rejects ambiguous or non-monotonic bundle epoch versions", () => {
+    expect(() => parseBundleEpochVersion("dev.1")).toThrow(BundleStoreError);
+    expect(() => parseBundleEpochVersion("0.8.0-beta.web.1")).toThrow(BundleStoreError);
+    expect(() => parseBundleEpochVersion("0.8.0.web.0")).toThrow(BundleStoreError);
+    expect(() => createBundleEpochVersion({ epoch: "0.8.0", sequence: 1, slug: "Web" })).toThrow(BundleStoreError);
+  });
+});
+
 describe("bundle artifact descriptors", () => {
   it("validates the minimal direct bundle descriptor shape", () => {
     expect(validateBundleDescriptor({
@@ -96,6 +124,28 @@ describe("bundle artifact descriptors", () => {
     expect(() => resolveBundleEntryPath({
       bundlePath: "/tmp/bundle",
       descriptor: { entry: { kind: "tsx", path: "../entry.ts" }, schemaVersion: 1 },
+    })).toThrow(BundleStoreError);
+  });
+
+  it("validates schemaVersion=2 descriptors with bundle ref metadata and target extensions", () => {
+    expect(validateBundleDescriptor({
+      entry: { kind: "js", path: "sidecar/index.mjs" },
+      key: "od:sidecar:web",
+      schemaVersion: 2,
+      version: "0.8.0-beta.4.web.1",
+      web: { outputMode: "standalone", standaloneRoot: "web/standalone" },
+    })).toEqual({
+      entry: { kind: "js", path: "sidecar/index.mjs" },
+      key: "od:sidecar:web",
+      schemaVersion: 2,
+      version: "0.8.0-beta.4.web.1",
+      web: { outputMode: "standalone", standaloneRoot: "web/standalone" },
+    });
+    expect(() => validateBundleDescriptor({
+      entry: { kind: "js", path: "sidecar/index.mjs" },
+      key: "od:sidecar:web",
+      schemaVersion: 2,
+      version: "dev.1",
     })).toThrow(BundleStoreError);
   });
 

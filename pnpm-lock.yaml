@@ -541,6 +541,9 @@ importers:
       '@electron/rebuild':
         specifier: 4.0.4
         version: 4.0.4
+      '@open-design/bundle':
+        specifier: workspace:*
+        version: link:../../packages/bundle
       '@open-design/platform':
         specifier: workspace:*
         version: link:../../packages/platform

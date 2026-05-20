@@ -3,6 +3,11 @@ import type { CAC } from "cac";
 
 import { resolveToolPackConfig, type ToolPackCliOptions, type ToolPackPlatform } from "./config.js";
 import {
+  activatePackagedBuiltinWebBundle,
+  activatePackagedWebBundle,
+  readPackagedWebBundleActivation,
+} from "./bundles.js";
+import {
   cleanupPackedMacNamespace,
   installPackedMacDmg,
   inspectPackedMacApp,
@@ -41,6 +46,10 @@ import {
 } from "./linux.js";
 
 type CliOptions = ToolPackCliOptions;
+type BundleCliOptions = CliOptions & {
+  platform?: string;
+  version?: string;
+};
 
 function printJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -69,6 +78,14 @@ function addSharedOptions(command: CacCommand) {
     .option("--expr <expression>", "desktop inspect eval expression")
     .option("--path <path>", "desktop inspect screenshot path")
     .option("--update-action <action>", "desktop update action: status|check|download|install");
+}
+
+function resolveBundlePlatform(value: string | undefined): ToolPackPlatform {
+  if (value === "mac" || value === "win" || value === "linux") return value;
+  if (value != null && value.length > 0) throw new Error("--platform must be mac, win, or linux");
+  if (process.platform === "darwin") return "mac";
+  if (process.platform === "win32") return "win";
+  return "linux";
 }
 
 // Per-platform `--to` help text mirroring resolveToolPackBuildOutput in
@@ -230,6 +247,33 @@ addBuildOptions(addSharedOptions(cli.command("linux <action>", "Linux packaging 
         return;
       default:
         throw new Error(`unsupported linux action: ${action}`);
+    }
+  });
+
+cli.command("bundle <action>", "Packaged web bundle activation commands: activate|builtin|status")
+  .option("--cache-dir <path>", "tools-pack cache directory")
+  .option("--dir <path>", "tools-pack root directory")
+  .option("--json", "print JSON")
+  .option("--namespace <name>", "runtime namespace")
+  .option("--platform <platform>", "packaged runtime platform: mac|win|linux (default: current host)")
+  .option("--version <version>", "web bundle version <epoch>.web.M for activate")
+  .action(async (action: string, options: BundleCliOptions) => {
+    const config = resolveToolPackConfig(resolveBundlePlatform(options.platform), options);
+    switch (action) {
+      case "activate":
+        if (options.version == null || options.version.length === 0) {
+          throw new Error("tools-pack bundle activate requires --version <epoch>.web.M");
+        }
+        printJson(await activatePackagedWebBundle(config, options.version));
+        return;
+      case "builtin":
+        printJson(await activatePackagedBuiltinWebBundle(config));
+        return;
+      case "status":
+        printJson(await readPackagedWebBundleActivation(config));
+        return;
+      default:
+        throw new Error(`unsupported bundle action: ${action}`);
     }
   });
 

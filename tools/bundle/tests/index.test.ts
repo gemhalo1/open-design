@@ -9,6 +9,7 @@ import {
   deleteBundleFromStore,
   listBundleStore,
   packBundle,
+  publishBundle,
   resolveBundleFromStore,
   validateBundlePath,
 } from "../src/index.js";
@@ -126,6 +127,29 @@ describe("tools-bundle", () => {
     });
   });
 
+  it("packs a schemaVersion=2 web release descriptor when a version is provided", async () => {
+    await withTempRoot("pack-v2", async (root) => {
+      const sourcePath = await makeWebSource(root);
+      const outPath = path.join(root, "bundle");
+
+      const artifact = await packBundle({
+        app: "web",
+        outPath,
+        sourcePath,
+        version: "0.8.0-beta.4.web.1",
+      });
+
+      assert.deepEqual(artifact.descriptor, {
+        entry: { kind: "js", path: "sidecar/index.mjs" },
+        key: "od:sidecar:web",
+        schemaVersion: 2,
+        version: "0.8.0-beta.4.web.1",
+        web: { outputMode: "standalone", standaloneRoot: "web/standalone" },
+      });
+      assert.equal(await readFile(path.join(outPath, "bundle.json"), "utf8"), `${JSON.stringify(artifact.descriptor, null, 2)}\n`);
+    });
+  });
+
   it("packs and validates a daemon bundle", async () => {
     await withTempRoot("pack-daemon", async (root) => {
       const sourcePath = await makeDaemonSource(root);
@@ -233,6 +257,47 @@ describe("tools-bundle", () => {
       assert.equal(resolved.artifact.descriptor.entry.path, "sidecar/index.mjs");
       assert.equal(await deleteBundleFromStore({ basePath, refOrVersion: "dev.1" }), true);
       assert.deepEqual(await listBundleStore(basePath), []);
+    });
+  });
+
+  it("uses schemaVersion=2 descriptor refs when adding bundles to the store", async () => {
+    await withTempRoot("store-v2", async (root) => {
+      const sourcePath = await makeWebSource(root);
+      const bundlePath = path.join(root, "bundle");
+      const basePath = path.join(root, "store");
+      await packBundle({
+        app: "web",
+        outPath: bundlePath,
+        sourcePath,
+        version: "0.8.0.web.1",
+      });
+
+      const added = await addBundleToStore({ basePath, bundlePath });
+
+      assert.deepEqual(added.ref, { key: "od:sidecar:web", version: "0.8.0.web.1" });
+      await assert.rejects(
+        addBundleToStore({ basePath, bundlePath, key: "od:sidecar:daemon", replace: true, version: "0.8.0.web.1" }),
+        /must match bundle descriptor ref/,
+      );
+    });
+  });
+
+  it("publishes the next epoch-scoped web bundle version", async () => {
+    await withTempRoot("publish", async (root) => {
+      const sourcePath = await makeWebSource(root);
+      const basePath = path.join(root, "store");
+
+      const first = await publishBundle({ app: "web", basePath, epoch: "0.8.0-beta.4", sourcePath });
+      const second = await publishBundle({ app: "web", basePath, epoch: "0.8.0-beta.4", sourcePath });
+
+      assert.equal(first.version, "0.8.0-beta.4.web.1");
+      assert.equal(second.version, "0.8.0-beta.4.web.2");
+      assert.deepEqual((await listBundleStore(basePath)).map((entry) => entry.ref.version), [
+        "0.8.0-beta.4.web.1",
+        "0.8.0-beta.4.web.2",
+      ]);
+      assert.equal(second.artifact.descriptor.schemaVersion, 2);
+      assert.equal(second.artifact.bundlePath, second.resolved.path);
     });
   });
 

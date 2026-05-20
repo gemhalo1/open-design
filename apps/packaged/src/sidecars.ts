@@ -367,6 +367,7 @@ export async function startPackagedSidecars(
   paths: PackagedNamespacePaths,
   options: {
     appVersion: string | null;
+    bundleEpoch: string | null;
     daemonCliEntry: string | null;
     daemonSidecarEntry: string | null;
     nodeCommand: string | null;
@@ -434,8 +435,10 @@ export async function startPackagedSidecars(
 
     const webImplementation = await resolvePackagedWebSidecarImplementation({
       builtinEntryPath: options.webSidecarEntry,
+      bundleEpoch: options.bundleEpoch,
       paths,
     });
+    const webStandaloneRoot = webImplementation.webStandaloneRoot ?? options.webStandaloneRoot;
     const web = await spawnSidecarChild({
       app: APP_KEYS.WEB,
       entryPath: webImplementation.entryPath ?? resolveSidecarEntry("@open-design/web", "sidecar"),
@@ -443,7 +446,7 @@ export async function startPackagedSidecars(
         [SIDECAR_ENV.DAEMON_PORT]: extractPort(daemonStatus.url),
         [SIDECAR_ENV.WEB_PORT]: "0",
         ...sidecarImplementationEnv(webImplementation.implementation),
-        ...(options.webStandaloneRoot == null ? {} : { OD_WEB_STANDALONE_ROOT: options.webStandaloneRoot }),
+        ...(webStandaloneRoot == null ? {} : { OD_WEB_STANDALONE_ROOT: webStandaloneRoot }),
         OD_WEB_OUTPUT_MODE: options.webOutputMode,
         PORT: "0",
       },

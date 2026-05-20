@@ -48,6 +48,22 @@ async function writeActivation(paths: PackagedNamespacePaths, payload: unknown):
   await writeFile(paths.bundleActivationPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+async function makeWebBundleSource(root: string, version: string): Promise<string> {
+  const source = await tempRoot(root);
+  await mkdir(join(source, "sidecar"), { recursive: true });
+  await writeFile(join(source, "sidecar", "index.mjs"), "export const marker = 'bundle';\n", "utf8");
+  await mkdir(join(source, "web", "standalone"), { recursive: true });
+  await writeFile(join(source, "web", "standalone", "server.js"), "console.log('standalone');\n", "utf8");
+  await writeFile(join(source, "bundle.json"), `${JSON.stringify({
+    entry: { kind: "js", path: "sidecar/index.mjs" },
+    key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY,
+    schemaVersion: 2,
+    version,
+    web: { outputMode: "standalone", standaloneRoot: "web/standalone" },
+  }, null, 2)}\n`, "utf8");
+  return source;
+}
+
 beforeEach(() => {
   roots = [];
 });
@@ -63,10 +79,12 @@ describe("packaged web sidecar bundle activation", () => {
 
     const selected = await resolvePackagedWebSidecarImplementation({
       builtinEntryPath: "/app/resources/builtin-web.mjs",
+      bundleEpoch: "0.8.0-beta.4",
       paths,
     });
 
     expect(selected.entryPath).toBe("/app/resources/builtin-web.mjs");
+    expect(selected.webStandaloneRoot).toBeNull();
     expect(selected.implementation).toEqual({
       entryPath: "/app/resources/builtin-web.mjs",
       fallbackReason: "activation-missing",
@@ -77,47 +95,68 @@ describe("packaged web sidecar bundle activation", () => {
   it("resolves a bundle activation into a concrete web sidecar entry path", async () => {
     const root = await tempRoot("bundle");
     const paths = fakePaths(root);
-    const source = await tempRoot("source");
-    await writeFile(join(source, "web-sidecar.mjs"), "export const marker = 'bundle';\n", "utf8");
+    const source = await makeWebBundleSource("source", "0.8.0-beta.4.web.1");
     await addBundle({
       basePath: paths.bundleBasePath,
-      ref: { key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: "dev.1" },
+      ref: { key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: "0.8.0-beta.4.web.1" },
       sourcePath: source,
     });
     await writeActivation(paths, createPackagedBundleActivationFile({
-      web: {
-        entry: "web-sidecar.mjs",
-        ref: { key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: "dev.1" },
-        type: "bundle",
-      },
+      web: { version: "0.8.0-beta.4.web.1" },
     }));
 
     const selected = await resolvePackagedWebSidecarImplementation({
       builtinEntryPath: "/app/resources/builtin-web.mjs",
+      bundleEpoch: "0.8.0-beta.4",
       paths,
     });
 
     expect(selected.implementation.source).toBe("bundle");
-    expect(selected.entryPath).toMatch(/web-sidecar\.mjs$/);
+    expect(selected.entryPath).toMatch(/sidecar\/index\.mjs$/);
+    expect(selected.webStandaloneRoot).toMatch(/web\/standalone$/);
     if (selected.implementation.source !== "bundle") throw new Error("expected bundle implementation");
-    expect(selected.implementation.ref).toEqual({ key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: "dev.1" });
+    expect(selected.implementation.ref).toEqual({ key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: "0.8.0-beta.4.web.1" });
     expect(selected.implementation.basePath).toBe(paths.bundleBasePath);
     expect(selected.implementation.bundlePath).toContain(paths.bundleBasePath);
+    expect(selected.implementation.descriptorPath).toMatch(/bundle\.json$/);
+  });
+
+  it("falls back to builtin when an activated bundle targets a different host epoch", async () => {
+    const root = await tempRoot("epoch-mismatch");
+    const paths = fakePaths(root);
+    const source = await makeWebBundleSource("source-mismatch", "0.8.0-beta.3.web.1");
+    await addBundle({
+      basePath: paths.bundleBasePath,
+      ref: { key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: "0.8.0-beta.3.web.1" },
+      sourcePath: source,
+    });
+    await writeActivation(paths, createPackagedBundleActivationFile({
+      web: { version: "0.8.0-beta.3.web.1" },
+    }));
+
+    const selected = await resolvePackagedWebSidecarImplementation({
+      builtinEntryPath: "/app/resources/builtin-web.mjs",
+      bundleEpoch: "0.8.0-beta.4",
+      paths,
+    });
+
+    expect(selected.entryPath).toBe("/app/resources/builtin-web.mjs");
+    expect(selected.implementation).toMatchObject({
+      fallbackReason: "bundle-epoch-mismatch:0.8.0-beta.3",
+      source: "builtin",
+    });
   });
 
   it("falls back to builtin when bundle activation cannot resolve", async () => {
     const root = await tempRoot("unresolved");
     const paths = fakePaths(root);
     await writeActivation(paths, createPackagedBundleActivationFile({
-      web: {
-        entry: "web-sidecar.mjs",
-        ref: { key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: "missing" },
-        type: "bundle",
-      },
+      web: { version: "0.8.0-beta.4.web.99" },
     }));
 
     const selected = await resolvePackagedWebSidecarImplementation({
       builtinEntryPath: null,
+      bundleEpoch: "0.8.0-beta.4",
       paths,
     });
 

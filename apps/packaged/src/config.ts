@@ -1,6 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { validateBundleEpoch } from "@open-design/bundle";
 import { SIDECAR_DEFAULTS, normalizeNamespace } from "@open-design/sidecar-proto";
 
 // `electron` is loaded lazily so this module can also be imported from the
@@ -23,6 +24,7 @@ export type PackagedWebOutputMode = "server" | "standalone";
 export type RawPackagedConfig = {
   appVersion?: string;
   bundleBasePath?: string;
+  bundleEpoch?: string;
   daemonCliEntryRelative?: string;
   daemonSidecarEntryRelative?: string;
   namespace?: string;
@@ -48,6 +50,7 @@ export type RawPackagedConfig = {
 export type PackagedConfig = {
   appVersion: string | null;
   bundleBasePath: string | null;
+  bundleEpoch: string | null;
   daemonCliEntry: string | null;
   daemonSidecarEntry: string | null;
   namespace: string;
@@ -106,6 +109,11 @@ function cleanOptionalString(value: string | undefined): string | null {
   if (value == null) return null;
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function cleanOptionalBundleEpoch(value: string | undefined): string | null {
+  const cleaned = cleanOptionalString(value);
+  return cleaned == null ? null : validateBundleEpoch(cleaned);
 }
 
 function resolvePackagedWebOutputMode(value: string | undefined): PackagedWebOutputMode {
@@ -172,6 +180,7 @@ export async function readPackagedConfig(): Promise<PackagedConfig> {
   return {
     appVersion: cleanOptionalString(raw.appVersion),
     bundleBasePath: resolveOptionalPath(raw.bundleBasePath) ?? null,
+    bundleEpoch: cleanOptionalBundleEpoch(raw.bundleEpoch) ?? cleanOptionalBundleEpoch(raw.appVersion),
     daemonCliEntry,
     daemonSidecarEntry,
     namespace,

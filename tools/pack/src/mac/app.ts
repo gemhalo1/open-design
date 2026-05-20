@@ -235,6 +235,7 @@ export async function writeAssembledApp(
     `${JSON.stringify(
       {
         appVersion: packagedVersion,
+        bundleEpoch: packagedVersion,
         ...(usePrebundledStandaloneWeb ? { daemonCliEntryRelative: MAC_PREBUNDLED_DAEMON_CLI_RELATIVE_PATH } : {}),
         ...(usePrebundledStandaloneWeb ? { daemonSidecarEntryRelative: MAC_PREBUNDLED_DAEMON_SIDECAR_RELATIVE_PATH } : {}),
         namespace: config.namespace,

@@ -1,9 +1,11 @@
-import { access, readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import {
   BundleStoreError,
+  parseBundleEpochVersion,
   resolveBundle,
+  resolveBundleArtifact,
   validateBundleRef,
   type BundleRef,
 } from "@open-design/bundle";
@@ -12,30 +14,30 @@ import { SIDECAR_ENV, type SidecarImplementationSnapshot } from "@open-design/si
 import type { PackagedNamespacePaths } from "./paths.js";
 
 export const PACKAGED_WEB_SIDECAR_BUNDLE_KEY = "od:sidecar:web";
+export const PACKAGED_WEB_SIDECAR_BUNDLE_SLUG = "web";
 export const SIDECAR_IMPLEMENTATION_ENV = SIDECAR_ENV.IMPLEMENTATION;
 
-export type PackagedBundleActivationSource =
-  | { type: "builtin" }
-  | { entry: string; ref: BundleRef; type: "bundle" };
+const PACKAGED_WEB_STANDALONE_BUNDLE_ROOT = "web/standalone";
 
-export type PackagedBundleActivationBinding = {
-  source: PackagedBundleActivationSource;
-};
-
-export type PackagedBundleActivationFile = {
-  bindings: Record<string, PackagedBundleActivationBinding>;
-  version: 1;
-};
+export type PackagedBundleActivationFile =
+  | { key: typeof PACKAGED_WEB_SIDECAR_BUNDLE_KEY; source: "builtin" }
+  | { key: typeof PACKAGED_WEB_SIDECAR_BUNDLE_KEY; version: string };
 
 export type PackagedWebSidecarImplementation =
   | {
       entryPath: string | null;
       implementation: Extract<SidecarImplementationSnapshot, { source: "builtin" }>;
+      webStandaloneRoot: null;
     }
   | {
       entryPath: string;
       implementation: Extract<SidecarImplementationSnapshot, { source: "bundle" }>;
+      webStandaloneRoot: string;
     };
+
+type ParsedActivation =
+  | { type: "builtin" }
+  | { ref: BundleRef; type: "bundle" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -51,56 +53,55 @@ function containsPath(root: string, candidate: string): boolean {
   return rel === "" || (rel.length > 0 && !rel.startsWith("..") && !isAbsolute(rel));
 }
 
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
+function parseSimpleActivationFile(value: Record<string, unknown>): ParsedActivation {
+  if (value.key !== PACKAGED_WEB_SIDECAR_BUNDLE_KEY) {
+    throw new Error(`packaged bundle activation key must be ${PACKAGED_WEB_SIDECAR_BUNDLE_KEY}`);
   }
+
+  if (value.source === "builtin") return { type: "builtin" };
+
+  const version = stringField(value, "version");
+  if (version == null) {
+    throw new Error("packaged bundle activation must contain key/version or key/source=builtin");
+  }
+  return {
+    ref: validateBundleRef({ key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version }),
+    type: "bundle",
+  };
 }
 
-function parseActivationFile(value: unknown): PackagedBundleActivationFile {
-  if (!isRecord(value) || value.version !== 1 || !isRecord(value.bindings)) {
-    throw new Error("packaged bundle activation must contain version=1 and object bindings");
+function parseLegacyActivationFile(value: Record<string, unknown>): ParsedActivation {
+  if (value.version !== 1 || !isRecord(value.bindings)) {
+    throw new Error("packaged bundle activation must contain key/version");
   }
 
-  const bindings: Record<string, PackagedBundleActivationBinding> = {};
-  for (const [key, binding] of Object.entries(value.bindings)) {
-    if (!isRecord(binding) || !isRecord(binding.source)) {
-      throw new Error(`packaged bundle activation binding ${key} must contain an object source`);
-    }
-    const type = stringField(binding.source, "type");
-    if (type === "builtin") {
-      bindings[key] = { source: { type } };
-      continue;
-    }
-    if (type === "bundle") {
-      const ref = binding.source.ref;
-      const entry = stringField(binding.source, "entry");
-      if (!isRecord(ref) || entry == null) {
-        throw new Error(`packaged bundle activation binding ${key} must contain ref and entry`);
-      }
-      const parsedRef = validateBundleRef(ref as BundleRef);
-      if (parsedRef.key !== key) {
-        throw new Error(`packaged bundle activation binding ${key} ref key must match its binding key`);
-      }
-      bindings[key] = {
-        source: {
-          entry,
-          ref: parsedRef,
-          type,
-        },
-      };
-      continue;
-    }
-    throw new Error(`unsupported packaged bundle activation source for ${key}: ${String(type)}`);
+  const binding = value.bindings[PACKAGED_WEB_SIDECAR_BUNDLE_KEY];
+  if (!isRecord(binding) || !isRecord(binding.source)) {
+    throw new Error(`packaged bundle activation binding ${PACKAGED_WEB_SIDECAR_BUNDLE_KEY} must contain an object source`);
+  }
+  const type = stringField(binding.source, "type");
+  if (type === "builtin") return { type };
+  if (type !== "bundle") {
+    throw new Error(`unsupported packaged bundle activation source for ${PACKAGED_WEB_SIDECAR_BUNDLE_KEY}: ${String(type)}`);
   }
 
-  return { bindings, version: 1 };
+  const ref = binding.source.ref;
+  if (!isRecord(ref)) {
+    throw new Error(`packaged bundle activation binding ${PACKAGED_WEB_SIDECAR_BUNDLE_KEY} must contain ref`);
+  }
+  const parsedRef = validateBundleRef(ref as BundleRef);
+  if (parsedRef.key !== PACKAGED_WEB_SIDECAR_BUNDLE_KEY) {
+    throw new Error(`packaged bundle activation ref key must be ${PACKAGED_WEB_SIDECAR_BUNDLE_KEY}`);
+  }
+  return { ref: parsedRef, type };
 }
 
-async function readActivation(path: string): Promise<PackagedBundleActivationFile | null> {
+function parseActivationFile(value: unknown): ParsedActivation {
+  if (!isRecord(value)) throw new Error("packaged bundle activation must be a JSON object");
+  return "bindings" in value ? parseLegacyActivationFile(value) : parseSimpleActivationFile(value);
+}
+
+async function readActivation(path: string): Promise<ParsedActivation | null> {
   try {
     return parseActivationFile(JSON.parse(await readFile(path, "utf8")) as unknown);
   } catch (error) {
@@ -117,46 +118,89 @@ function builtin(entryPath: string | null, fallbackReason?: string): PackagedWeb
       ...(entryPath == null ? {} : { entryPath }),
       ...(fallbackReason == null ? {} : { fallbackReason }),
     },
+    webStandaloneRoot: null,
   };
+}
+
+function webStandaloneRootFromDescriptor(input: {
+  bundlePath: string;
+  descriptor: Record<string, unknown>;
+}): string {
+  const web = isRecord(input.descriptor.web) ? input.descriptor.web : {};
+  const outputMode = stringField(web, "outputMode");
+  if (outputMode != null && outputMode !== "standalone") {
+    throw new Error(`bundle web outputMode must be standalone: ${outputMode}`);
+  }
+
+  const standaloneRoot = stringField(web, "standaloneRoot") ?? PACKAGED_WEB_STANDALONE_BUNDLE_ROOT;
+  if (isAbsolute(standaloneRoot)) throw new Error("bundle web standaloneRoot must be relative");
+  const root = resolve(input.bundlePath, standaloneRoot);
+  if (!containsPath(input.bundlePath, root)) {
+    throw new Error("bundle web standaloneRoot escaped the bundle path");
+  }
+  return root;
+}
+
+async function assertDirectory(path: string, label: string): Promise<void> {
+  const info = await stat(path);
+  if (!info.isDirectory()) throw new Error(`${label} must be a directory`);
 }
 
 export async function resolvePackagedWebSidecarImplementation(options: {
   builtinEntryPath: string | null;
+  bundleEpoch: string | null;
   paths: PackagedNamespacePaths;
 }): Promise<PackagedWebSidecarImplementation> {
-  let activation: PackagedBundleActivationFile | null;
+  let activation: ParsedActivation | null;
   try {
     activation = await readActivation(options.paths.bundleActivationPath);
   } catch (error) {
     return builtin(options.builtinEntryPath, `activation-invalid:${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const binding = activation?.bindings[PACKAGED_WEB_SIDECAR_BUNDLE_KEY];
-  if (binding == null) return builtin(options.builtinEntryPath, activation == null ? "activation-missing" : "binding-missing");
-  if (binding.source.type === "builtin") return builtin(options.builtinEntryPath, "binding-builtin");
+  if (activation == null) return builtin(options.builtinEntryPath, "activation-missing");
+  if (activation.type === "builtin") return builtin(options.builtinEntryPath, "binding-builtin");
 
   try {
+    if (options.bundleEpoch == null) return builtin(options.builtinEntryPath, "host-epoch-missing");
+    const parsedVersion = parseBundleEpochVersion(activation.ref.version);
+    if (parsedVersion.slug !== PACKAGED_WEB_SIDECAR_BUNDLE_SLUG) {
+      return builtin(options.builtinEntryPath, `bundle-slug-mismatch:${parsedVersion.slug}`);
+    }
+    if (parsedVersion.epoch !== options.bundleEpoch) {
+      return builtin(options.builtinEntryPath, `bundle-epoch-mismatch:${parsedVersion.epoch}`);
+    }
+
     const resolved = await resolveBundle({
       basePath: options.paths.bundleBasePath,
-      ref: binding.source.ref,
+      ref: activation.ref,
     });
-    const entryPath = resolve(resolved.path, binding.source.entry);
-    if (!containsPath(resolved.path, entryPath)) {
-      return builtin(options.builtinEntryPath, "bundle-entry-escaped");
+    const artifact = await resolveBundleArtifact(resolved.path);
+    if (artifact.descriptor.schemaVersion !== 2) {
+      return builtin(options.builtinEntryPath, "bundle-descriptor-unsupported");
     }
-    if (!(await pathExists(entryPath))) {
-      return builtin(options.builtinEntryPath, "bundle-entry-missing");
+    if (artifact.descriptor.key !== activation.ref.key || artifact.descriptor.version !== activation.ref.version) {
+      return builtin(options.builtinEntryPath, "bundle-descriptor-ref-mismatch");
     }
+
+    const webStandaloneRoot = webStandaloneRootFromDescriptor({
+      bundlePath: artifact.bundlePath,
+      descriptor: artifact.descriptor,
+    });
+    await assertDirectory(webStandaloneRoot, "bundle web standaloneRoot");
+
     return {
-      entryPath,
+      entryPath: artifact.entryPath,
       implementation: {
         basePath: resolved.basePath,
-        bundlePath: resolved.path,
-        entryPath,
+        bundlePath: artifact.bundlePath,
+        descriptorPath: artifact.descriptorPath,
+        entryPath: artifact.entryPath,
         metadataPath: resolved.metadataPath,
         ref: resolved.ref,
         source: "bundle",
       },
+      webStandaloneRoot,
     };
   } catch (error) {
     const reason = error instanceof BundleStoreError ? `${error.code}:${error.message}` : error instanceof Error ? error.message : String(error);
@@ -173,16 +217,11 @@ export function sidecarImplementationEnv(
 }
 
 export function createPackagedBundleActivationFile(input: {
-  web: PackagedBundleActivationSource;
+  web: "builtin" | { version: string };
 }): PackagedBundleActivationFile {
-  return {
-    bindings: {
-      [PACKAGED_WEB_SIDECAR_BUNDLE_KEY]: {
-        source: input.web,
-      },
-    },
-    version: 1,
-  };
+  return input.web === "builtin"
+    ? { key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, source: "builtin" }
+    : { key: PACKAGED_WEB_SIDECAR_BUNDLE_KEY, version: input.web.version };
 }
 
 export function packagedBundleActivationPath(paths: Pick<PackagedNamespacePaths, "dataRoot">): string {

@@ -10,6 +10,7 @@ describe("resolvePackagedNamespacePaths", () => {
     const config: PackagedConfig = {
       appVersion: "1.2.3",
       bundleBasePath: null,
+      bundleEpoch: "1.2.3",
       daemonCliEntry: null,
       daemonSidecarEntry: null,
       namespace: "release",
@@ -36,6 +37,7 @@ describe("resolvePackagedNamespacePaths", () => {
     const config: PackagedConfig = {
       appVersion: "1.2.3",
       bundleBasePath: null,
+      bundleEpoch: "1.2.3",
       daemonCliEntry: null,
       daemonSidecarEntry: null,
       namespace: "release",
