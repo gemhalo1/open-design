@@ -13,6 +13,7 @@
 import {
   DEFAULT_LOCALE,
   getCommonCopy,
+  localizedHref,
   type HeaderCopy,
   type LandingLocaleCode,
 } from '../i18n';
@@ -63,11 +64,14 @@ export function Header({
   const linkClass = (key: NonNullable<HeaderProps['active']>) =>
     active === key ? 'is-active' : undefined;
   const headerCopy = copy ?? getCommonCopy(locale).header;
+  const href = (path: string) => localizedHref(path, locale);
+  const homeBrandHref = brandHref === '/' ? href('/') : brandHref;
+  const contactHref = brandHref === '#top' ? '#contact' : href('/#contact');
 
   return (
     <header className='nav' data-od-id='nav' data-nav-headroom>
       <div className='container nav-inner'>
-        <a href={brandHref} className='brand'>
+        <a href={homeBrandHref} className='brand'>
           <span className='brand-mark'>
             <img src='/favicon.png' alt='' width={36} height={36} />
           </span>
@@ -80,36 +84,36 @@ export function Header({
         <nav>
           <ul className='nav-links'>
             <li>
-              <a href='/skills/' className={linkClass('skills')}>
+              <a href={href('/skills/')} className={linkClass('skills')}>
                 {headerCopy.nav.skills}
                 <span className='num'>{counts.skills}</span>
               </a>
             </li>
             <li>
-              <a href='/systems/' className={linkClass('systems')}>
+              <a href={href('/systems/')} className={linkClass('systems')}>
                 {headerCopy.nav.systems}
                 <span className='num'>{counts.systems}</span>
               </a>
             </li>
             <li>
-              <a href='/templates/' className={linkClass('templates')}>
+              <a href={href('/templates/')} className={linkClass('templates')}>
                 {headerCopy.nav.templates}
                 <span className='num'>{counts.templates}</span>
               </a>
             </li>
             <li>
-              <a href='/craft/' className={linkClass('craft')}>
+              <a href={href('/craft/')} className={linkClass('craft')}>
                 {headerCopy.nav.craft}
                 <span className='num'>{counts.craft}</span>
               </a>
             </li>
             <li>
-              <a href='/blog/' className={linkClass('blog')}>
+              <a href={href('/blog/')} className={linkClass('blog')}>
                 {headerCopy.nav.blog}
               </a>
             </li>
             <li>
-              <a href={brandHref === '#top' ? '#contact' : '/#contact'}>
+              <a href={contactHref}>
                 {headerCopy.nav.contact}
               </a>
             </li>

@@ -9,23 +9,19 @@ import LocaleSwitcherScript from '../_components/locale-switcher-script.astro';
 import PreciseLazyload from '../_components/precise-lazyload.astro';
 import { heroImage, heroImageSrcset } from '../image-assets';
 import {
-  DEFAULT_LOCALE,
   LANDING_LOCALES,
   alternateLinksForPath,
   getHomeFaq,
   getHomeSeo,
   getLocaleDefinition,
-  isLandingLocale,
+  localeFromPath,
   localePath,
   type LandingLocaleCode,
 } from '../i18n';
 import { getCatalogCounts } from '../_lib/catalog';
 import { getGithubRepoMeta } from '../_lib/github';
 
-const rawLocale = Astro.props.locale as string | undefined;
-const locale: LandingLocaleCode = isLandingLocale(rawLocale)
-  ? rawLocale
-  : DEFAULT_LOCALE;
+const locale: LandingLocaleCode = localeFromPath(Astro.url.pathname);
 const localeDef = getLocaleDefinition(locale);
 const counts = await getCatalogCounts();
 const github = await getGithubRepoMeta();
@@ -47,7 +43,13 @@ const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 const DISCORD_URL = 'https://discord.gg/9ptkbbqRu';
 const OFFICIAL_URL = `${origin}official/`;
 
-const faq = getHomeFaq(locale, { origin, repo: REPO_URL });
+// Pass bare hosts (not full URLs) so localized Q2 reads
+// "lives at open-design.ai" instead of the awkward
+// "lives at https://open-design.ai/" with a stray protocol/slash.
+const faq = getHomeFaq(locale, {
+  origin: 'open-design.ai',
+  repo: 'github.com/nexu-io/open-design',
+});
 
 const websiteSchema = {
   '@type': 'WebSite',

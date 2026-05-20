@@ -1310,10 +1310,59 @@ export function getHomeFaq(
 }
 
 export function localePath(locale: LandingLocaleCode, pathname = '/'): string {
-  const normalized = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  const { pathname: basePathname } = stripLocaleFromPath(pathname);
+  const normalized = basePathname.startsWith('/') ? basePathname : `/${basePathname}`;
   if (locale === DEFAULT_LOCALE) return normalized;
   if (normalized === '/') return `/${locale}/`;
   return `/${locale}${normalized}`;
+}
+
+export function stripLocaleFromPath(pathname = '/'): {
+  locale: LandingLocaleCode;
+  pathname: string;
+} {
+  const [rawPath = '/', suffix = ''] = pathname.split(/(?=[?#])/);
+  const normalized = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+  const segments = normalized.split('/').filter(Boolean);
+  const first = segments[0];
+
+  if (isLandingLocale(first)) {
+    const rest = segments.slice(1).join('/');
+    return {
+      locale: first,
+      pathname: `/${rest}${rest ? '/' : ''}${suffix}`,
+    };
+  }
+
+  return { locale: DEFAULT_LOCALE, pathname: `${normalized}${suffix}` };
+}
+
+export function localeFromPath(pathname = '/'): LandingLocaleCode {
+  return stripLocaleFromPath(pathname).locale;
+}
+
+export function localizedHref(
+  href: string,
+  locale: LandingLocaleCode,
+): string {
+  if (
+    href.startsWith('http://') ||
+    href.startsWith('https://') ||
+    href.startsWith('mailto:') ||
+    href.startsWith('tel:') ||
+    href.startsWith('od://')
+  ) {
+    return href;
+  }
+
+  if (href.startsWith('#')) return href;
+  const [pathAndQuery = '', hash = ''] = href.split('#');
+  const hashSuffix = hash ? `#${hash}` : '';
+  if (pathAndQuery === '') return hashSuffix || href;
+  const [path, query = ''] = pathAndQuery.split('?');
+  const querySuffix = query ? `?${query}` : '';
+  const localized = localePath(locale, path || '/');
+  return `${localized}${querySuffix}${hashSuffix}`;
 }
 
 export function alternateLinksForPath(pathname = '/'): Array<{
@@ -1321,9 +1370,10 @@ export function alternateLinksForPath(pathname = '/'): Array<{
   hrefPath: string;
   locale: LandingLocale;
 }> {
+  const { pathname: basePathname } = stripLocaleFromPath(pathname);
   return LANDING_LOCALES.map((locale) => ({
     hreflang: locale.htmlLang,
-    hrefPath: localePath(locale.code, pathname),
+    hrefPath: localePath(locale.code, basePathname),
     locale,
   }));
 }

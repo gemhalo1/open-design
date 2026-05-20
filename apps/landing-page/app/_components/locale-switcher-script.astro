@@ -1,10 +1,9 @@
 ---
-import { DEFAULT_LOCALE, LANDING_LOCALES, localePath } from '../i18n';
+import { DEFAULT_LOCALE, LANDING_LOCALES } from '../i18n';
 
 const localeRoutes = LANDING_LOCALES.map((locale) => ({
   code: locale.code,
   htmlLang: locale.htmlLang,
-  href: localePath(locale.code),
 }));
 
 const script = `
@@ -33,12 +32,21 @@ const script = `
     return codes.has(base) ? base : null;
   };
 
-  const targetFor = (locale) =>
-    LOCALES.find((entry) => entry.code === locale)?.href ?? '/';
-
   const currentFromPath = () => {
     const first = window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase();
     return first && codes.has(first) ? first : DEFAULT_LOCALE;
+  };
+
+  const basePathFromCurrent = () => {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    if (parts[0] && codes.has(parts[0].toLowerCase())) parts.shift();
+    return parts.length > 0 ? \`/\${parts.join('/')}/\` : '/';
+  };
+
+  const targetFor = (locale) => {
+    const basePath = basePathFromCurrent();
+    const nextPath = locale === DEFAULT_LOCALE ? basePath : \`/\${locale}\${basePath}\`;
+    return \`\${nextPath}\${window.location.search}\${window.location.hash}\`;
   };
 
   const selectLocale = (locale, persist) => {
@@ -49,7 +57,8 @@ const script = `
       } catch {}
     }
     const target = targetFor(next);
-    if (window.location.pathname !== target) window.location.assign(target);
+    const current = \`\${window.location.pathname}\${window.location.search}\${window.location.hash}\`;
+    if (current !== target) window.location.assign(target);
   };
 
   const bindSwitchers = () => {

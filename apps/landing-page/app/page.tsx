@@ -15,6 +15,7 @@ import {
   DEFAULT_LOCALE,
   LANDING_LOCALES,
   getCommonCopy,
+  localizedHref,
   type LandingLocaleCode,
 } from './i18n';
 import {
@@ -187,6 +188,7 @@ export default function Page({
   const prototypeCount = pad2(counts.byMode?.prototype);
   const mobileCount = pad2(counts.byPlatform?.mobile);
   const commonCopy = getCommonCopy(locale);
+  const href = (path: string) => localizedHref(path, locale);
 
   return (
     <>
@@ -642,19 +644,19 @@ export default function Page({
                 </h2>
               </div>
               <div className='pills' data-reveal='right'>
-                <a className='pill active' href='/skills/'>
+                <a className='pill active' href={href('/skills/')}>
                   All<span className='count'>{skills}</span>
                 </a>
-                <a className='pill' href='/skills/mode/prototype/'>
+                <a className='pill' href={href('/skills/mode/prototype/')}>
                   Prototype<span className='count'>{prototypeCount}</span>
                 </a>
-                <a className='pill' href='/skills/mode/deck/'>
+                <a className='pill' href={href('/skills/mode/deck/')}>
                   Deck<span className='count'>{deckCount}</span>
                 </a>
-                <a className='pill' href='/skills/'>
+                <a className='pill' href={href('/skills/')}>
                   Mobile<span className='count'>{mobileCount}</span>
                 </a>
-                <a className='pill' href='/skills/'>
+                <a className='pill' href={href('/skills/')}>
                   Office<span className='count'>—</span>
                 </a>
               </div>
@@ -757,7 +759,7 @@ export default function Page({
               <span className='meta'>
                 05 / {skills} SKILLS{NBSP}·{NBSP}
                 <a
-                  href='/skills/'
+                  href={href('/skills/')}
                   className='library-link'
                   style={{ color: 'var(--coral)' }}
                 >
@@ -871,7 +873,7 @@ export default function Page({
                   <em>artifacts</em>
                   <span className='dot'>.</span>
                 </h2>
-                <a className='work-link' href='/skills/'>
+                <a className='work-link' href={href('/skills/')}>
                   View all {skills} skills
                 </a>
               </div>
@@ -1287,16 +1289,16 @@ export default function Page({
                 <h5>Library</h5>
                 <ul>
                   <li>
-                    <a href='/skills/'>{skills} Skills</a>
+                    <a href={href('/skills/')}>{skills} Skills</a>
                   </li>
                   <li>
-                    <a href='/systems/'>{systems} Systems</a>
+                    <a href={href('/systems/')}>{systems} Systems</a>
                   </li>
                   <li>
-                    <a href='/templates/'>Templates</a>
+                    <a href={href('/templates/')}>Templates</a>
                   </li>
                   <li>
-                    <a href='/craft/'>Craft</a>
+                    <a href={href('/craft/')}>Craft</a>
                   </li>
                 </ul>
               </div>
@@ -1334,19 +1336,19 @@ export default function Page({
                 <h5>Open Design</h5>
                 <ul>
                   <li>
-                    <a href='/official/'>Official source</a>
+                    <a href={href('/official/')}>Official source</a>
                   </li>
                   <li>
-                    <a href='/quickstart/'>Quickstart</a>
+                    <a href={href('/quickstart/')}>Quickstart</a>
                   </li>
                   <li>
-                    <a href='/agents/'>Agents</a>
+                    <a href={href('/agents/')}>Agents</a>
                   </li>
                   <li>
-                    <a href='/compare/'>Compare</a>
+                    <a href={href('/compare/')}>Compare</a>
                   </li>
                   <li>
-                    <a href='/alternatives/claude-design/'>
+                    <a href={href('/alternatives/claude-design/')}>
                       Claude Design alternative
                     </a>
                   </li>
