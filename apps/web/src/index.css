@@ -962,7 +962,7 @@ code {
   gap: 6px;
   flex-shrink: 0;
 }
-.app-chrome-file-actions:not(:empty) + .app-chrome-actions {
+.app-chrome-file-actions:not(:empty) {
   margin-left: 4px;
   padding-left: 8px;
   border-left: 1px solid var(--border);
