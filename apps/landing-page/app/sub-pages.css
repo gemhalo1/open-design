@@ -455,9 +455,11 @@ body.sub-page {
   .catalog-row-skill a {
     grid-template-columns: 36px 1fr auto;
     gap: 14px;
-    padding: 18px 0;
+    /* Keep a real horizontal gutter at narrow widths so the row body
+     * doesn't bleed against the card edge. The previous `0` was a
+     * holdover from when hover padding was the only horizontal inset. */
+    padding: 18px 20px;
   }
-  .catalog-row a:hover { padding-left: 8px; padding-right: 8px; }
   .row-meta { display: none; }
   .row-thumb { display: none; }
   .row-arrow { font-size: 14px; }
