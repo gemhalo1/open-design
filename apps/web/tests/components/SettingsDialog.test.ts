@@ -3,6 +3,7 @@ import {
   agentRefreshOptionsForConfig,
   canFetchProviderModels,
   canRunProviderConnectionTest,
+  codexConnectionSuccessMessageSuffix,
   codexPathRepairState,
   deriveComposioCredentialState,
   configForManualOrbitRun,
@@ -507,6 +508,42 @@ describe('deriveComposioCredentialState', () => {
     expect(
       deriveComposioCredentialState({ apiKey: '   \t\n', apiKeyConfigured: true }),
     ).toBe('saved');
+  });
+});
+
+describe('SettingsDialog Codex connection test messaging', () => {
+  it('describes the launched Codex binary for fallback-invalid wrapper resolution', () => {
+    const result: ConnectionTestResponse = {
+      ok: true,
+      kind: 'success',
+      latencyMs: 12,
+      agentName: 'Codex CLI',
+      usedExecutableSource: 'fallback_invalid',
+      configuredExecutablePath: '/Users/test/bin/stale-codex',
+      detectedExecutablePath: '/opt/homebrew/bin/codex',
+      usedExecutablePath: '/Users/test/.npm/_npx/codex-native',
+    };
+
+    expect(codexConnectionSuccessMessageSuffix('en', result)).toBe(
+      'Configured Codex path is invalid or not executable: /Users/test/bin/stale-codex. This test launched Codex at /Users/test/.npm/_npx/codex-native. PATH resolved to /opt/homebrew/bin/codex. Update CODEX_BIN or clear the custom path to use the launched binary.',
+    );
+  });
+
+  it('describes the launched Codex binary for fallback-failed wrapper resolution', () => {
+    const result: ConnectionTestResponse = {
+      ok: true,
+      kind: 'success',
+      latencyMs: 12,
+      agentName: 'Codex CLI',
+      usedExecutableSource: 'fallback_failed',
+      configuredExecutablePath: '/Users/test/bin/broken-codex',
+      detectedExecutablePath: '/opt/homebrew/bin/codex',
+      usedExecutablePath: '/Users/test/.npm/_npx/codex-native',
+    };
+
+    expect(codexConnectionSuccessMessageSuffix('en', result)).toBe(
+      'Configured Codex path failed: /Users/test/bin/broken-codex. This test launched Codex at /Users/test/.npm/_npx/codex-native. PATH resolved to /opt/homebrew/bin/codex. Update CODEX_BIN or clear the custom path to use the launched binary.',
+    );
   });
 });
 

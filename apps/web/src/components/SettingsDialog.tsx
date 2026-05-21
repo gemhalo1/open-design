@@ -192,10 +192,18 @@ function codexPathStrings(locale: Locale) {
       configuredSuccess: (path: string) => `本次测试使用的是已配置的 Codex 路径：${path}。`,
       detectedSuccess: (path: string) =>
         `本次测试使用的是检测到的 Codex 路径：${path}。请将此路径保存到执行设置，以便 macOS 应用启动时使用同一个可执行文件。`,
-      invalidFallback: (configuredPath: string, detectedPath: string) =>
-        `已配置的 Codex 路径无效或不可执行：${configuredPath}。本次测试改用 PATH 中的 Codex CLI：${detectedPath}。建议更新 CODEX_BIN 或清空自定义路径。`,
-      failedFallback: (configuredPath: string, detectedPath: string) =>
-        `已配置的 Codex 路径启动失败：${configuredPath}。本次测试改用 PATH 中的 Codex CLI：${detectedPath}。建议更新 CODEX_BIN 或清空自定义路径。`,
+      invalidFallback: (
+        configuredPath: string,
+        launchedPath: string,
+        pathWrapper?: string,
+      ) =>
+        `已配置的 Codex 路径无效或不可执行：${configuredPath}。本次测试启动的 Codex 可执行文件是：${launchedPath}。${pathWrapper ? `PATH 中检测到的 Codex CLI 是：${pathWrapper}。` : ''}建议更新 CODEX_BIN 或清空自定义路径。`,
+      failedFallback: (
+        configuredPath: string,
+        launchedPath: string,
+        pathWrapper?: string,
+      ) =>
+        `已配置的 Codex 路径启动失败：${configuredPath}。本次测试启动的 Codex 可执行文件是：${launchedPath}。${pathWrapper ? `PATH 中检测到的 Codex CLI 是：${pathWrapper}。` : ''}建议更新 CODEX_BIN 或清空自定义路径。`,
     };
   }
   if (locale === 'zh-TW') {
@@ -206,10 +214,18 @@ function codexPathStrings(locale: Locale) {
       configuredSuccess: (path: string) => `本次測試使用的是已設定的 Codex 路徑：${path}。`,
       detectedSuccess: (path: string) =>
         `本次測試使用的是偵測到的 Codex 路徑：${path}。請將此路徑儲存到執行設定，以便 macOS 應用程式啟動時使用同一個可執行檔。`,
-      invalidFallback: (configuredPath: string, detectedPath: string) =>
-        `已設定的 Codex 路徑無效或不可執行：${configuredPath}。本次測試改用 PATH 中的 Codex CLI：${detectedPath}。建議更新 CODEX_BIN 或清除自訂路徑。`,
-      failedFallback: (configuredPath: string, detectedPath: string) =>
-        `已設定的 Codex 路徑啟動失敗：${configuredPath}。本次測試改用 PATH 中的 Codex CLI：${detectedPath}。建議更新 CODEX_BIN 或清除自訂路徑。`,
+      invalidFallback: (
+        configuredPath: string,
+        launchedPath: string,
+        pathWrapper?: string,
+      ) =>
+        `已設定的 Codex 路徑無效或不可執行：${configuredPath}。本次測試啟動的 Codex 可執行檔是：${launchedPath}。${pathWrapper ? `PATH 中偵測到的 Codex CLI 是：${pathWrapper}。` : ''}建議更新 CODEX_BIN 或清除自訂路徑。`,
+      failedFallback: (
+        configuredPath: string,
+        launchedPath: string,
+        pathWrapper?: string,
+      ) =>
+        `已設定的 Codex 路徑啟動失敗：${configuredPath}。本次測試啟動的 Codex 可執行檔是：${launchedPath}。${pathWrapper ? `PATH 中偵測到的 Codex CLI 是：${pathWrapper}。` : ''}建議更新 CODEX_BIN 或清除自訂路徑。`,
     };
   }
   return {
@@ -220,11 +236,64 @@ function codexPathStrings(locale: Locale) {
       `This test used the configured Codex path: ${path}.`,
     detectedSuccess: (path: string) =>
       `This test used the detected Codex path: ${path}. Save this path in Execution settings so macOS app launches use the same executable.`,
-    invalidFallback: (configuredPath: string, detectedPath: string) =>
-      `Configured Codex path is invalid or not executable: ${configuredPath}. This test used the PATH Codex CLI at ${detectedPath}. Update CODEX_BIN or clear the custom path to use the detected binary.`,
-    failedFallback: (configuredPath: string, detectedPath: string) =>
-      `Configured Codex path failed: ${configuredPath}. This test succeeded with the PATH Codex CLI at ${detectedPath}. Update CODEX_BIN or clear the custom path to use the detected binary.`,
+    invalidFallback: (
+      configuredPath: string,
+      launchedPath: string,
+      pathWrapper?: string,
+    ) =>
+      `Configured Codex path is invalid or not executable: ${configuredPath}. This test launched Codex at ${launchedPath}.${pathWrapper ? ` PATH resolved to ${pathWrapper}.` : ''} Update CODEX_BIN or clear the custom path to use the launched binary.`,
+    failedFallback: (
+      configuredPath: string,
+      launchedPath: string,
+      pathWrapper?: string,
+    ) =>
+      `Configured Codex path failed: ${configuredPath}. This test launched Codex at ${launchedPath}.${pathWrapper ? ` PATH resolved to ${pathWrapper}.` : ''} Update CODEX_BIN or clear the custom path to use the launched binary.`,
   };
+}
+
+export function codexConnectionSuccessMessageSuffix(
+  locale: Locale,
+  result: ConnectionTestResponse,
+): string | null {
+  const codexStrings = codexPathStrings(locale);
+  if (
+    result.usedExecutableSource === 'configured' &&
+    result.configuredExecutablePath
+  ) {
+    return codexStrings.configuredSuccess(result.configuredExecutablePath);
+  }
+  if (
+    result.usedExecutableSource === 'path' &&
+    result.usedExecutablePath
+  ) {
+    return codexStrings.detectedSuccess(result.usedExecutablePath);
+  }
+  if (
+    (result.usedExecutableSource === 'fallback_invalid' ||
+      result.usedExecutableSource === 'fallback_failed') &&
+    result.configuredExecutablePath
+  ) {
+    const launchedPath =
+      result.usedExecutablePath?.trim() ||
+      result.detectedExecutablePath?.trim() ||
+      '';
+    if (!launchedPath) return null;
+    const pathWrapper =
+      result.detectedExecutablePath?.trim() &&
+      result.detectedExecutablePath.trim() !== launchedPath
+        ? result.detectedExecutablePath.trim()
+        : undefined;
+    const fallbackMessage =
+      result.usedExecutableSource === 'fallback_invalid'
+        ? codexStrings.invalidFallback
+        : codexStrings.failedFallback;
+    return fallbackMessage(
+      result.configuredExecutablePath,
+      launchedPath,
+      pathWrapper,
+    );
+  }
+  return null;
 }
 
 function sanitizeHttpsUrl(url: string | undefined): string | undefined {
@@ -1429,38 +1498,9 @@ export function SettingsDialog({
         ? t('settings.testSuccessApi', { ms, sample })
         : t('settings.testSuccessCli', { agentName, ms, sample });
       if (kindForSuccess === 'cli' && cfg.agentId === 'codex') {
-        const codexStrings = codexPathStrings(locale);
-        if (
-          result.usedExecutableSource === 'configured' &&
-          result.configuredExecutablePath
-        ) {
-          return `${baseMessage} ${codexStrings.configuredSuccess(result.configuredExecutablePath)}`;
-        }
-        if (
-          result.usedExecutableSource === 'path' &&
-          result.usedExecutablePath
-        ) {
-          return `${baseMessage} ${codexStrings.detectedSuccess(result.usedExecutablePath)}`;
-        }
-        if (
-          result.usedExecutableSource === 'fallback_invalid' &&
-          result.configuredExecutablePath &&
-          result.detectedExecutablePath
-        ) {
-          return `${baseMessage} ${codexStrings.invalidFallback(
-            result.configuredExecutablePath,
-            result.detectedExecutablePath,
-          )}`;
-        }
-        if (
-          result.usedExecutableSource === 'fallback_failed' &&
-          result.configuredExecutablePath &&
-          result.detectedExecutablePath
-        ) {
-          return `${baseMessage} ${codexStrings.failedFallback(
-            result.configuredExecutablePath,
-            result.detectedExecutablePath,
-          )}`;
+        const codexSuffix = codexConnectionSuccessMessageSuffix(locale, result);
+        if (codexSuffix) {
+          return `${baseMessage} ${codexSuffix}`;
         }
       }
       return result.detail ? `${baseMessage} ${result.detail}` : baseMessage;
