@@ -130,6 +130,27 @@ describe('AssistantMessage feedback gate (issue #1288)', () => {
     expect(screen.queryByRole('group', { name: 'Feedback' })).toBeNull();
   });
 
+  it('labels failed terminal runs as failed instead of done', () => {
+    render(
+      <AssistantMessage
+        message={baseMessage({
+          content: '',
+          runStatus: 'failed',
+          events: [
+            { kind: 'status', label: 'starting' } as ChatMessage['events'][number],
+            { kind: 'status', label: 'running' } as ChatMessage['events'][number],
+          ],
+          producedFiles: [],
+        })}
+        streaming={false}
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Failed')).toBeTruthy();
+    expect(screen.queryByText('Done')).toBeNull();
+  });
+
   it('hides the feedback widget when the run ended with an empty_response status', () => {
     render(
       <AssistantMessage

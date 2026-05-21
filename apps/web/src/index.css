@@ -16358,6 +16358,16 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 .assistant-footer[data-unfinished="true"] .dot {
   background: var(--amber);
 }
+.assistant-footer[data-status="failed"] {
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-subtle));
+  border-color: color-mix(in srgb, var(--red) 32%, var(--border));
+}
+.assistant-footer[data-status="failed"] .dot {
+  background: var(--red);
+}
+.assistant-footer[data-status="canceled"] {
+  background: color-mix(in srgb, var(--text-muted) 9%, var(--bg-subtle));
+}
 
 /* ---------------------------------------------------------------------
  * Critique Theater (Phase 8). Role-keyed tinting via `data-role` so the

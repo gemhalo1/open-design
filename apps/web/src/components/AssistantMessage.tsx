@@ -282,6 +282,7 @@ export function AssistantMessage({
                 assistantMessageId={message.id}
                 producedFileCount={produced.length}
                 footerProps={{
+                  runStatus: message.runStatus,
                   streaming,
                   startedAt: message.startedAt,
                   endedAt: message.endedAt,
@@ -293,6 +294,7 @@ export function AssistantMessage({
               />
             ) : (
               <AssistantFooter
+                runStatus={message.runStatus}
                 streaming={streaming}
                 startedAt={message.startedAt}
                 endedAt={message.endedAt}
@@ -419,6 +421,7 @@ function appendRoleModel(label: string, model: string | null): string {
 }
 
 interface AssistantFooterProps {
+  runStatus: ChatMessage["runStatus"];
   streaming: boolean;
   startedAt: number | undefined;
   endedAt: number | undefined;
@@ -430,6 +433,7 @@ interface AssistantFooterProps {
 }
 
 function AssistantFooter({
+  runStatus,
   streaming,
   startedAt,
   endedAt,
@@ -441,6 +445,15 @@ function AssistantFooter({
 }: AssistantFooterProps) {
   const t = useT();
   const elapsed = useLiveElapsed(streaming, startedAt, endedAt, usage?.durationMs);
+  const footerStatus = streaming
+    ? "running"
+    : runStatus === "failed" || runStatus === "canceled"
+    ? runStatus
+    : hasUnfinishedTodos
+    ? "unfinished"
+    : hasEmptyResponse
+    ? "empty"
+    : "succeeded";
   if (
     !forceVisible &&
     !streaming &&
@@ -454,11 +467,16 @@ function AssistantFooter({
     <div
       className="assistant-footer"
       data-unfinished={hasUnfinishedTodos ? "true" : "false"}
+      data-status={footerStatus}
     >
       <span className="dot" data-active={streaming ? "true" : "false"} />
       <span className="assistant-label">
         {streaming
           ? t("assistant.workingLabel")
+          : runStatus === "failed"
+          ? t("designs.status.failed")
+          : runStatus === "canceled"
+          ? t("designs.status.canceled")
           : hasEmptyResponse
           ? t("assistant.emptyResponseLabel")
           : hasUnfinishedTodos
