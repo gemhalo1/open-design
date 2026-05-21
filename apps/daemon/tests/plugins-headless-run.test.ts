@@ -322,7 +322,15 @@ if (args[0] === '--version') ok('gh version 2.0.0');
 if (args[0] === 'auth' && args[1] === 'status') ok('Logged in to github.com as test-user');
 if (args[0] === 'api' && args[1] === 'user') ok('test-user');
 if (args[0] === 'repo' && args[1] === 'create') ok('https://github.com/test-user/' + args[2]);
-if (args[0] === 'repo' && args[1] === 'view') ok('https://github.com/test-user/' + path.basename(process.cwd()));
+if (args[0] === 'repo' && args[1] === 'view') {
+  const repo = args[2] || '';
+  if (repo === 'test-user/sample-plugin') {
+    console.error('GraphQL: Could not resolve to a Repository with the name "test-user/sample-plugin".');
+    process.exit(1);
+  }
+  if (args.includes('--json')) ok(JSON.stringify({ nameWithOwner: repo || 'test-user/sample-plugin', url: 'https://github.com/test-user/sample-plugin' }));
+  ok('https://github.com/test-user/' + path.basename(process.cwd()));
+}
 if (args[0] === 'repo' && args[1] === 'fork') ok('forked nexu-io/open-design');
 if (args[0] === 'repo' && args[1] === 'clone') {
   const dest = args[3] || path.basename(args[2]);
@@ -342,6 +350,14 @@ const { spawnSync } = require('node:child_process');
 const args = process.argv.slice(2);
 if (args[0] === 'push') {
   console.log('pushed');
+  process.exit(0);
+}
+if (args[0] === 'commit') {
+  console.log('[main] test commit');
+  process.exit(0);
+}
+if (args[0] === 'tag') {
+  console.log('tagged');
   process.exit(0);
 }
 const result = spawnSync(process.env.OD_REAL_GIT, args, {

@@ -276,8 +276,8 @@ describe('AssistantMessage unfinished todo state', () => {
     fireEvent.click(screen.getByTestId('assistant-plugin-contribute-generated-plugin'));
     expect(onPluginFolderAgentAction).toHaveBeenCalledWith('generated-plugin', 'contribute');
     expect(
-      await screen.findByText('Sent to the agent. The CLI run will continue in chat.'),
-    ).toBeTruthy();
+      screen.queryByText('Sent to the agent. The CLI run will continue in chat.'),
+    ).toBeNull();
 
     fireEvent.click(screen.getByTestId('assistant-plugin-open-manifest-generated-plugin'));
     expect(onOpen).toHaveBeenCalledWith('generated-plugin/open-design.json');
