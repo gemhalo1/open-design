@@ -13338,12 +13338,65 @@ button.ghost.mcp-copy-btn:hover:not(:disabled) {
   font-family: var(--mono);
   font-size: 0.92em;
 }
+.prose-block .md-code-block {
+  position: relative;
+  margin: 6px 0;
+}
+.prose-block .md-code-actions {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 140ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.prose-block .md-code-block:hover .md-code-actions,
+.prose-block .md-code-block:focus-within .md-code-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+.prose-block .md-code-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--bg-subtle) 88%, var(--bg) 12%);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 6px 18px color-mix(in oklab, var(--text-strong) 8%, transparent);
+}
+.prose-block .md-code-action:hover,
+.prose-block .md-code-action:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--bg);
+  color: var(--text-strong);
+}
+@media (hover: none) {
+  .prose-block .md-code-actions {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 .prose-block .md-code {
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  margin: 6px 0;
+  padding: 38px 12px 10px;
+  margin: 0;
   overflow-x: auto;
   font-size: 12px;
   line-height: 1.5;
