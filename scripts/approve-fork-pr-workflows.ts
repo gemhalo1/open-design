@@ -88,7 +88,7 @@ function isAllowedChangedPath(path: string): boolean {
   );
 }
 
-function isDeniedChangedPath(path: string): boolean {
+export function isDeniedChangedPath(path: string): boolean {
   return (
     path.startsWith(".github/") ||
     path.startsWith("scripts/") ||
@@ -102,7 +102,7 @@ function isDeniedChangedPath(path: string): boolean {
     path === "pnpm-workspace.yaml" ||
     path === "flake.nix" ||
     path === "flake.lock" ||
-    /(^|\/)(next|vite|vitest|playwright|astro|postcss|tailwind|eslint|prettier|tsconfig|wrangler|electron-builder)\.[^.]+$/.test(
+    /(^|\/)(next|vite|vitest|playwright|astro|postcss|tailwind|eslint|prettier|tsconfig|wrangler|electron-builder)(\.config)?\.[^.]+$/.test(
       path,
     ) ||
     path.endsWith("esbuild.config.mjs") ||

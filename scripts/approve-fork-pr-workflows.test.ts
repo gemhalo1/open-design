@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isPendingApprovalRun } from "./approve-fork-pr-workflows.ts";
+import { isDeniedChangedPath, isPendingApprovalRun } from "./approve-fork-pr-workflows.ts";
 
 test("isPendingApprovalRun matches approval-gated fork PR runs from GitHub's captured payload shape", () => {
   const pull = {
@@ -82,4 +82,11 @@ test("isPendingApprovalRun rejects runs outside the allowlist or without action_
     ),
     false,
   );
+});
+
+test("isDeniedChangedPath blocks common tool config files under allowlisted source trees", () => {
+  assert.equal(isDeniedChangedPath("apps/web/vitest.config.ts"), true);
+  assert.equal(isDeniedChangedPath("apps/web/vite.config.ts"), true);
+  assert.equal(isDeniedChangedPath("apps/web/playwright.config.ts"), true);
+  assert.equal(isDeniedChangedPath("apps/web/src/app/page.tsx"), false);
 });
