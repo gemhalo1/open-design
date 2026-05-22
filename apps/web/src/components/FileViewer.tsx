@@ -4268,7 +4268,7 @@ function HtmlViewer({
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
-  const useLazySrcDocTransport = useUrlLoadPreview || hasLazySrcDocTransport;
+  const useLazySrcDocTransport = !manualEditMode && (useUrlLoadPreview || hasLazySrcDocTransport);
   const srcDocTransportContent = useLazySrcDocTransport ? lazySrcDocTransport : srcDoc;
   const urlTransportSrc = useUrlLoadPreview ? activePreviewSrcUrl : 'about:blank';
   const activateSrcDocTransport = useCallback((target: HTMLIFrameElement | null = srcDocPreviewIframeRef.current) => {
@@ -4285,6 +4285,20 @@ function HtmlViewer({
     activatedSrcDocTransportHtmlRef.current = srcDoc;
     return true;
   }, [srcDoc, useLazySrcDocTransport, useUrlLoadPreview, srcDocShellReady]);
+  const activateLoadedSrcDocTransport = useCallback((target: HTMLIFrameElement | null = srcDocPreviewIframeRef.current) => {
+    if (!canActivateSrcDocTransport({
+      srcDoc,
+      useUrlLoadPreview,
+      useLazySrcDocTransport,
+      shellReady: true,
+      activatedHtml: activatedSrcDocTransportHtmlRef.current,
+    })) return false;
+    const win = target?.contentWindow;
+    if (!win) return false;
+    win.postMessage({ type: 'od:srcdoc-transport-activate', html: srcDoc }, '*');
+    activatedSrcDocTransportHtmlRef.current = srcDoc;
+    return true;
+  }, [srcDoc, useLazySrcDocTransport, useUrlLoadPreview]);
   useEffect(() => {
     if (useUrlLoadPreview) {
       activatedSrcDocTransportHtmlRef.current = null;
@@ -6668,7 +6682,7 @@ function HtmlViewer({
                         // ever loses, the load event still tells us the shell
                         // script ran to completion.
                         if (useLazySrcDocTransport) setSrcDocShellReady(true);
-                        activateSrcDocTransport(frame);
+                        activateLoadedSrcDocTransport(frame);
                         dcViewportRestoreAtRef.current = Date.now();
                         frame?.contentWindow?.postMessage({
                           type: '__dc_set_viewport',
