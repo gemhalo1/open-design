@@ -25,8 +25,9 @@ a coding agent can do given the right harness.
 Add a per-PR **advisory, manually-approved** agent that:
 
 - Reads the PR body's `## What users will see` and `## Validation`
-- Boots the same `pnpm tools-dev run web` lifecycle the e2e suite
-  already uses
+- Boots the appropriate dev server for the touched surface (see
+  Launch model below; either `pnpm tools-dev run web` or
+  `pnpm --filter @open-design/landing-page dev`)
 - Drives the dev server in a real Playwright browser (clicks,
   screenshots, console/network audit, a11y audit, perf metrics)
 - Posts an advisory PR comment with structured findings
@@ -264,7 +265,7 @@ into a structured markdown comment.
    │ eligibility   │→ │ READ-ONLY      │→│ AI 2nd pass  │
    └───────────────┘  │ • checkout PR  │  │ injection +  │
                       │ • pnpm install │  │ secret leak  │
-                      │ • tools-dev up │  └──────┬───────┘
+                      │ • launch app   │  └──────┬───────┘
                       │ • expect-cli   │         │
                       │ • Playwright   │         ▼
                       └────────────────┘   ┌──────────────┐
@@ -273,6 +274,49 @@ into a structured markdown comment.
                                            │ artifact     │
                                            └──────────────┘
 ```
+
+### Launch model — surface-routed dev server
+
+`apps/web` and `apps/landing-page` are different runtimes; the spike
+exercised both and the workflow needs to pick the right boot command
+based on which paths the PR touches:
+
+| PR touches | Boot command | Base URL the agent receives |
+|---|---|---|
+| `apps/web/**` (with or without landing-page) | `pnpm tools-dev run web --namespace agent-pr-${{ pr.number }}-${{ pr.head.sha[:8] }} --daemon-port 17456 --web-port 17573` | `http://127.0.0.1:17573` |
+| `apps/landing-page/**` only | `pnpm --filter @open-design/landing-page dev` (Astro, port 17574) | `http://127.0.0.1:17574` |
+
+Resolution: the pre-agent step inspects `gh pr diff --name-only` and
+sets `OD_BASE_URL` + the boot command in matrix-style env vars. If
+the PR touches **both** surfaces, the workflow runs in `apps/web`
+mode (the larger surface) and the landing-page is covered as part of
+the web app's standalone build — landing-page-only verification of a
+mixed PR is intentionally not modeled in v1.
+
+Spike note: PR #2588 was landing-page-only and used the second path;
+PR #2572 was `apps/web` and used the first. Both ran successfully
+under the spike, so the routing is validated end-to-end. The spec
+just hadn't captured the branching until now.
+
+### Concurrency
+
+Multiple `pull_request` events on the same PR (rapid pushes,
+`reopened`, manual `Re-run all jobs`) can overlap and race for the
+same namespace, daemon port, and uploaded artifact name. To avoid
+that, the workflow declares a GitHub Actions `concurrency` policy
+at workflow level:
+
+```yaml
+concurrency:
+  group: agent-pr-explore-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+```
+
+`cancel-in-progress: true` means a new push on the same PR cancels
+an in-flight (approved or still pending-approval) run, so the agent
+always evaluates the most recent commit. Cancelled runs leave a
+visible "cancelled" status on the PR rather than a silent skip, and
+the pending-approval queue for the canceled run is discarded.
 
 ### Key implementation deliverables (post-approval)
 
