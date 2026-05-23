@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-23T05:01:02.690Z",
+  "generatedAt": "2026-05-23T05:08:06.650Z",
   "contributors": {
     "huyhoangnhh98": {
       "lastAnnouncedTier": "spark",
@@ -1264,11 +1264,11 @@
       "scoreVersion": "weighted-v1"
     },
     "madnanrizqu": {
-      "lastAnnouncedTier": "spark",
-      "lastKnownScore": 15,
-      "lastCheckedAt": "2026-05-22T11:37:44.020Z",
+      "lastAnnouncedTier": "signal",
+      "lastKnownScore": 46,
+      "lastCheckedAt": "2026-05-23T05:08:06.650Z",
       "scoreVersion": "weighted-v1",
-      "lastAnnouncedAt": "2026-05-20T23:33:53.805Z"
+      "lastAnnouncedAt": "2026-05-23T05:08:06.650Z"
     },
     "detrio": {
       "lastAnnouncedTier": "spark",
