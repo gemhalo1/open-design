@@ -1363,8 +1363,6 @@ export function App() {
         onModeChange={handleModeChange}
         onAgentChange={handleAgentChange}
         onAgentModelChange={handleAgentModelChange}
-        onApiProtocolChange={handleApiProtocolChange}
-        onApiModelChange={handleApiModelChange}
         onRefreshAgents={refreshAgents}
         onOpenSettings={openSettings}
         onOpenMcpSettings={openMcpSettings}

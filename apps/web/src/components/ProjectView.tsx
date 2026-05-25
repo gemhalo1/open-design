@@ -109,7 +109,6 @@ import type { AppliedPluginSnapshot } from '@open-design/contracts';
 import type {
   AgentEvent,
   AgentInfo,
-  ApiProtocol,
   AppConfig,
   Artifact,
   ChatAttachment,
@@ -140,7 +139,6 @@ import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import { AppChromeHeader } from './AppChromeHeader';
 import { AvatarMenu } from './AvatarMenu';
 import { HandoffButton } from './HandoffButton';
-import { InlineModelSwitcher } from './InlineModelSwitcher';
 import { ProjectDesignSystemPicker } from './ProjectDesignSystemPicker';
 import { ChatPane } from './ChatPane';
 import type { ChatSendMeta } from './ChatComposer';
@@ -208,8 +206,6 @@ interface Props {
     id: string,
     choice: { model?: string; reasoning?: string },
   ) => void;
-  onApiProtocolChange?: (protocol: ApiProtocol) => void;
-  onApiModelChange?: (model: string) => void;
   onRefreshAgents: () => void;
   onOpenSettings: (section?: SettingsSection) => void;
   onOpenMcpSettings?: () => void;
@@ -490,8 +486,6 @@ export function ProjectView({
   onModeChange,
   onAgentChange,
   onAgentModelChange,
-  onApiProtocolChange,
-  onApiModelChange,
   onRefreshAgents,
   onOpenSettings,
   onOpenMcpSettings,
@@ -4130,19 +4124,17 @@ export function ProjectView({
         fileActionsBefore={(
           <>
             <HandoffButton projectId={project.id} />
-            {onApiProtocolChange && onApiModelChange ? (
-              <InlineModelSwitcher
-                config={config}
-                agents={agents}
-                daemonLive={daemonLive}
-                onModeChange={onModeChange}
-                onAgentChange={onAgentChange}
-                onAgentModelChange={onAgentModelChange}
-                onApiProtocolChange={onApiProtocolChange}
-                onApiModelChange={onApiModelChange}
-                onOpenSettings={onOpenSettings}
-              />
-            ) : null}
+            <AvatarMenu
+              config={config}
+              agents={agents}
+              daemonLive={daemonLive}
+              onModeChange={onModeChange}
+              onAgentChange={onAgentChange}
+              onAgentModelChange={onAgentModelChange}
+              onOpenSettings={onOpenSettings}
+              onRefreshAgents={onRefreshAgents}
+              onBack={onBack}
+            />
           </>
         )}
         actions={(
@@ -4193,17 +4185,6 @@ export function ProjectView({
                 </div>
               ) : null}
             </div>
-            <AvatarMenu
-              config={config}
-              agents={agents}
-              daemonLive={daemonLive}
-              onModeChange={onModeChange}
-              onAgentChange={onAgentChange}
-              onAgentModelChange={onAgentModelChange}
-              onOpenSettings={onOpenSettings}
-              onRefreshAgents={onRefreshAgents}
-              onBack={onBack}
-            />
           </>
         )}
       >
