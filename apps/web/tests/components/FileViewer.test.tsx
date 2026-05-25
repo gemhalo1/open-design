@@ -1567,7 +1567,7 @@ describe('FileViewer tweaks toolbar', () => {
   });
 
   it('keeps comments and annotation picker mutually exclusive', () => {
-    render(
+    const { container } = render(
       <FileViewer
         projectId="project-1"
         projectKind="prototype"
@@ -1577,6 +1577,7 @@ describe('FileViewer tweaks toolbar', () => {
     );
 
     fireEvent.click(screen.getByTestId('comment-panel-toggle'));
+    expect(container.querySelector('.comment-preview-layer')?.className).toContain('comment-preview-layer-comments-open');
     expect(screen.getByTestId('comment-side-panel')).toBeTruthy();
     expect(screen.getByTestId('comment-panel-toggle').getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByTestId('board-mode-toggle').getAttribute('aria-pressed')).toBe('false');
@@ -1584,6 +1585,7 @@ describe('FileViewer tweaks toolbar', () => {
     clickAgentTool('board-mode-toggle');
 
     expect(screen.queryByTestId('comment-side-panel')).toBeNull();
+    expect(container.querySelector('.comment-preview-layer')?.className).not.toContain('comment-preview-layer-comments-open');
     expect(screen.getByTestId('comment-panel-toggle').getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByTestId('board-mode-toggle').getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByTestId('inspect-empty-hint-container')).toBeNull();
