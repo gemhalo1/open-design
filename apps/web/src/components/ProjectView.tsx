@@ -730,17 +730,7 @@ export function ProjectView({
         .filter((item) => item.conversationId === activeConversationId)
         .map((item) => ({ id: item.id, prompt: item.prompt }))
     : [];
-  // Disabled during a resume too: an in-flight handoff synthesis ends in
-  // its own createConversation, so a concurrent "New conversation" click
-  // would spawn a second conversation behind the resumed one.
-  const newConversationDisabled = creatingConversation || resumingConversation;
-  // Resume needs a transcript to summarize, and must not race a busy
-  // conversation or a synthesis already in flight.
-  const resumeConversationDisabled =
-    resumingConversation
-    || creatingConversation
-    || currentConversationBusy
-    || messages.length === 0;
+  const newConversationDisabled = creatingConversation;
   const activeCompletionNotificationRunsRef = useRef<Set<string>>(new Set());
   const completedNotificationRunsRef = useRef<Set<string>>(new Set());
 
