@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   autofix:
-    if: ${{ github.repository == 'nexu-io/open-design' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.pull_requests[0] != null }}
+    if: ${{ github.repository == 'nexu-io/open-design' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -54,21 +54,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          WORKFLOW_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number || '' }}
+          WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
           status="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1], "r", encoding="utf-8")); print(data.get("status", "missing"))' "$RUNNER_TEMP/nix-hash-refresh/metadata.json")"
           artifact_head_sha="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1], "r", encoding="utf-8")); print(data.get("headSha", ""))' "$RUNNER_TEMP/nix-hash-refresh/metadata.json")"
 
-          pr_json="$(gh api "repos/$REPO/pulls/$PR_NUMBER")"
+          pr_number="$WORKFLOW_PR_NUMBER"
+          if [ -z "$pr_number" ]; then
+            pr_number="$(gh api "repos/$REPO/commits/$WORKFLOW_HEAD_SHA/pulls" --jq '.[0].number // empty')"
+          fi
+          if ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+            echo "Unable to derive PR number for workflow head $WORKFLOW_HEAD_SHA." >&2
+            exit 1
+          fi
+
+          pr_json="$(gh api "repos/$REPO/pulls/$pr_number")"
           head_repo="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["repo"]["full_name"])')"
           head_ref="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["ref"])')"
           head_sha="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])')"
           {
             echo "status=$status"
             echo "artifact_head_sha=$artifact_head_sha"
-            echo "pr_number=$PR_NUMBER"
+            echo "pr_number=$pr_number"
             echo "head_repo=$head_repo"
             echo "head_ref=$head_ref"
             echo "head_sha=$head_sha"
