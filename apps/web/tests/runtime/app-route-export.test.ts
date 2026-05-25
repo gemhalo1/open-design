@@ -33,4 +33,13 @@ describe('SPA shell export route', () => {
     expect(nextConfig.output).toBe('export');
     expect(nextConfig.distDir).toContain('vitest-next');
   });
+
+  it('treats an empty dist dir override as unset for static export builds', async () => {
+    process.env.OD_WEB_DIST_DIR = '';
+
+    const nextConfig = await loadNextConfig();
+
+    expect(nextConfig.output).toBe('export');
+    expect(nextConfig.distDir).toBeUndefined();
+  });
 });

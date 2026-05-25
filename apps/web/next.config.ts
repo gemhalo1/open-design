@@ -79,7 +79,7 @@ function resolveDistDir(defaultValue: string) {
   return toPosixPath(isAbsolute(configured) ? relative(WEB_ROOT, configured) || '.' : configured);
 }
 
-const DIST_DIR = shouldStaticExport && process.env.OD_WEB_DIST_DIR == null
+const DIST_DIR = shouldStaticExport && !process.env.OD_WEB_DIST_DIR
   ? null
   : resolveDistDir('.next');
 
