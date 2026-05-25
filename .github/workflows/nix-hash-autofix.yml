@@ -60,17 +60,19 @@ jobs:
           set -euo pipefail
           status="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1], "r", encoding="utf-8")); print(data.get("status", "missing"))' "$RUNNER_TEMP/nix-hash-refresh/metadata.json")"
           artifact_head_sha="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1], "r", encoding="utf-8")); print(data.get("headSha", ""))' "$RUNNER_TEMP/nix-hash-refresh/metadata.json")"
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo "artifact_head_sha=$artifact_head_sha" >> "$GITHUB_OUTPUT"
 
           pr_json="$(gh api "repos/$REPO/pulls/$PR_NUMBER")"
           head_repo="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["repo"]["full_name"])')"
           head_ref="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["ref"])')"
           head_sha="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])')"
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "head_repo=$head_repo" >> "$GITHUB_OUTPUT"
-          echo "head_ref=$head_ref" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "status=$status"
+            echo "artifact_head_sha=$artifact_head_sha"
+            echo "pr_number=$PR_NUMBER"
+            echo "head_repo=$head_repo"
+            echo "head_ref=$head_ref"
+            echo "head_sha=$head_sha"
+          } >> "$GITHUB_OUTPUT"
           if [ -n "$artifact_head_sha" ] && [ "$artifact_head_sha" = "$head_sha" ]; then
             echo "head_sha_matches=true" >> "$GITHUB_OUTPUT"
           else
@@ -169,8 +171,8 @@ jobs:
           {
             printf '%s\n' "$marker"
             if [ "${HASH_REFRESH_STATUS}" = 'patch-generated' ]; then
-              printf 'A generated Nix hash refresh is available for this PR.\n\n'
-              printf 'Apply the patch from the `nix-hash-refresh` artifact attached to the failed `ci` run, or paste the diff below into `git apply`:\n\n'
+              printf "A generated Nix hash refresh is available for this PR.\n\n"
+              printf "Apply the patch from the \`nix-hash-refresh\` artifact attached to the failed \`ci\` run, or paste the diff below into \`git apply\`:\n\n"
               printf '```diff\n'
               if [ -f "$patch_file" ]; then
                 cat "$patch_file"
@@ -179,8 +181,8 @@ jobs:
               fi
               printf '\n```\n'
             else
-              printf 'The failed `ci` run attempted to refresh `nix/pnpm-deps.nix`, but it could not produce a hash-only patch.\n\n'
-              printf 'Download the `nix-hash-refresh` artifact from that run and inspect `update.log` for details.\n'
+              printf "The failed \`ci\` run attempted to refresh \`nix/pnpm-deps.nix\`, but it could not produce a hash-only patch.\n\n"
+              printf "Download the \`nix-hash-refresh\` artifact from that run and inspect \`update.log\` for details.\n"
             fi
           } > "$body_file"
 
