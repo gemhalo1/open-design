@@ -15,6 +15,7 @@ import {
   defaultScenarioPluginIdForProjectMetadata,
   type OpenDesignGithubLatestReleaseResponse,
   type OpenDesignGithubRepoResponse,
+  OPEN_DESIGN_SITE_ORIGIN,
   PLUGIN_SHARE_ACTION_PLUGIN_IDS,
 } from '@open-design/contracts';
 import {
@@ -9118,13 +9119,25 @@ export async function startServer({
     }
   });
 
+  // Public Open Design site origin that shareable plugin links point at.
+  // Defaults to the canonical open-design.ai; OD_SITE_ORIGIN lets a
+  // self-hosted operator override the host (absolute http(s) URL, trailing
+  // slash trimmed). Surfaced read-only to the web client — it never
+  // round-trips back into writable prefs.
+  const resolvePublicSiteOrigin = () => {
+    const env = (process.env.OD_SITE_ORIGIN ?? '').trim();
+    return env && /^https?:\/\//i.test(env)
+      ? env.replace(/\/+$/u, '')
+      : OPEN_DESIGN_SITE_ORIGIN;
+  };
+
   app.get('/api/app-config', async (req, res) => {
     if (!isLocalSameOrigin(req, resolvedPort)) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
     try {
       const config = await readAppConfig(RUNTIME_DATA_DIR);
-      res.json({ config });
+      res.json({ config, siteOrigin: resolvePublicSiteOrigin() });
     } catch (err) {
       res
         .status(500)

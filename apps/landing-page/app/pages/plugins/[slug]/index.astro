@@ -15,14 +15,14 @@
  */
 import Layout from '../../../_components/sub-page-layout.astro';
 import {
-  getBundledPlugins,
+  getDetailPlugins,
   type BundledPluginRecord,
 } from '../../../_lib/bundled-plugins';
 import { localeFromPath, localizedHref } from '../../../i18n';
 
 export async function getStaticPaths() {
-  return getBundledPlugins().map((plugin) => ({
-    params: { slug: plugin.manifestId },
+  return getDetailPlugins().map((plugin) => ({
+    params: { slug: plugin.detailSlug },
     props: { plugin },
   }));
 }
@@ -58,6 +58,7 @@ const bucketLabel: Record<BundledPluginRecord['bucket'], string> = {
   scenarios: 'Scenario',
   'design-systems': 'Design system',
   atoms: 'Atom',
+  community: 'Community',
 };
 
 const title = `${plugin.title} · Open Design plugin`;

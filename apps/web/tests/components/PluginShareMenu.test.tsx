@@ -139,12 +139,24 @@ describe('PluginShareMenu', () => {
     expect(writes).toContain('od plugin install github:owner/repo@main/sub');
   });
 
-  it('copies a fully qualified marketplace share link based on window.location.origin', async () => {
+  it('copies a fully qualified open-design.ai share link, not the local origin', async () => {
     renderMenu(make({ id: 'live-dashboard' }));
     openPopover();
     clickItem('Copy share link');
     await Promise.resolve();
-    expect(writes).toContain('https://example.test/marketplace/live-dashboard');
+    // The shared link must point at the public site so it opens for the
+    // recipient — never window.location.origin (which is localhost / the
+    // desktop shell), and never the non-existent /marketplace route.
+    expect(writes).toContain('https://open-design.ai/plugins/live-dashboard/');
+  });
+
+  it('uses the single-segment slug (last id segment) to match the static route', async () => {
+    renderMenu(make({ id: 'open-design/Hero Deck' }));
+    openPopover();
+    clickItem('Copy share link');
+    await Promise.resolve();
+    // Detail route is /plugins/<last-segment>/ — namespace dropped.
+    expect(writes).toContain('https://open-design.ai/plugins/hero-deck/');
   });
 
   it('copies the bare plugin id for paste-into-yaml workflows', async () => {
@@ -155,15 +167,14 @@ describe('PluginShareMenu', () => {
     expect(writes).toContain('agentic-ds');
   });
 
-  it('exposes Open in marketplace as a navigable item even without external links', () => {
+  it('points Open in marketplace at the public open-design.ai detail page', () => {
     renderMenu(make({ id: 'plain' }));
     openPopover();
-    const items = Array.from(
-      container.querySelectorAll('.plugin-share-item'),
-    ) as HTMLButtonElement[];
-    expect(items.some((b) => b.textContent?.includes('Open in marketplace'))).toBe(
-      true,
-    );
+    const link = Array.from(
+      container.querySelectorAll<HTMLAnchorElement>('a.plugin-share-item'),
+    ).find((b) => b.textContent?.includes('Open in marketplace'));
+    expect(link, 'expected an Open in marketplace anchor').toBeTruthy();
+    expect(link?.getAttribute('href')).toBe('https://open-design.ai/plugins/plain/');
   });
 
   it('surfaces the GitHub source link when sourceKind is github', () => {

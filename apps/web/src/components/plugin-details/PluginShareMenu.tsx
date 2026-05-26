@@ -17,9 +17,10 @@
 // every copy action so the user trusts the click landed.
 
 import { useEffect, useRef, useState } from 'react';
-import type { InstalledPluginRecord } from '@open-design/contracts';
+import { pluginShareUrl, type InstalledPluginRecord } from '@open-design/contracts';
 import { Icon } from '../Icon';
 import { derivePluginSourceLinks } from '../../runtime/plugin-source';
+import { getRuntimeSiteOrigin } from '../../state/config';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -72,19 +73,18 @@ function buildInstallCommand(record: InstalledPluginRecord): string {
   return `od plugin install ${record.source}`;
 }
 
-function buildShareUrl(record: InstalledPluginRecord): string {
-  // Browser-side the marketplace detail page is always at
-  // /marketplace/<id>. We use window.location.origin so the
-  // copied link is a fully qualified URL the recipient can open
-  // in a different session / tab without context.
-  if (typeof window === 'undefined') {
-    return `/marketplace/${encodeURIComponent(record.id)}`;
-  }
-  return `${window.location.origin}/marketplace/${encodeURIComponent(record.id)}`;
+function buildShareUrl(record: InstalledPluginRecord, siteOrigin?: string): string {
+  // Always link to the public marketplace detail page so the copied link
+  // opens for the recipient. pluginShareUrl owns the slug rule that matches
+  // the landing site's static routes (window.location.origin would leak a
+  // localhost / desktop-shell URL, and the old /marketplace path 404s).
+  // `siteOrigin` lets a self-hosted daemon override the host; it defaults to
+  // the public open-design.ai site.
+  return pluginShareUrl(record.id, siteOrigin);
 }
 
-function buildMarkdownBadge(record: InstalledPluginRecord): string {
-  const url = buildShareUrl(record);
+function buildMarkdownBadge(record: InstalledPluginRecord, siteOrigin?: string): string {
+  const url = buildShareUrl(record, siteOrigin);
   return `[![${record.title} — Open Design plugin](https://img.shields.io/badge/Open%20Design-${encodeURIComponent(record.title)}-d65a31?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2C)](${url})`;
 }
 
@@ -94,6 +94,9 @@ export function PluginShareMenu({ record, variant = 'default' }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   const links = derivePluginSourceLinks(record);
+  // Resolve once per render. Defaults to the public open-design.ai origin and
+  // is overridden by the daemon's OD_SITE_ORIGIN when a self-host sets it.
+  const siteOrigin = getRuntimeSiteOrigin();
 
   useEffect(() => {
     if (!open) return;
@@ -142,14 +145,14 @@ export function PluginShareMenu({ record, variant = 'default' }: Props) {
       label: 'Copy share link',
       icon: 'link',
       copies: true,
-      onSelect: () => copyToClipboard(buildShareUrl(record), 'link'),
+      onSelect: () => copyToClipboard(buildShareUrl(record, siteOrigin), 'link'),
     },
     {
       key: 'badge',
       label: 'Copy markdown badge',
       icon: 'copy',
       copies: true,
-      onSelect: () => copyToClipboard(buildMarkdownBadge(record), 'badge'),
+      onSelect: () => copyToClipboard(buildMarkdownBadge(record, siteOrigin), 'badge'),
     },
   ];
 
@@ -179,7 +182,7 @@ export function PluginShareMenu({ record, variant = 'default' }: Props) {
     key: 'marketplace',
     label: 'Open in marketplace',
     icon: 'eye',
-    href: buildShareUrl(record),
+    href: buildShareUrl(record, siteOrigin),
   });
 
   const triggerClass =
