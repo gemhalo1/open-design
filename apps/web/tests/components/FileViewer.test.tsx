@@ -1427,18 +1427,20 @@ describe('FileViewer tweaks toolbar', () => {
     expect(screen.getByRole('button', { name: 'Draw' })).toBeTruthy();
     expect(screen.getByTestId('screenshot-capture-toggle')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Screenshot' })).toBeTruthy();
-    expect(screen.queryByPlaceholderText('Type anywhere to add a note')).toBeNull();
+    expect(screen.queryByPlaceholderText('Add a note for this annotation')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Pods' })).toBeNull();
 
     fireEvent.click(screen.getByTestId('draw-overlay-toggle'));
-    expect(screen.getByPlaceholderText('Type anywhere to add a note')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Click' })).toBeTruthy();
+    expect(screen.getByPlaceholderText('Add a note for this annotation')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Click' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeTruthy();
 
     clickAgentTool('draw-overlay-toggle');
-    expect(screen.queryByPlaceholderText('Type anywhere to add a note')).toBeNull();
+    expect(screen.queryByPlaceholderText('Add a note for this annotation')).toBeNull();
 
     fireEvent.click(screen.getByTestId('screenshot-capture-toggle'));
-    expect(screen.queryByPlaceholderText('Type anywhere to add a note')).toBeNull();
+    expect(screen.queryByPlaceholderText('Add a note for this annotation')).toBeNull();
     expect(screen.getByRole('status').textContent).toContain('截图已保存到剪贴板');
     expect(screen.getByTestId('screenshot-capture-toggle').getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByTestId('draw-overlay-toggle').getAttribute('aria-pressed')).toBe('false');
@@ -1452,18 +1454,18 @@ describe('FileViewer tweaks toolbar', () => {
     );
 
     clickAgentTool('draw-overlay-toggle');
-    const note = screen.getByPlaceholderText('Type anywhere to add a note');
+    const note = screen.getByPlaceholderText('Add a note for this annotation');
     fireEvent.change(note, { target: { value: 'mark this' } });
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
 
-    expect(screen.getByPlaceholderText('Type anywhere to add a note')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Click' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByPlaceholderText('Add a note for this annotation')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Click' })).toBeNull();
 
     clickAgentTool('draw-overlay-toggle');
-    expect(screen.queryByPlaceholderText('Type anywhere to add a note')).toBeNull();
+    expect(screen.queryByPlaceholderText('Add a note for this annotation')).toBeNull();
   });
 
-  it('keeps the preloaded selection bridge mounted while the Draw bar switches to click mode', async () => {
+  it('keeps the preloaded selection bridge mounted while the Draw bar is open', async () => {
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
         liveHtml='<html><body><main data-od-id="hero">Hero</main></body></html>'
@@ -1484,12 +1486,10 @@ describe('FileViewer tweaks toolbar', () => {
     await waitFor(() => {
       expect(srcDocActivationMessages(postMessageSpy.mock.calls).at(-1)?.html).toContain('data-od-selection-bridge');
     });
-    const initialSrcDoc = frame.srcdoc;
-
-    fireEvent.click(screen.getByRole('button', { name: 'Click' }));
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Click' }).getAttribute('aria-pressed')).toBe('true'));
-    expect((screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement).srcdoc).toBe(initialSrcDoc);
+    expect(screen.queryByRole('button', { name: 'Click' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeTruthy();
+    expect((screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement).srcdoc).toBe(frame.srcdoc);
   });
 
   it('lets Draw direct send emit a queued annotation while a task is running', async () => {
@@ -1504,7 +1504,7 @@ describe('FileViewer tweaks toolbar', () => {
     );
 
     clickAgentTool('draw-overlay-toggle');
-    fireEvent.change(screen.getByPlaceholderText('Type anywhere to add a note'), {
+    fireEvent.change(screen.getByPlaceholderText('Add a note for this annotation'), {
       target: { value: 'mark this' },
     });
 

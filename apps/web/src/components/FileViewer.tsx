@@ -86,7 +86,7 @@ import type {
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
 import { Toast } from './Toast';
-import { PreviewDrawOverlay, type PreviewDrawMode } from './PreviewDrawOverlay';
+import { PreviewDrawOverlay } from './PreviewDrawOverlay';
 import {
   buildBoardCommentAttachments,
   commentsToAttachments,
@@ -3826,7 +3826,6 @@ function HtmlViewer({
   const [inspectMode, setInspectMode] = useState(false);
   const [agentToolsOpen, setAgentToolsOpen] = useState(false);
   const [drawOverlayOpen, setDrawOverlayOpen] = useState(false);
-  const [drawOverlayMode, setDrawOverlayMode] = useState<PreviewDrawMode>('click');
   const [drawOverlayIntent, setDrawOverlayIntent] = useState<'draw' | 'screenshot'>('draw');
   const [screenshotToast, setScreenshotToast] = useState(false);
   // for hint managing hint box state
@@ -4246,7 +4245,6 @@ function HtmlViewer({
     ? manualEditFrozenSource
     : livePreviewSource;
   const manualEditPageStylesEnabled = typeof source === 'string' && isManualEditFullHtmlDocument(source);
-  const drawClickSelectionMode = drawOverlayOpen && drawOverlayMode === 'click' && !manualEditMode;
   const urlModeBridge = hasUrlModeBridge(source);
   // When we URL-load the iframe directly, skip every in-host inlining /
   // srcDoc-rebuilding step. The browser does the asset resolution itself,
@@ -4269,7 +4267,7 @@ function HtmlViewer({
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
-    commentMode: boardMode || drawClickSelectionMode,
+    commentMode: boardMode,
     editMode: manualEditMode,
     urlModeBridge,
     inspectMode,
@@ -4526,10 +4524,10 @@ function HtmlViewer({
     if (!win) return;
     win.postMessage({
       type: 'od:comment-mode',
-      enabled: boardMode || drawClickSelectionMode,
-      mode: drawClickSelectionMode ? 'picker' : boardTool,
+      enabled: boardMode,
+      mode: boardTool,
     }, '*');
-  }, [boardMode, boardTool, drawClickSelectionMode, srcDoc]);
+  }, [boardMode, boardTool, srcDoc]);
 
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
@@ -4556,8 +4554,8 @@ function HtmlViewer({
     if (!win) return;
     win.postMessage({
       type: 'od:comment-mode',
-      enabled: boardMode || drawClickSelectionMode,
-      mode: drawClickSelectionMode ? 'picker' : boardTool,
+      enabled: boardMode,
+      mode: boardTool,
     }, '*');
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null, target);
@@ -4582,7 +4580,7 @@ function HtmlViewer({
   // artifacts) because the comment-mode listener short-circuits on
   // `!boardMode`. Issue #890.
   useEffect(() => {
-    if (!inspectMode && !boardMode && !drawClickSelectionMode) {
+    if (!inspectMode && !boardMode) {
       setLiveCommentTargets((current) => (current.size > 0 ? new Map() : current));
       return;
     }
@@ -4621,7 +4619,7 @@ function HtmlViewer({
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [inspectMode, boardMode, drawClickSelectionMode, file.name, isOurPreviewIframeSource]);
+  }, [inspectMode, boardMode, file.name, isOurPreviewIframeSource]);
 
   useEffect(() => {
     setActiveCommentTarget(null);
@@ -4690,8 +4688,7 @@ function HtmlViewer({
   }, [selectedManualEditTarget?.id]);
 
   useEffect(() => {
-    const selectionMode = boardMode || drawClickSelectionMode;
-    if (!selectionMode) {
+    if (!boardMode) {
       setCommentCreateMode(false);
       setActiveCommentTarget((current) => (current ? null : current));
       setHoveredCommentTarget((current) => (current ? null : current));
@@ -4775,7 +4772,7 @@ function HtmlViewer({
           comment.status === 'open' &&
           comment.elementId === snapshot.elementId,
         );
-        const shouldOpenComposer = boardMode || drawClickSelectionMode || commentCreateMode;
+        const shouldOpenComposer = boardMode || commentCreateMode;
         setActiveCommentTarget((current) => (shouldOpenComposer ? snapshot : current));
         setHoveredCommentTarget(snapshot);
         setLiveCommentTargets((current) => new Map(current).set(snapshot.elementId, snapshot));
@@ -4825,7 +4822,7 @@ function HtmlViewer({
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [activeCommentTarget, boardMode, boardTool, commentPortalHost, drawClickSelectionMode, file.name, isOurPreviewIframeSource, previewComments]);
+  }, [activeCommentTarget, boardMode, boardTool, commentPortalHost, file.name, isOurPreviewIframeSource, previewComments]);
 
   useEffect(() => {
     if (!manualEditMode) {
@@ -5658,7 +5655,6 @@ function HtmlViewer({
       clearBoardComposer();
       setInspectMode(false);
       setDrawOverlayIntent('draw');
-      setDrawOverlayMode('draw');
       setMode('preview');
       setDrawOverlayOpen(true);
       closeArtifactToolMenus();
@@ -6611,11 +6607,9 @@ function HtmlViewer({
               >
                 <PreviewDrawOverlay
                   active={drawOverlayOpen}
-                  initialMode={drawOverlayIntent === 'screenshot' ? 'click' : 'draw'}
                   captureViewport={drawOverlayIntent === 'screenshot'}
                   onActiveChange={setDrawOverlayOpen}
-                  onModeChange={setDrawOverlayMode}
-                  captureTarget={drawClickSelectionMode ? activeCommentTarget : null}
+                  captureTarget={null}
                   filePath={file.name}
                   sendDisabled={streaming}
                   sendDisabledReason="当前正有任务在执行"
@@ -6707,7 +6701,7 @@ function HtmlViewer({
                 </PreviewDrawOverlay>
               </div>
             </div>
-            {(boardMode || drawClickSelectionMode) ? (
+            {boardMode ? (
               <CommentPreviewOverlays
                 comments={commentCreateMode ? visibleSideComments : []}
                 liveTargets={liveCommentTargets}
