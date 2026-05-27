@@ -77,11 +77,17 @@ fi
 # --- 2. codex model pin (ChatGPT account rejects -codex / gpt-5 models) -------
 step "2. codex model pin -> $CODEX_MODEL"
 mkdir -p "$HOME/.codex"
-if grep -q "^model *= *\"$CODEX_MODEL\"" "$HOME/.codex/config.toml" 2>/dev/null; then
+cfg="$HOME/.codex/config.toml"
+touch "$cfg"
+if grep -q "^model *= *\"$CODEX_MODEL\"" "$cfg"; then
   ok "config.toml already pins model = \"$CODEX_MODEL\""
+elif grep -q '^model *=' "$cfg"; then
+  # Replace just the model line in place; leave any other settings intact.
+  tmp="$(mktemp)" && sed "s|^model *=.*|model = \"$CODEX_MODEL\"|" "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+  ok "updated model -> \"$CODEX_MODEL\" (other config.toml settings preserved)"
 else
-  printf 'model = "%s"\n' "$CODEX_MODEL" > "$HOME/.codex/config.toml"
-  ok "wrote ~/.codex/config.toml (model = \"$CODEX_MODEL\")"
+  printf 'model = "%s"\n' "$CODEX_MODEL" >> "$cfg"
+  ok "appended model = \"$CODEX_MODEL\" to config.toml"
 fi
 
 # --- 3. codex login (verify only; interactive — manual step B) ---------------
