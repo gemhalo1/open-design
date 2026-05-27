@@ -155,6 +155,28 @@ describe('packaged child Vite+ environment forwarding', () => {
     }
   });
 
+  it('can skip injecting system proxy env into the packaged daemon base env', () => {
+    const env = resolvePackagedChildBaseEnv(
+      {
+        HOME: '/Users/tester',
+      },
+      true,
+      {
+        HTTP_PROXY: 'http://system-proxy:8080',
+        HTTPS_PROXY: 'http://system-proxy:8443',
+        NODE_USE_ENV_PROXY: '1',
+      },
+      false,
+    );
+
+    expect(env).toMatchObject({
+      HOME: '/Users/tester',
+    });
+    expect(env.HTTP_PROXY).toBeUndefined();
+    expect(env.HTTPS_PROXY).toBeUndefined();
+    expect(env.NODE_USE_ENV_PROXY).toBeUndefined();
+  });
+
   it('adds custom VP_HOME/bin to the packaged PATH builder', () => {
     const vpHome = mkdtempSync(join(tmpdir(), 'od-packaged-vp-home-'));
     const originalVpHome = process.env.VP_HOME;

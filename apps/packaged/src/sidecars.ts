@@ -216,6 +216,7 @@ export function resolvePackagedChildBaseEnv(
   env: NodeJS.ProcessEnv = process.env,
   includeProviderSecrets = false,
   systemProxyEnv: NodeJS.ProcessEnv = resolveSystemProxyEnvCached(),
+  includeSystemProxyEnv = true,
 ): NodeJS.ProcessEnv {
   const forwardedEnv: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(env)) {
@@ -223,7 +224,9 @@ export function resolvePackagedChildBaseEnv(
       forwardedEnv[key] = value;
     }
   }
-  return mergeProxyAwareEnv(process.platform, systemProxyEnv, forwardedEnv);
+  return includeSystemProxyEnv
+    ? mergeProxyAwareEnv(process.platform, systemProxyEnv, forwardedEnv)
+    : mergeProxyAwareEnv(process.platform, forwardedEnv);
 }
 
 function createPackagedDaemonManagedPathEnv(
@@ -333,7 +336,12 @@ async function spawnSidecarChild(options: {
     base: options.paths.runtimeRoot,
     contract: OPEN_DESIGN_SIDECAR_CONTRACT,
     extraEnv: {
-      ...resolvePackagedChildBaseEnv(process.env, options.app === APP_KEYS.DAEMON),
+      ...resolvePackagedChildBaseEnv(
+        process.env,
+        options.app === APP_KEYS.DAEMON,
+        resolveSystemProxyEnvCached(),
+        options.app !== APP_KEYS.DAEMON,
+      ),
       ...options.env,
       NODE_ENV: "production",
       PATH: resolvePackagedPathEnv(),
