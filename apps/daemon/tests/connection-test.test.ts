@@ -1536,9 +1536,14 @@ describe('POST /api/test/connection provider mode', () => {
     }
   });
 
-  it('preserves a wildcard NO_PROXY when adding loopback defaults', () => {
-    expect(mergeNoProxyWithLoopbackDefaults('*')).toBe('*');
-    expect(mergeNoProxyWithLoopbackDefaults('*,.corp.example')).toBe('*');
+  it.each([
+    ['*', '*'],
+    ['*,.corp.example', '*'],
+    [' * , .corp.example ', '*'],
+    ['.corp.example', '.corp.example,localhost,127.0.0.1,::1'],
+    [undefined, 'localhost,127.0.0.1,::1'],
+  ])('mergeNoProxyWithLoopbackDefaults(%p)', (input, expected) => {
+    expect(mergeNoProxyWithLoopbackDefaults(input)).toBe(expected);
   });
 
   it('keeps loopback provider probes off the proxy when user NO_PROXY omits localhost', async () => {
