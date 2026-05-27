@@ -1303,7 +1303,7 @@ One short paragraph explaining the verdict in terms of the diff and observed beh
 
 ### 🧪 Cases Tested
 
-- Case name: what was exercised and why it matters.
+- Start every case bullet with a status emoji for its outcome -- ✅ pass, ❌ fail, ⚠️ warning, or ⚪ inconclusive -- followed by a bold case name, then what was exercised and why it matters. Example: "- ✅ **Empty-state CTA opens modal**: clicked the new CTA on /projects and the existing dialog opened in place."
 - Include at least two distinct UI/runtime cases for UI/runtime diffs unless setup is blocked or the changed surface is unreachable.
 
 ### 🔍 Concrete Evidence
