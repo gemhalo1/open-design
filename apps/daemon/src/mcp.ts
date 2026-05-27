@@ -18,6 +18,8 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { randomUUID } from 'node:crypto';
+
 import { postCreateArtifactRequest } from './artifact-create.js';
 
 const SERVER_NAME = 'open-design';
@@ -27,6 +29,7 @@ type JsonObject = Record<string, unknown>;
 interface RunMcpOptions { daemonUrl: string | URL }
 interface CatalogItem { id: string; name?: string; title?: string; description?: string; summary?: string }
 interface SkillsPayload { skills?: CatalogItem[] }
+interface PluginsPayload { plugins?: CatalogItem[] }
 interface DesignSystemsPayload { designSystems?: CatalogItem[] }
 interface ResourcePayload { skill?: { body?: string; content?: string }; designSystem?: { body?: string; content?: string }; body?: string; content?: string }
 interface ProjectSummary { id: string; name: string; metadata?: JsonObject }
@@ -35,7 +38,7 @@ interface ProjectPayload { project?: ProjectSummary; id?: string; name?: string;
 interface ActiveContext { active?: boolean; projectId?: string; projectName?: string | null; fileName?: string | null; ageMs?: number | null }
 type ResolvedProject = { id: string; name: string; source: 'uuid' | 'id' | 'exact' | 'slug' | 'substring' };
 interface ProjectListCache { baseUrl: string; t: number; list: ProjectSummary[] }
-interface McpArgs extends JsonObject { project?: unknown; entry?: unknown; include?: unknown; maxBytes?: unknown; path?: unknown; offset?: unknown; limit?: unknown; since?: unknown; query?: unknown; pattern?: unknown; max?: unknown; name?: unknown; content?: unknown; encoding?: unknown; artifactManifest?: unknown; confirm?: unknown }
+interface McpArgs extends JsonObject { project?: unknown; entry?: unknown; include?: unknown; maxBytes?: unknown; path?: unknown; offset?: unknown; limit?: unknown; since?: unknown; query?: unknown; pattern?: unknown; max?: unknown; name?: unknown; content?: unknown; encoding?: unknown; artifactManifest?: unknown; confirm?: unknown; prompt?: unknown; plugin?: unknown; inputs?: unknown; agent?: unknown; model?: unknown; runId?: unknown; id?: unknown; designSystem?: unknown; skill?: unknown }
 interface ProjectFileBundleEntry { name: string; mime: string; size: number | null; content: string | null; binary: boolean }
 interface BundleInput { project: ProjectPayload | ProjectSummary; entry: string; files: ProjectFileBundleEntry[]; truncated: boolean; active: ActiveContext | null; resolved?: ResolvedProject | null }
 interface ErrorWithCode { message?: string; code?: string; cause?: { code?: string } }
@@ -127,7 +130,7 @@ const TOOL_DEFS = [
   {
     name: 'get_project',
     description:
-      'Single project metadata: name, active skill/design-system ids, entryFile, kind, timestamps, resolvedDir.',
+      'Single project metadata: name, active skill/design-system ids, entryFile, kind, timestamps, resolvedDir, and (when it has an entry file) a browser-openable previewUrl.',
     inputSchema: {
       type: 'object',
       properties: { project: PROJECT_ARG },
@@ -302,13 +305,110 @@ const TOOL_DEFS = [
     },
     annotations: { ...WRITE_ANNOTATIONS, destructiveHint: true, title: 'Delete Open Design project' },
   },
-  // Catalog (skills, design systems) is intentionally NOT exposed as
-  // MCP tools. Skills are recipes that Open Design itself uses to
-  // generate artifacts; an external coding agent consuming Open
-  // Design's output can't run them. Design systems are reference material a
-  // user can opt into via the resource URIs (od://design-systems/...)
-  // when they actually want them, instead of paying tool-description
-  // tokens on every turn.
+  {
+    name: 'create_project',
+    description:
+      'Create a new empty Open Design project to generate into, then call start_run against it. Returns the project (with its id) plus a conversationId. The id is derived from name unless you pass one explicitly.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Human-readable project name.' },
+        id: {
+          type: 'string',
+          description: 'Optional project id slug ([A-Za-z0-9._-], <=128 chars). Derived from name when omitted.',
+        },
+        designSystem: {
+          type: 'string',
+          description: 'Optional design system id to attach (see the od://design-systems/... resources).',
+        },
+        skill: { type: 'string', description: 'Optional skill id to seed the project with.' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+    annotations: { ...WRITE_ANNOTATIONS, title: 'Create Open Design project' },
+  },
+  // Discovery + generation. An external coding agent does NOT run a
+  // skill itself — it commissions Open Design to, via start_run. The
+  // daemon then spawns ITS OWN agent (Claude Code / API fallback /…)
+  // to do the work. So list_skills / list_plugins exist purely so the
+  // caller can discover what it can ask OD to generate; start_run
+  // kicks off the run and get_run polls it to completion. Design
+  // systems stay resource-only (od://design-systems/...) since they're
+  // reference material the caller opts into, not something to run.
+  {
+    name: 'list_skills',
+    description: 'List Open Design skills you can pass to start_run as a recipe. Discovery only — Open Design runs the skill, not you.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { ...READ_ANNOTATIONS, title: 'List Open Design skills' },
+  },
+  {
+    name: 'list_plugins',
+    description: 'List installed Open Design plugins (packaged design workflows) you can pass to start_run as plugin + inputs.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { ...READ_ANNOTATIONS, title: 'List Open Design plugins' },
+  },
+  {
+    name: 'start_run',
+    description:
+      'Commission Open Design to generate or refine a design. Open Design spawns its own agent to do the work and returns a runId immediately. Poll get_run(runId) until status is terminal, then get_artifact to pull the result. Project optional; defaults to the active project. Requires an existing project (create one first with create_project).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: PROJECT_ARG,
+        prompt: {
+          type: 'string',
+          description: 'What to make or change, in natural language. Optional when a plugin supplies its own brief.',
+        },
+        plugin: {
+          type: 'string',
+          description: 'Plugin id from list_plugins to drive the run. Optional.',
+        },
+        inputs: {
+          type: 'object',
+          additionalProperties: true,
+          description: 'Plugin inputs object (only meaningful with plugin). Optional.',
+        },
+        agent: {
+          type: 'string',
+          description: "Which agent Open Design should run, e.g. 'claude' | 'codex' | 'gemini'. Optional; defaults to the user's configured agent.",
+        },
+        model: {
+          type: 'string',
+          description: 'Model id override for the run. Optional.',
+        },
+      },
+      additionalProperties: false,
+    },
+    annotations: { ...WRITE_ANNOTATIONS, title: 'Generate with Open Design' },
+  },
+  {
+    name: 'get_run',
+    description:
+      'Poll a run started by start_run. Returns status (queued|running|succeeded|failed|canceled) plus error info. On success, adds previewUrl (open it in a browser to view the rendered design) and a hint to pull files with get_artifact.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'string', description: 'Run id returned by start_run.' },
+      },
+      required: ['runId'],
+      additionalProperties: false,
+    },
+    annotations: { ...READ_ANNOTATIONS, title: 'Check Open Design run' },
+  },
+  {
+    name: 'cancel_run',
+    description: 'Request cancellation of an in-flight run started by start_run.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'string', description: 'Run id returned by start_run.' },
+      },
+      required: ['runId'],
+      additionalProperties: false,
+    },
+    annotations: { ...WRITE_ANNOTATIONS, title: 'Cancel Open Design run' },
+  },
 ];
 
 export async function runMcpStdio({ daemonUrl }: RunMcpOptions): Promise<void> {
@@ -356,6 +456,19 @@ export async function runMcpStdio({ daemonUrl }: RunMcpOptions): Promise<void> {
         ' - list_projects to discover what is available on this daemon.',
         ' - get_active_context() if you want the active project/file',
         '    explicitly without making any other tool call.',
+        '',
+        'To make Open Design GENERATE or refine a design (rather than just',
+        'read/edit files), commission a run - you do not run skills yourself:',
+        ' - list_skills / list_plugins to see what you can ask OD to make.',
+        ' - create_project(name) first if you need a fresh project to',
+        '    generate into; start_run requires an existing project.',
+        ' - start_run(prompt, [plugin], [inputs]) kicks off generation in',
+        '    the active or named project and returns a runId immediately.',
+        '    Open Design spawns its own agent to do the work.',
+        ' - get_run(runId) polls until status is succeeded/failed/canceled;',
+        '    on success it returns a previewUrl you can open in a browser',
+        '    and a hint to pull the files with get_artifact.',
+        ' - cancel_run(runId) aborts an in-flight run.',
         '',
         'Project arguments accept either a UUID or a name substring',
         '(e.g. "recaptr"); the server resolves the latter. When a project',
@@ -511,13 +624,19 @@ async function handleMcpToolCall(baseUrl: string, name: unknown, args: McpArgs) 
         const data = await getJson<ProjectPayload>(`${baseUrl}/api/projects/${encodeURIComponent(id)}`);
         const project = data?.project ?? data;
         const resolvedDir = typeof data?.resolvedDir === 'string' ? data.resolvedDir : null;
+        const entryFile = project?.metadata?.entryFile ?? null;
+        const previewUrl = rawPreviewUrl(baseUrl, id, entryFile);
         return ok(
           withActiveEcho(
             {
               ...project,
-              entryFile: project?.metadata?.entryFile ?? null,
+              entryFile,
               kind: project?.metadata?.kind ?? null,
               resolvedDir,
+              // Open in a browser to view the rendered design (HTML
+              // entries render directly; see rawPreviewUrl). Omitted
+              // when the project has no entry file yet.
+              ...(previewUrl ? { previewUrl } : {}),
             },
             active,
             resolved,
@@ -575,6 +694,25 @@ async function handleMcpToolCall(baseUrl: string, name: unknown, args: McpArgs) 
         return await deleteFile(baseUrl, args);
       case 'delete_project':
         return await deleteProject(baseUrl, args);
+      case 'create_project':
+        return await createProject(baseUrl, args);
+      case 'list_skills':
+        return ok(await getJson<SkillsPayload>(`${baseUrl}/api/skills`));
+      case 'list_plugins':
+        return ok(await getJson<PluginsPayload>(`${baseUrl}/api/plugins`));
+      case 'start_run':
+        return await startRun(baseUrl, args);
+      case 'get_run':
+        return await getRun(baseUrl, args);
+      case 'cancel_run': {
+        requireString(args.runId, 'runId');
+        return ok(
+          await postJson<JsonObject>(
+            `${baseUrl}/api/runs/${encodeURIComponent(args.runId)}/cancel`,
+            {},
+          ),
+        );
+      }
       default:
         return errorResult(`unknown tool: ${name}`);
     }
@@ -664,6 +802,127 @@ async function formatDaemonError(resp: Response, url: string): Promise<string> {
     // body wasn't JSON; fall through with the raw text.
   }
   return `daemon ${resp.status} on ${url}: ${detail}`;
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!resp.ok) {
+    throw new Error(await formatDaemonError(resp, url));
+  }
+  return (await resp.json()) as T;
+}
+
+// Create an empty project to generate into. start_run needs an existing
+// project; without this an external agent could only work on projects
+// the user had already created in Open Design.
+async function createProject(baseUrl: string, args: McpArgs) {
+  requireString(args.name, 'name');
+  const id =
+    typeof args.id === 'string' && args.id.length > 0
+      ? args.id
+      : slugifyProjectId(args.name);
+  const body: JsonObject = { id, name: args.name };
+  if (typeof args.designSystem === 'string' && args.designSystem.length > 0) {
+    body.designSystemId = args.designSystem;
+  }
+  if (typeof args.skill === 'string' && args.skill.length > 0) {
+    body.skillId = args.skill;
+  }
+  return ok(await postJson<JsonObject>(`${baseUrl}/api/projects`, body));
+}
+
+// Derive a valid project id ([A-Za-z0-9._-], <=128) from a display name,
+// with a short random suffix so repeated creates with the same name
+// don't collide on the daemon's primary key.
+function slugifyProjectId(name: string): string {
+  const base =
+    name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) ||
+    'project';
+  return `${base}-${randomUUID().replace(/-/g, '').slice(0, 4)}`;
+}
+
+// Commission a generation run. The caller never runs the skill/plugin
+// itself; we POST to /api/runs and the daemon spawns its own agent.
+// Returns the runId immediately so the caller can poll get_run —
+// start+poll because MCP is request/response and generation is
+// minutes-long.
+async function startRun(baseUrl: string, args: McpArgs) {
+  const { id, resolved, active } = await resolveProjectArg(baseUrl, args.project);
+  const body: JsonObject = { projectId: id };
+  if (typeof args.prompt === 'string' && args.prompt.length > 0) body.message = args.prompt;
+  if (typeof args.plugin === 'string' && args.plugin.length > 0) body.pluginId = args.plugin;
+  if (typeof args.agent === 'string' && args.agent.length > 0) body.agentId = args.agent;
+  if (typeof args.model === 'string' && args.model.length > 0) body.model = args.model;
+  if (args.inputs !== undefined) {
+    if (args.inputs === null || typeof args.inputs !== 'object' || Array.isArray(args.inputs)) {
+      throw new Error('inputs must be an object');
+    }
+    body.pluginInputs = args.inputs;
+  }
+  const created = await postJson<JsonObject>(`${baseUrl}/api/runs`, body);
+  return ok(
+    withActiveEcho(
+      {
+        ...created,
+        hint: 'Run started. Poll get_run(runId) until status is "succeeded" (or "failed"/"canceled"), then call get_artifact to pull the result.',
+      },
+      active,
+      resolved,
+    ),
+  );
+}
+
+// Poll a run. On success we enrich the daemon's status body with a
+// browser-openable previewUrl plus a pull hint.
+async function getRun(baseUrl: string, args: McpArgs) {
+  requireString(args.runId, 'runId');
+  const status = await getJson<JsonObject>(
+    `${baseUrl}/api/runs/${encodeURIComponent(args.runId)}`,
+  );
+  if (status.status !== 'succeeded' || typeof status.projectId !== 'string' || !status.projectId) {
+    return ok(status);
+  }
+  const enriched: JsonObject = {
+    ...status,
+    hint: 'Run finished. Call get_artifact (project defaults to this run\'s project) to pull the generated files, or open previewUrl in a browser to view the rendered design.',
+  };
+  const previewUrl = await buildRunPreviewUrl(baseUrl, status.projectId);
+  if (previewUrl) enriched.previewUrl = previewUrl;
+  return ok(enriched);
+}
+
+// Build the raw URL that renders a project's entry file. The raw route
+// serves it with the right Content-Type and resolves sibling
+// CSS/JS/img relative to the same dir, so this URL opens directly in a
+// browser (HTML entries render; bare JSX entries that rely on
+// host-injected React/Babel do not — those still need the Open Design
+// UI). Returns null when there's no entry file. Pure: no I/O, so
+// get_project can call it from project data it already has.
+function rawPreviewUrl(baseUrl: string, projectId: string, entry: unknown): string | null {
+  if (typeof entry !== 'string' || entry.length === 0) return null;
+  const segments = entry.split('/').filter((s) => s.length > 0).map(encodeURIComponent).join('/');
+  return `${baseUrl}/api/projects/${encodeURIComponent(projectId)}/raw/${segments}`;
+}
+
+// Best-effort variant for get_run, which only has a projectId: fetch the
+// project, then build the URL. Returns null on any lookup failure — the
+// run result is still reachable via get_artifact, so this is a
+// convenience only.
+async function buildRunPreviewUrl(baseUrl: string, projectId: string): Promise<string | null> {
+  try {
+    const data = await getJson<ProjectPayload>(
+      `${baseUrl}/api/projects/${encodeURIComponent(projectId)}`,
+    );
+    const project = data?.project ?? data;
+    const entry = (project as { metadata?: JsonObject } | undefined)?.metadata?.entryFile;
+    return rawPreviewUrl(baseUrl, projectId, entry);
+  } catch {
+    return null;
+  }
 }
 
 async function createArtifact(baseUrl: string, args: McpArgs) {
