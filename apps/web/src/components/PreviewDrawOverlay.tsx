@@ -559,39 +559,36 @@ export function PreviewDrawOverlay({
             type="button"
             onClick={() => void send('queue')}
             disabled={sending || !canSubmit}
+            aria-label={pendingAction === 'queue' ? t('chat.annotationQueueing') : t('chat.annotationQueue')}
+            title={pendingAction === 'queue' ? t('chat.annotationQueueing') : t('chat.annotationQueue')}
             style={{
-              ...ghostStyle,
+              ...drawActionButtonStyle(false),
               opacity: canSubmit ? 1 : 0.4,
               cursor: sending ? 'wait' : (canSubmit ? 'pointer' : 'not-allowed'),
             }}
           >
             {pendingAction === 'queue' ? (
-              <>
-                <Icon name="spinner" size={12} />
-                <span>{t('chat.annotationQueueing')}</span>
-              </>
+              <Icon name="spinner" size={14} />
             ) : (
-              t('chat.annotationQueue')
+              <RemixIcon name="list-check-2" size={15} />
             )}
           </button>
           <button
             type="button"
             onClick={() => void send('send')}
             disabled={sending || !canSend}
-            title={sendDisabled ? sendDisabledReason : undefined}
+            aria-label={pendingAction === 'send' ? t('chat.annotationSending') : t('chat.send')}
+            title={sendDisabled ? sendDisabledReason : pendingAction === 'send' ? t('chat.annotationSending') : t('chat.send')}
             style={{
-              ...pillStyle(true),
+              ...drawActionButtonStyle(true),
               opacity: canSend ? 1 : 0.4,
               cursor: sending ? 'wait' : (canSend ? 'pointer' : 'not-allowed'),
             }}
           >
             {pendingAction === 'send' ? (
-              <>
-                <Icon name="spinner" size={12} />
-                <span>{t('chat.annotationSending')}</span>
-              </>
+              <Icon name="spinner" size={14} />
             ) : (
-              t('chat.send')
+              <Icon name="send" size={14} />
             )}
           </button>
           <button
@@ -611,33 +608,24 @@ export function PreviewDrawOverlay({
   );
 }
 
-function pillStyle(active: boolean): CSSProperties {
+function drawActionButtonStyle(primary: boolean): CSSProperties {
   return {
-    border: 'none',
+    border: primary ? 'none' : '1px solid rgba(255,255,255,0.2)',
     borderRadius: 999,
-    padding: '4px 12px',
+    width: 36,
+    height: 36,
+    padding: 0,
     fontSize: 13,
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 6,
-    background: active ? 'var(--accent)' : 'transparent',
-    color: active ? '#fff' : 'inherit',
+    justifyContent: 'center',
+    flex: '0 0 auto',
+    whiteSpace: 'nowrap',
+    background: primary ? 'var(--accent)' : 'transparent',
+    color: primary ? '#fff' : 'inherit',
   };
 }
-
-const ghostStyle: CSSProperties = {
-  border: '1px solid rgba(255,255,255,0.2)',
-  borderRadius: 999,
-  padding: '3px 10px',
-  fontSize: 12,
-  cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  background: 'transparent',
-  color: 'inherit',
-};
 
 function historyButtonStyle(enabled: boolean): CSSProperties {
   return {
