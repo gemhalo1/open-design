@@ -6,10 +6,7 @@ import path from 'node:path';
 import { resolveAgentLaunch } from '../runtimes/launch.js';
 import { spawnEnvForAgent } from '../runtimes/env.js';
 import { getAgentDef } from '../runtimes/registry.js';
-import {
-  amrVelaProfileEnv,
-  resolveAmrProfile,
-} from './vela-profile.js';
+import { resolveAmrProfile } from './vela-profile.js';
 
 export { resolveAmrProfile } from './vela-profile.js';
 
@@ -41,16 +38,26 @@ interface VelaConfigFileShape {
   profiles?: Record<string, VelaProfileShape>;
 }
 
-function configDir(): string {
-  return path.join(homedir(), '.vela');
+export function mergeVelaEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  configuredEnv: Record<string, string> = {},
+): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    ...configuredEnv,
+  };
 }
 
-export function velaConfigPath(): string {
+function configDir(): string {
+  return path.join(homedir(), '.amr');
+}
+
+export function amrConfigPath(): string {
   return path.join(configDir(), 'config.json');
 }
 
 function readConfigFile(): VelaConfigFileShape | null {
-  const file = velaConfigPath();
+  const file = amrConfigPath();
   if (!existsSync(file)) return null;
   try {
     const data = readFileSync(file, 'utf8');
@@ -66,18 +73,19 @@ export function readVelaLoginStatus(
   env: NodeJS.ProcessEnv = process.env,
   configuredEnv: Record<string, string> = {},
 ): VelaLoginStatus {
-  const profile = resolveAmrProfile(env);
-  const configPath = velaConfigPath();
+  const mergedEnv = mergeVelaEnv(env, configuredEnv);
+  const profile = resolveAmrProfile(mergedEnv);
+  const configPath = amrConfigPath();
   const loginInFlight = isVelaLoginInFlight();
-  const configuredRuntimeKey = configuredEnv.VELA_RUNTIME_KEY?.trim() ?? '';
-  const configuredLinkUrl = configuredEnv.VELA_LINK_URL?.trim() ?? '';
-  if (configuredRuntimeKey && configuredLinkUrl) {
+  const runtimeKey = mergedEnv.VELA_RUNTIME_KEY?.trim() ?? '';
+  const linkUrl = mergedEnv.VELA_LINK_URL?.trim() ?? '';
+  if (runtimeKey && linkUrl) {
     return { loggedIn: true, loginInFlight, profile, user: null, configPath };
   }
   const file = readConfigFile();
   const stored = file?.profiles?.[profile];
-  const runtimeKey = stored?.runtimeKey?.trim() ?? '';
-  if (!runtimeKey) {
+  const storedRuntimeKey = stored?.runtimeKey?.trim() ?? '';
+  if (!storedRuntimeKey) {
     return { loggedIn: false, loginInFlight, profile, user: null, configPath };
   }
   const rawUser = stored?.user ?? null;
@@ -94,7 +102,7 @@ export function readVelaLoginStatus(
 }
 
 export function forgetVelaLogin(env: NodeJS.ProcessEnv = process.env): void {
-  const file = velaConfigPath();
+  const file = amrConfigPath();
   if (!existsSync(file)) return;
   const parsed = readConfigFile();
   if (!parsed?.profiles) return;
@@ -235,10 +243,7 @@ export async function spawnVelaLogin(
   if (!bin) {
     throw new Error('vela binary not found; install vela or configure VELA_BIN');
   }
-  const env = {
-    ...spawnEnvForAgent('amr', baseEnv, configuredEnv),
-    ...amrVelaProfileEnv(baseEnv),
-  };
+  const env = spawnEnvForAgent('amr', baseEnv, configuredEnv);
   const child = spawn(bin, ['login'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env,
@@ -260,6 +265,6 @@ export async function spawnVelaLogin(
   return {
     pid: child.pid,
     startedAt: new Date().toISOString(),
-    profile: resolveAmrProfile(baseEnv),
+    profile: resolveAmrProfile(env),
   };
 }

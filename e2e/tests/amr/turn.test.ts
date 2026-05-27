@@ -4,7 +4,7 @@
  * End-to-end coverage for an AMR (vela) chat run driven through the real
  * tools-dev orchestrated daemon. Boots a namespaced daemon + web pair,
  * configures it to spawn a self-contained fake `vela` binary, pre-seeds
- * `~/.vela/config.json` as if the user had already approved CLI login,
+ * `~/.amr/config.json` as if the user had already approved CLI login,
  * then drives a complete /api/runs lifecycle for `agentId: 'amr'` and
  * asserts the assistant message picks up the fake's canned text.
  *
@@ -24,7 +24,7 @@
  *   3. The full ACP transport (`initialize` → `session/new` →
  *      `session/set_model` → `session/prompt` → `session/update*`) flows
  *      between the daemon and a spawned subprocess that respects vela's
- *      `~/.vela/config.json` resolution path.
+ *      `~/.amr/config.json` resolution path.
  */
 
 import { mkdir, writeFile, chmod } from 'node:fs/promises';
@@ -47,7 +47,7 @@ type ProjectResponse = {
 // daemon ever spawns:
 //
 //   `vela models`                       — print the live link model catalog.
-//   `vela login`                        — write ~/.vela/config.json and exit 0.
+//   `vela login`                        — write ~/.amr/config.json and exit 0.
 //   `vela agent run --runtime opencode` — ACP stdio runtime (initialize →
 //                                          session/new → session/set_model →
 //                                          session/prompt → session/update*).
@@ -76,7 +76,7 @@ function writeNotification(method, params) {
 }
 
 if (argv[2] === 'login') {
-  const file = join(homedir(), '.vela', 'config.json');
+  const file = join(homedir(), '.amr', 'config.json');
   mkdirSync(dirname(file), { recursive: true });
   const profile = (env.VELA_PROFILE || 'local').trim() || 'local';
   writeFileSync(file, JSON.stringify({
@@ -190,10 +190,10 @@ describe('AMR chat-run end-to-end', () => {
     await suite.with.toolsDev(async ({ webUrl }) => {
       const velaBin = await writeFakeVelaBin(join(suite.scratchDir, 'fake-vela'));
 
-      // Pre-seed `~/.vela/config.json` so `vela agent run` (the fake) does
+      // Pre-seed `~/.amr/config.json` so `vela agent run` (the fake) does
       // not need to negotiate device-auth. Production AMR works the same
       // way: once login has happened once, the runtime reads the file.
-      const velaConfigDir = join(suite.scratchDir, 'home', '.vela');
+      const velaConfigDir = join(suite.scratchDir, 'home', '.amr');
       await mkdir(velaConfigDir, { recursive: true });
       await writeFile(
         join(velaConfigDir, 'config.json'),
@@ -215,14 +215,15 @@ describe('AMR chat-run end-to-end', () => {
       );
 
       // Persist agentCliEnv so the daemon's runtime resolver picks up the
-      // fake binary AND knows which vela profile to read. HOME is set on
-      // the per-agent env block so the spawned child sees the pre-seeded
-      // ~/.vela/config.json without touching the developer's real one.
+      // fake binary and the pre-run AMR status guard sees configured runtime
+      // credentials without touching the developer's real ~/.amr config.
       await requestJson<{ config: Record<string, unknown> }>(webUrl, '/api/app-config', {
         body: {
           agentCliEnv: {
             amr: {
               VELA_BIN: velaBin,
+              VELA_LINK_URL: 'http://localhost:18081',
+              VELA_RUNTIME_KEY: 'fake-runtime-key',
             },
           },
           agentId: 'amr',

@@ -108,12 +108,30 @@ vi.mock('../../src/components/FileWorkspace', () => ({
   FileWorkspace: ({
     streaming,
     onSendBoardCommentAttachments,
+    onCommentModeChange,
+    onFocusModeChange,
   }: {
     streaming: boolean;
     onSendBoardCommentAttachments: (attachments: unknown[]) => void;
+    onCommentModeChange?: (active: boolean) => void;
+    onFocusModeChange?: (focused: boolean) => void;
   }) => (
     <>
       <output data-testid="workspace-streaming-state">{streaming ? 'streaming' : 'idle'}</output>
+      <button
+        type="button"
+        data-testid="workspace-open-comments"
+        onClick={() => onCommentModeChange?.(true)}
+      >
+        open comments
+      </button>
+      <button
+        type="button"
+        data-testid="workspace-focus-mode"
+        onClick={() => onFocusModeChange?.(true)}
+      >
+        focus workspace
+      </button>
       <button
         type="button"
         data-testid="workspace-send-comment"
@@ -130,41 +148,55 @@ vi.mock('../../src/components/Loading', () => ({
 }));
 
 vi.mock('../../src/components/ChatPane', () => ({
-    ChatPane: ({
-      activeConversationId,
-      conversations,
-      streaming,
-      sendDisabled,
-      queuedItems,
-      previewComments,
-      attachedComments,
-      onAttachComment,
-      onSelectConversation,
-      onSend,
-      onSendQueuedNow,
-      onNewConversation,
-      error,
-    }: {
-      activeConversationId: string | null;
-      conversations: Conversation[];
-      streaming: boolean;
-      sendDisabled?: boolean;
-      queuedItems?: Array<{ id: string; prompt: string }>;
-      previewComments?: PreviewComment[];
-      attachedComments?: PreviewComment[];
-      error: string | null;
-      onAttachComment?: (comment: PreviewComment) => void;
-      onSelectConversation: (id: string) => void;
-      onSend: (prompt: string, attachments: unknown[], commentAttachments: unknown[]) => void;
-      onSendQueuedNow?: (id: string) => void;
-      onNewConversation: () => void;
-    }) => {
+  ChatPane: ({
+    activeConversationId,
+    conversations,
+    streaming,
+    sendDisabled,
+    queuedItems,
+    previewComments,
+    attachedComments,
+    messages,
+    onAttachComment,
+    onSelectConversation,
+    onSend,
+    onSendQueuedNow,
+    onNewConversation,
+    error,
+  }: {
+    activeConversationId: string | null;
+    conversations: Conversation[];
+    streaming: boolean;
+    sendDisabled?: boolean;
+    queuedItems?: Array<{ id: string; prompt: string }>;
+    previewComments?: PreviewComment[];
+    attachedComments?: PreviewComment[];
+    messages?: ChatMessage[];
+    error: string | null;
+    onAttachComment?: (comment: PreviewComment) => void;
+    onSelectConversation: (id: string) => void;
+    onSend: (prompt: string, attachments: unknown[], commentAttachments: unknown[]) => void;
+    onSendQueuedNow?: (id: string) => void;
+    onNewConversation: () => void;
+  }) => {
     const attached = attachedComments ?? [];
     return (
       <section>
         <output data-testid="active-conversation">{activeConversationId}</output>
         <output data-testid="streaming-state">{streaming ? 'streaming' : 'idle'}</output>
         <output data-testid="chat-error">{error}</output>
+        <output data-testid="assistant-events">
+          {(messages ?? [])
+            .filter((message) => message.role === 'assistant')
+            .flatMap((message) => message.events ?? [])
+            .map((event) => {
+              if (event.kind === 'text') return event.text;
+              if (event.kind === 'status') return event.detail ?? event.label;
+              return '';
+            })
+            .filter(Boolean)
+            .join('\n')}
+        </output>
         <output data-testid="attached-comment-count">{attached.length}</output>
         {queuedItems?.map((item, index) => (
           <button
@@ -515,6 +547,30 @@ describe('ProjectView conversation run isolation', () => {
     expect(reattachDaemonRun).not.toHaveBeenCalled();
   });
 
+  it('returns to chat after sending board comments from the comment surface', async () => {
+    renderProjectView();
+
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
+    fireEvent.click(screen.getByTestId('conversation-select-conv-b'));
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-b'));
+    if (!resolveConversationBMessages) throw new Error('Expected conv-b message load to be pending');
+    resolveConversationBMessages([]);
+    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
+
+    fireEvent.click(screen.getByTestId('workspace-focus-mode'));
+    await waitFor(() =>
+      expect(screen.getByTestId('active-conversation').closest('.split-chat-slot')?.hasAttribute('hidden')).toBe(true),
+    );
+    fireEvent.click(screen.getByTestId('workspace-open-comments'));
+    fireEvent.click(screen.getByTestId('workspace-send-comment'));
+
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-b'));
+    expect(screen.getByTestId('active-conversation').closest('.split-chat-slot')?.hasAttribute('hidden')).toBe(false);
+    expect(streamViaDaemon).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-b',
+      projectId: 'project-1',
+    }));
+  });
   it('detaches saved comment attachments after queueing them for a busy conversation', async () => {
     fetchPreviewComments.mockResolvedValue([previewComment]);
 
@@ -610,7 +666,6 @@ describe('ProjectView conversation run isolation', () => {
     };
     expect(payload.history?.at(-1)).toMatchObject({ role: 'user', content: 'hello from c' });
   });
-
   it('surfaces conversation message load errors and keeps sends disabled until messages load', async () => {
     let conversationBLoadAttempts = 0;
     listMessages.mockImplementation(async (_projectId: string, conversationId: string) => {
@@ -741,6 +796,85 @@ describe('ProjectView conversation run isolation', () => {
     fireEvent.click(screen.getByTestId('send-message'));
 
     await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(2));
+  });
+
+  it('renders recharge guidance for structured AMR insufficient-balance errors', async () => {
+    conversationAMessages = [];
+    fetchChatRunStatus.mockResolvedValue(null);
+    streamViaDaemon.mockImplementation(
+      async (options: {
+        onRunCreated?: (runId: string) => void;
+        handlers: { onError: (error: Error) => void };
+      }) => {
+        options.onRunCreated?.('run-amr-balance');
+        const error = new Error(
+          'AMR Cloud reported insufficient balance for this model. Recharge your AMR wallet, then retry this run.',
+        ) as Error & { code: string; details: unknown };
+        error.code = 'AMR_INSUFFICIENT_BALANCE';
+        error.details = {
+          kind: 'amr_account',
+          action: 'recharge',
+          actionUrl: 'https://open-design.ai/amr/wallet',
+        };
+        options.handlers.onError(error);
+      },
+    );
+
+    renderProjectView();
+
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
+    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
+
+    fireEvent.click(screen.getByTestId('send-message'));
+
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-error').textContent).toContain('Recharge AMR wallet'),
+    );
+    expect(screen.getByTestId('assistant-events').textContent).toContain(
+      '[Recharge AMR wallet](https://open-design.ai/amr/wallet)',
+    );
+    expect(screen.getByTestId('streaming-state').textContent).toBe('idle');
+  });
+
+  it('renders re-login guidance for structured AMR auth-required errors', async () => {
+    conversationAMessages = [];
+    fetchChatRunStatus.mockResolvedValue(null);
+    streamViaDaemon.mockImplementation(
+      async (options: {
+        onRunCreated?: (runId: string) => void;
+        handlers: { onError: (error: Error) => void };
+      }) => {
+        options.onRunCreated?.('run-amr-auth');
+        const error = new Error(
+          'AMR sign-in is required. Sign in to AMR Cloud again, then retry this run.',
+        ) as Error & { code: string; details: unknown };
+        error.code = 'AMR_AUTH_REQUIRED';
+        error.details = {
+          kind: 'amr_account',
+          action: 'relogin',
+        };
+        options.handlers.onError(error);
+      },
+    );
+
+    renderProjectView();
+
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
+    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
+
+    fireEvent.click(screen.getByTestId('send-message'));
+
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-error').textContent).toContain(
+        'Use the AMR sign-in control in the model switcher or Settings',
+      ),
+    );
+    expect(screen.getByTestId('assistant-events').textContent).toContain(
+      'Use the AMR sign-in control in the model switcher or Settings',
+    );
+    expect(screen.getByTestId('streaming-state').textContent).toBe('idle');
   });
 });
 

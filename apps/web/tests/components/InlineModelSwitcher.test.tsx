@@ -36,11 +36,23 @@ const amrAgent: AgentInfo = {
   ],
 };
 
-function renderSwitcher(config: Partial<AppConfig> = {}) {
+const codexAgent: AgentInfo = {
+  id: 'codex',
+  name: 'Codex CLI',
+  bin: 'codex',
+  available: true,
+  version: '0.133.0-alpha.1',
+  models: [{ id: 'default', label: 'Default' }],
+};
+
+function renderSwitcher(
+  config: Partial<AppConfig> = {},
+  agents: AgentInfo[] = [amrAgent],
+) {
   return render(
     <InlineModelSwitcher
       config={{ ...baseConfig, ...config }}
-      agents={[amrAgent]}
+      agents={agents}
       daemonLive={true}
       onModeChange={vi.fn()}
       onAgentChange={vi.fn()}
@@ -57,6 +69,61 @@ describe('InlineModelSwitcher AMR row', () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    try {
+      window.localStorage.clear();
+    } catch {
+      // jsdom normally exposes localStorage; keep cleanup tolerant.
+    }
+  });
+
+  it('shows the AMR reminder dot once when another CLI is selected', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === '/api/integrations/vela/status') {
+        return new Response(
+          JSON.stringify({
+            loggedIn: false,
+            profile: 'default',
+            user: null,
+            configPath: '/Users/test/.amr/config.json',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = renderSwitcher(
+      { agentId: 'codex' },
+      [amrAgent, codexAgent],
+    );
+
+    expect(screen.getByTestId('inline-model-switcher-amr-reminder')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('inline-model-switcher-chip'));
+
+    expect(screen.queryByTestId('inline-model-switcher-amr-reminder')).toBeNull();
+    const popover = screen.getByTestId('inline-model-switcher-popover');
+    expect(
+      within(popover).getByTestId('inline-model-switcher-agent-amr-reminder'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('inline-model-switcher-chip'));
+    fireEvent.click(screen.getByTestId('inline-model-switcher-chip'));
+    expect(
+      screen.queryByTestId('inline-model-switcher-agent-amr-reminder'),
+    ).toBeNull();
+
+    view.unmount();
+    renderSwitcher({ agentId: 'codex' }, [amrAgent, codexAgent]);
+    expect(screen.queryByTestId('inline-model-switcher-amr-reminder')).toBeNull();
+  });
+
+  it('does not show the AMR reminder dot when AMR is already selected', () => {
+    renderSwitcher({}, [amrAgent, codexAgent]);
+
+    expect(screen.queryByTestId('inline-model-switcher-amr-reminder')).toBeNull();
   });
 
   it('labels AMR without vela branding and keeps AMR models from AgentInfo.models', async () => {
@@ -68,7 +135,7 @@ describe('InlineModelSwitcher AMR row', () => {
             loggedIn: false,
             profile: 'default',
             user: null,
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -78,6 +145,11 @@ describe('InlineModelSwitcher AMR row', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderSwitcher();
+
+    expect(screen.getByTestId('inline-model-switcher-chip').textContent).toContain('AMR');
+    expect(screen.getByTestId('inline-model-switcher-chip').textContent).not.toContain(
+      'Open Design AMR',
+    );
 
     fireEvent.click(screen.getByTestId('inline-model-switcher-chip'));
 
@@ -145,7 +217,7 @@ describe('InlineModelSwitcher AMR row', () => {
               email: 'manual-amr@example.local',
               name: 'Manual AMR Test User',
             },
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -177,7 +249,7 @@ describe('InlineModelSwitcher AMR row', () => {
             loginInFlight: true,
             profile: 'default',
             user: null,
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -211,14 +283,14 @@ describe('InlineModelSwitcher AMR row', () => {
                   loginInFlight: false,
                   profile: 'default',
                   user: { id: 'user-1', email: 'manual-amr@example.local' },
-                  configPath: '/Users/test/.vela/config.json',
+                  configPath: '/Users/test/.amr/config.json',
                 }
               : {
                   loggedIn: false,
                   loginInFlight: false,
                   profile: 'default',
                   user: null,
-                  configPath: '/Users/test/.vela/config.json',
+                  configPath: '/Users/test/.amr/config.json',
                 },
           ),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -265,7 +337,7 @@ describe('InlineModelSwitcher AMR row', () => {
             loginInFlight: loginStarted,
             profile: 'default',
             user: null,
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -330,7 +402,7 @@ describe('InlineModelSwitcher AMR row', () => {
             loginInFlight: loginStarted,
             profile: 'default',
             user: null,
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -400,13 +472,13 @@ describe('InlineModelSwitcher AMR row', () => {
                   loggedIn: true,
                   profile: 'default',
                   user: { id: 'user-1', email: 'manual-amr@example.local' },
-                  configPath: '/Users/test/.vela/config.json',
+                  configPath: '/Users/test/.amr/config.json',
                 }
               : {
                   loggedIn: false,
                   profile: 'default',
                   user: null,
-                  configPath: '/Users/test/.vela/config.json',
+                  configPath: '/Users/test/.amr/config.json',
                 },
           ),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -441,7 +513,7 @@ describe('InlineModelSwitcher AMR row', () => {
             loggedIn: false,
             profile: 'default',
             user: null,
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );

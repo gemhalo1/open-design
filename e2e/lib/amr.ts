@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 export type FakeVelaOptions = {
   assistantText?: string;
   failAuthAtPrompt?: boolean;
+  failBalanceAtPrompt?: boolean;
   requireLoginConfig?: boolean;
 };
 
@@ -27,7 +28,7 @@ export async function seedVelaLoginConfig(
   } = {},
 ): Promise<string> {
   const profile = options.profile ?? 'local';
-  const configDir = join(homeDir, '.vela');
+  const configDir = join(homeDir, '.amr');
   const file = join(configDir, 'config.json');
   await mkdir(configDir, { recursive: true });
   await writeFile(
@@ -57,7 +58,7 @@ export async function seedVelaLoginConfig(
 }
 
 export async function clearVelaLoginConfig(homeDir: string): Promise<void> {
-  await rm(join(homeDir, '.vela', 'config.json'), { force: true });
+  await rm(join(homeDir, '.amr', 'config.json'), { force: true });
 }
 
 function renderFakeVelaScript(options: FakeVelaOptions): string {
@@ -70,6 +71,7 @@ import { argv, stdin, stdout, stderr, env, exit } from 'node:process';
 const ASSISTANT_TEXT = ${JSON.stringify(options.assistantText ?? DEFAULT_ASSISTANT_TEXT)};
 const SESSION_ID = env.FAKE_VELA_SESSION_ID || 'fake-amr-session-1';
 const AUTH_FAIL = ${options.failAuthAtPrompt === true ? 'true' : 'false'};
+const BALANCE_FAIL = ${options.failBalanceAtPrompt === true ? 'true' : 'false'};
 const REQUIRE_LOGIN = ${options.requireLoginConfig === false ? 'false' : 'true'};
 
 function writeMessage(obj) {
@@ -88,7 +90,7 @@ function currentProfile() {
   return (env.OPEN_DESIGN_AMR_PROFILE || env.VELA_PROFILE || 'local').trim() || 'local';
 }
 function readLoginConfig() {
-  const file = join(homedir(), '.vela', 'config.json');
+  const file = join(homedir(), '.amr', 'config.json');
   if (!existsSync(file)) return null;
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
@@ -103,7 +105,7 @@ function hasRuntimeKey() {
 }
 
 if (argv[2] === 'login') {
-  const file = join(homedir(), '.vela', 'config.json');
+  const file = join(homedir(), '.amr', 'config.json');
   mkdirSync(dirname(file), { recursive: true });
   const profile = currentProfile();
   writeFileSync(file, JSON.stringify({
@@ -179,6 +181,17 @@ function handle(msg) {
     }
     if (AUTH_FAIL) {
       writeError(id, 'Your authentication token has expired. Please sign in again.');
+      return;
+    }
+    if (BALANCE_FAIL) {
+      writeMessage({
+        jsonrpc: '2.0',
+        id,
+        error: {
+          code: -32000,
+          message: 'HTTP 429: {"code":"insufficient_balance","message":"insufficient balance"}',
+        },
+      });
       return;
     }
     writeNotification('session/update', {

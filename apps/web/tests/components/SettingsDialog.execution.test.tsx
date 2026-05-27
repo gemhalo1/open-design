@@ -398,6 +398,33 @@ describe('SettingsDialog execution settings BYOK interactions', () => {
     ).toBe('https://platform.openai.com/api-keys');
   });
 
+  it('warns BYOK users that API mode cannot edit project files (issue #1106)', () => {
+    // Regression cover: switching from Local CLI to BYOK previously gave no
+    // signal that file-editing tools (`Read`/`Write`/`Edit`) are absent on the
+    // API path. Users typed "continue adjusting the design" expecting edits
+    // and got an HTML monologue back. The notice must be visible on every
+    // BYOK protocol tab so the missing tool surface is discoverable before
+    // the user wastes a turn.
+    renderSettingsDialog();
+
+    const notice = screen.getByTestId('settings-byok-no-file-tools-notice');
+    expect(notice.textContent).toContain('BYOK mode');
+    expect(notice.textContent).toContain("can't read, write, or edit files");
+    expect(notice.textContent).toContain('Local CLI mode');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'OpenAI' }));
+    expect(screen.getByTestId('settings-byok-no-file-tools-notice')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Google Gemini' }));
+    expect(screen.getByTestId('settings-byok-no-file-tools-notice')).toBeTruthy();
+  });
+
+  it('hides the BYOK no-file-tools notice when Local CLI mode is selected', () => {
+    renderSettingsDialog({ mode: 'daemon' });
+
+    expect(screen.queryByTestId('settings-byok-no-file-tools-notice')).toBeNull();
+  });
+
   it('lets Anthropic and Google users customize the default base URL', () => {
     renderSettingsDialog();
 
@@ -1057,9 +1084,14 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
     expect(screen.getByText(en['settings.agentInstall.pathHint'])).toBeTruthy();
 
     fireEvent.click(codexCard);
-    const modelHead = screen.getByText(/Model for:/);
+    const selectedCard = codexCard.closest('.agent-card') as HTMLElement;
     expect(
-      modelHead.compareDocumentPosition(installGroupSummary) &
+      within(selectedCard).getByRole('combobox', {
+        name: en['settings.modelPicker'],
+      }),
+    ).toBeTruthy();
+    expect(
+      selectedCard.compareDocumentPosition(installGroupSummary) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     await waitForPersist(
@@ -1092,7 +1124,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Local CLI/i }));
     expect(screen.getByText('Live from CLI')).toBeTruthy();
     expect(
-      screen.getByText(/Models were refreshed from the installed CLI/i),
+      screen.getByText(/Model list comes from this CLI/i),
     ).toBeTruthy();
   });
 
@@ -1335,7 +1367,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
             loggedIn: false,
             profile: 'default',
             user: null,
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -1351,12 +1383,52 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /Local CLI.*1 installed/i }));
 
-    expect(screen.getByRole('button', { name: /^AMR\b/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Open Design AMR\b/ })).toBeTruthy();
+    expect(screen.queryByText('1.0.0')).toBeNull();
     expect(screen.queryByText(/AMR \(vela\)/i)).toBeNull();
     expect(screen.queryByText(/vela/i)).toBeNull();
     expect(screen.queryByText(/Not signed in/i)).toBeNull();
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Test' })).toBeTruthy();
+    expect(screen.getByText('Officially maintained')).toBeTruthy();
+    expect(screen.getByText('Lower price')).toBeTruthy();
+    expect(screen.getByText('Many models')).toBeTruthy();
+    expect(screen.getByText('Limited bonus: +100%')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Authorize' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Test' })).toBeNull();
+  });
+
+  it('only shows the AMR authorization action after selecting the AMR card', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === '/api/memory') {
+        return new Response(
+          JSON.stringify({ enabled: true, memories: [], extraction: null }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/integrations/vela/status') {
+        return new Response(
+          JSON.stringify({ loggedIn: false, profile: 'local', user: null }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    const codexAgent = availableAgents.find((agent) => agent.id === 'codex');
+    expect(codexAgent).toBeTruthy();
+    if (!codexAgent) throw new Error('missing codex test agent');
+    renderSettingsDialog(
+      { mode: 'daemon', agentId: codexAgent.id },
+      { agents: [amrAgent, codexAgent] },
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Local CLI.*2 installed/i }));
+    expect(screen.getByRole('button', { name: /^Open Design AMR\b/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Open Design AMR\b/ }));
+
+    expect(await screen.findByRole('button', { name: 'Authorize' })).toBeTruthy();
   });
 
   it('renders the signed-in AMR account state inside Settings without leaking vela branding', async () => {
@@ -1378,7 +1450,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
               email: 'signed-in@example.com',
               name: 'Signed In User',
             },
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -1395,6 +1467,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Local CLI.*1 installed/i }));
 
     expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Open Design AMR\b/ })).toBeTruthy();
     expect(screen.getByText('signed-in@example.com')).toBeTruthy();
     expect(screen.queryByText(/AMR \(vela\)/i)).toBeNull();
     expect(screen.queryByText(/^vela$/i)).toBeNull();
@@ -1419,13 +1492,13 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
                   loggedIn: true,
                   profile: 'local',
                   user: { id: 'user-1', email: 'signed-in@example.com' },
-                  configPath: '/Users/test/.vela/config.json',
+                  configPath: '/Users/test/.amr/config.json',
                 }
               : {
                   loggedIn: false,
                   profile: 'local',
                   user: null,
-                  configPath: '/Users/test/.vela/config.json',
+                  configPath: '/Users/test/.amr/config.json',
                 },
           ),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -1448,7 +1521,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
       { agents: [amrAgent] },
     );
     fireEvent.click(screen.getByRole('tab', { name: /Local CLI.*1 installed/i }));
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Authorize' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
     second.unmount();
   });
@@ -1470,7 +1543,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
             loggedIn: statusCalls === 1,
             profile: 'local',
             user: statusCalls === 1 ? { id: 'user-1', email: 'signed-in@example.com' } : null,
-            configPath: '/Users/test/.vela/config.json',
+            configPath: '/Users/test/.amr/config.json',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
@@ -1492,12 +1565,12 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /Local CLI.*1 installed/i }));
     expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^AMR\b/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Open Design AMR\b/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
 
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^AMR\b/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Authorize' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Open Design AMR\b/ })).toBeTruthy();
     expect(
       onPersist.mock.calls.some(
         ([nextConfig]) =>
@@ -1545,6 +1618,7 @@ describe('SettingsDialog media providers interactions', () => {
     expect(screen.queryByLabelText('Black Forest Labs API key')).toBeNull();
     expect(screen.queryByLabelText('Black Forest Labs Base URL')).toBeNull();
     expect(document.querySelector('.media-provider-coming-soon')).toBeTruthy();
+    expect(screen.getByText('ComfyUI')).toBeTruthy();
   });
 
   it('renders ElevenLabs as an integrated media provider with enabled inputs', () => {

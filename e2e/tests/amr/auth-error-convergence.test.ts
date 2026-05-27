@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'vitest';
 
-import { seedVelaLoginConfig, writeFakeVelaBin } from '@/amr';
+import { writeFakeVelaBin } from '@/amr';
 import { createAmrProject, putAmrAppConfig } from '@/vitest/amr';
 import { listMessages } from '@/vitest/messages';
 import { readRunEvents, startRun, waitForRunTerminal } from '@/vitest/runs';
@@ -15,17 +15,18 @@ describe('AMR auth error convergence', () => {
     const suite = await createSmokeSuite('amr-auth-error-convergence');
 
     await suite.with.toolsDev(async ({ webUrl }) => {
-      const homeDir = join(suite.scratchDir, 'home');
       const velaBin = await writeFakeVelaBin(join(suite.scratchDir, 'fake-vela-auth-error'), {
         failAuthAtPrompt: true,
+        requireLoginConfig: false,
       });
-      await seedVelaLoginConfig(homeDir, { email: 'auth-error@example.com', profile: 'local' });
 
       await putAmrAppConfig(webUrl, {
         agentId: 'amr',
         agentCliEnv: {
           amr: {
             VELA_BIN: velaBin,
+            VELA_LINK_URL: 'http://localhost:18081',
+            VELA_RUNTIME_KEY: 'fake-runtime-key',
           },
         },
       });
@@ -52,7 +53,7 @@ describe('AMR auth error convergence', () => {
       const messages = await listMessages(webUrl, project.project.id, project.conversationId);
       const assistant = messages.find((message) => message.id === assistantMessageId);
       expect(assistant?.runStatus).toBe('failed');
-      await expect(readRunEvents(webUrl, run.runId)).resolves.toMatch(/sign in again/i);
+      await expect(readRunEvents(webUrl, run.runId)).resolves.toMatch(/AMR_AUTH_REQUIRED/);
     });
   });
 });

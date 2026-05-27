@@ -43,9 +43,14 @@ import { rememberLiveModels, resolveModelForAgent } from './runtimes/models.js';
 import {
   cancelVelaLogin,
   forgetVelaLogin,
+  mergeVelaEnv,
   readVelaLoginStatus,
   spawnVelaLogin,
 } from './integrations/vela.js';
+import {
+  amrAccountFailureDetails,
+  classifyAmrAccountFailure,
+} from './integrations/vela-errors.js';
 import { migrateLegacyDataDirSync } from './legacy-data-migrator.js';
 import {
   consumedImportNonces,
@@ -5660,7 +5665,7 @@ export async function startServer({
     try {
       const appConfig = await readAppConfig(RUNTIME_DATA_DIR);
       const configuredEnv = agentCliEnvForAgent(appConfig.agentCliEnv, 'amr');
-      res.json(readVelaLoginStatus(process.env, configuredEnv));
+      res.json(readVelaLoginStatus(mergeVelaEnv(process.env, configuredEnv)));
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
@@ -5689,9 +5694,23 @@ export async function startServer({
     }
   });
 
-  app.post('/api/integrations/vela/logout', (_req, res) => {
+  app.post('/api/integrations/vela/logout', async (_req, res) => {
     try {
-      forgetVelaLogin();
+      const appConfig = await readAppConfig(RUNTIME_DATA_DIR);
+      const configuredEnv = agentCliEnvForAgent(appConfig.agentCliEnv, 'amr');
+      forgetVelaLogin(mergeVelaEnv(process.env, configuredEnv));
+      delete process.env.VELA_RUNTIME_KEY;
+      delete process.env.VELA_LINK_URL;
+      const agentCliEnv = { ...(appConfig.agentCliEnv ?? {}) };
+      const amrEnv = { ...(agentCliEnv.amr ?? {}) };
+      delete amrEnv.VELA_RUNTIME_KEY;
+      delete amrEnv.VELA_LINK_URL;
+      if (Object.keys(amrEnv).length > 0) {
+        agentCliEnv.amr = amrEnv;
+      } else {
+        delete agentCliEnv.amr;
+      }
+      await writeAppConfig(RUNTIME_DATA_DIR, { agentCliEnv });
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -7034,9 +7053,37 @@ export async function startServer({
       const fsp = await import('node:fs/promises');
       const resolved = path.resolve(plugin.fsPath, relpath);
       // Final containment check — `resolved` must stay under fsPath.
-      const root = path.resolve(plugin.fsPath) + path.sep;
-      if (!(resolved + path.sep).startsWith(root) && resolved !== path.resolve(plugin.fsPath)) {
+      const root = path.resolve(plugin.fsPath);
+      const rootWithSep = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+      if (!(resolved + path.sep).startsWith(rootWithSep) && resolved !== root) {
         return res.status(400).json({ error: 'asset escape rejected' });
+      }
+      const relativeSegments = path.relative(root, resolved).split(path.sep).filter(Boolean);
+      let current = root;
+      try {
+        const rootStat = await fsp.lstat(current);
+        if (rootStat.isSymbolicLink()) {
+          return res.status(404).json({ error: 'asset not found' });
+        }
+        for (const segment of relativeSegments) {
+          current = path.join(current, segment);
+          const stat = await fsp.lstat(current);
+          if (stat.isSymbolicLink()) {
+            return res.status(404).json({ error: 'asset not found' });
+          }
+        }
+      } catch {
+        return res.status(404).json({ error: 'asset not found' });
+      }
+      try {
+        const rootReal = await fsp.realpath(plugin.fsPath);
+        const resolvedReal = await fsp.realpath(resolved);
+        const rootRealWithSep = rootReal.endsWith(path.sep) ? rootReal : `${rootReal}${path.sep}`;
+        if (resolvedReal !== rootReal && !resolvedReal.startsWith(rootRealWithSep)) {
+          return res.status(400).json({ error: 'asset escape rejected' });
+        }
+      } catch {
+        return res.status(404).json({ error: 'asset not found' });
       }
       let buf;
       try {
@@ -8888,7 +8935,7 @@ export async function startServer({
   // Preflight for the raw file route. Current artifact fetches are simple GETs
   // (no preflight needed), but an explicit handler future-proofs the route if
   // artifacts ever add custom request headers.
-  app.options('/api/projects/:id/raw/*splat', (req, res) => {
+  app.options(/^\/api\/projects\/([^/]+)\/raw\/(.+)$/u, (req, res) => {
     if (req.headers.origin === 'null') {
       res.header('Access-Control-Allow-Origin', '*');
       res.header('Access-Control-Allow-Methods', 'GET');
@@ -8897,12 +8944,12 @@ export async function startServer({
     res.sendStatus(204);
   });
 
-  app.get('/api/projects/:id/raw/*splat', async (req, res) => {
+  app.get(/^\/api\/projects\/([^/]+)\/raw\/(.+)$/u, async (req, res) => {
     try {
-      const splatParam = req.params.splat;
-      const relPath = Array.isArray(splatParam) ? splatParam.join('/') : String(splatParam ?? '');
-      const project = getProject(db, req.params.id);
-      const file = await readProjectFile(PROJECTS_DIR, req.params.id, relPath, project?.metadata);
+      const projectId = String(req.params[0] ?? '');
+      const relPath = String(req.params[1] ?? '');
+      const project = getProject(db, projectId);
+      const file = await readProjectFile(PROJECTS_DIR, projectId, relPath, project?.metadata);
       // PreviewModal loads artifact HTML via srcdoc, giving the iframe Origin: "null".
       // data: URIs, file://, and some sandboxed iframes also send null — all are
       // local-only callers, so this is safe. Real cross-origin sites send a real
@@ -8957,12 +9004,12 @@ export async function startServer({
     }
   });
 
-  app.delete('/api/projects/:id/raw/*splat', async (req, res) => {
+  app.delete(/^\/api\/projects\/([^/]+)\/raw\/(.+)$/u, async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
-      const splatParam = req.params.splat;
-      const rawSplat = Array.isArray(splatParam) ? splatParam.join('/') : String(splatParam ?? '');
-      await deleteProjectFile(PROJECTS_DIR, req.params.id, rawSplat, project?.metadata);
+      const projectId = String(req.params[0] ?? '');
+      const rawSplat = String(req.params[1] ?? '');
+      const project = getProject(db, projectId);
+      await deleteProjectFile(PROJECTS_DIR, projectId, rawSplat, project?.metadata);
       /** @type {import('@open-design/contracts').DeleteProjectFileResponse} */
       const body = { ok: true };
       res.json(body);
@@ -9004,14 +9051,14 @@ export async function startServer({
     }
   });
 
-  app.get('/api/projects/:id/files/*splat', async (req, res) => {
+  app.get(/^\/api\/projects\/([^/]+)\/files\/(.+)$/u, async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
-      const splatParam = req.params.splat;
-      const fileSplat = Array.isArray(splatParam) ? splatParam.join('/') : String(splatParam ?? '');
+      const projectId = String(req.params[0] ?? '');
+      const fileSplat = String(req.params[1] ?? '');
+      const project = getProject(db, projectId);
       const file = await readProjectFile(
         PROJECTS_DIR,
-        req.params.id,
+        projectId,
         fileSplat,
         project?.metadata,
       );
@@ -10708,6 +10755,16 @@ export async function startServer({
       return design.runs.finish(run, 'failed', 1, null);
     }
 
+    const sendAmrAccountFailure = (failure) => {
+      send('error', createSseErrorPayload(
+        failure.code,
+        failure.message,
+        {
+          retryable: true,
+          details: amrAccountFailureDetails(failure),
+        },
+      ));
+    };
     const inactivityTimeoutMs = resolveChatRunInactivityTimeoutMs();
     const artifactQuietPeriodMs = resolveChatRunArtifactQuietPeriodMs();
     const inactivityKillGraceMs = 3_000;
@@ -10859,6 +10916,27 @@ export async function startServer({
       ));
       return design.runs.finish(run, 'failed', 1, null);
     }
+    const agentSpawnEnv = spawnEnvForAgent(
+      def.id,
+      {
+        ...createAgentRuntimeEnv(process.env, daemonUrl, toolTokenGrant),
+        ...(def.env || {}),
+      },
+      configuredAgentEnv,
+    );
+    if (def.id === 'amr') {
+      const loginStatus = readVelaLoginStatus(agentSpawnEnv, configuredAgentEnv);
+      if (!loginStatus.loggedIn) {
+        revokeToolToken('child_exit');
+        unregisterChatAgentEventSink();
+        sendAmrAccountFailure({
+          code: 'AMR_AUTH_REQUIRED',
+          message: 'AMR sign-in is required. Sign in to AMR Cloud again, then retry this run.',
+          action: 'relogin',
+        });
+        return design.runs.finish(run, 'failed', 1, null);
+      }
+    }
     const odMediaEnv = {
       OD_BIN,
       OD_NODE_BIN,
@@ -10905,14 +10983,7 @@ export async function startServer({
           ? 'pipe'
           : 'ignore';
       const env = applyAgentLaunchEnv({
-        ...spawnEnvForAgent(
-          def.id,
-          {
-            ...createAgentRuntimeEnv(process.env, daemonUrl, toolTokenGrant),
-            ...(def.env || {}),
-          },
-          configuredAgentEnv,
-        ),
+        ...agentSpawnEnv,
         ...odMediaEnv,
         // OpenCode external-MCP injection (issue #2142). Layered AFTER
         // spawnEnvForAgent / odMediaEnv / configuredAgentEnv so the
@@ -11371,6 +11442,21 @@ export async function startServer({
         ...(def.id === 'amr' ? { modelUnavailableErrorCode: 'AMR_MODEL_UNAVAILABLE' } : {}),
         send: (event, data) => {
           noteAgentActivity();
+          if (def.id === 'amr' && event === 'error') {
+            const failure = classifyAmrAccountFailure(
+              [
+                typeof data?.message === 'string' ? data.message : '',
+                typeof data?.error?.message === 'string' ? data.error.message : '',
+                typeof data?.error?.code === 'string' ? data.error.code : '',
+                agentStdoutTail,
+                agentStderrTail,
+              ].join('\n'),
+            );
+            if (failure) {
+              sendAmrAccountFailure(failure);
+              return;
+            }
+          }
           send(event, data);
         },
         ...(acpStageTimeoutMs !== undefined ? { stageTimeoutMs: acpStageTimeoutMs } : {}),
@@ -11424,6 +11510,15 @@ export async function startServer({
         code !== 0 &&
         !run.cancelRequested
       ) {
+        if (def.id === 'amr') {
+          const amrFailure = classifyAmrAccountFailure(
+            `${agentStderrTail}\n${agentStdoutTail}`,
+          );
+          if (amrFailure) {
+            sendAmrAccountFailure(amrFailure);
+            return design.runs.finish(run, 'failed', code ?? 1, signal ?? null);
+          }
+        }
         const authFailure = classifyAgentAuthFailure(
           agentId,
           `${agentStderrTail}\n${agentStdoutTail}`,

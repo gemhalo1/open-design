@@ -225,6 +225,16 @@ function daemonSseErrorMessage(data: SseErrorPayload): string {
   return `${message}\n${detail}`;
 }
 
+function daemonSseError(data: SseErrorPayload): Error {
+  const error = new Error(daemonSseErrorMessage(data)) as Error & {
+    code?: string;
+    details?: unknown;
+  };
+  if (data.error?.code) error.code = data.error.code;
+  if (data.error?.details !== undefined) error.details = data.error.details;
+  return error;
+}
+
 export async function streamViaDaemon({
   agentId,
   history,
@@ -393,10 +403,10 @@ export interface VelaLoginStatus {
 }
 
 // AMR (vela) login surfaces three thin endpoints on the daemon:
-//   GET  /api/integrations/vela/status   — read ~/.vela/config.json projection
+//   GET  /api/integrations/vela/status   — read ~/.amr/config.json projection
 //   POST /api/integrations/vela/login    — spawn `vela login` (vela opens browser itself)
 //   POST /api/integrations/vela/login/cancel — terminate a still-pending login
-//   POST /api/integrations/vela/logout   — delete ~/.vela/config.json
+//   POST /api/integrations/vela/logout   — clear ~/.amr auth and Settings-backed AMR auth env
 // The Settings UI polls /status after kicking off /login to detect completion.
 export async function fetchVelaLoginStatus(): Promise<VelaLoginStatus | null> {
   try {
@@ -632,7 +642,7 @@ async function consumeDaemonRun({
           if (event.event === 'error') {
             onRunStatus?.('failed');
             const data = event.data as SseErrorPayload;
-            handlers.onError(new Error(daemonSseErrorMessage(data)));
+            handlers.onError(daemonSseError(data));
             return;
           }
 
