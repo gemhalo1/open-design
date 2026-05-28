@@ -159,6 +159,18 @@ describe('GET /api/projects/:id/raw/* range request route', () => {
 
     // Write a test video file into the daemon's projects root.
     // OD_DATA_DIR is set by tests/setup.ts so we can derive the path.
+    const createResp = await fetch(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: projectId,
+        name: 'Raw range test',
+        skillId: null,
+        designSystemId: null,
+      }),
+    });
+    expect(createResp.status).toBe(200);
+
     projectsRoot = path.join(process.env.OD_DATA_DIR!, 'projects');
     const dir = path.join(projectsRoot, projectId);
     await mkdir(dir, { recursive: true });

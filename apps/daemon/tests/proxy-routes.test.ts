@@ -17,6 +17,18 @@ describe('API proxy routes', () => {
     };
     baseUrl = started.url;
     server = started.server;
+
+    const createResp = await realFetch(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'test-project',
+        name: 'Proxy route test',
+        skillId: null,
+        designSystemId: null,
+      }),
+    });
+    expect(createResp.status).toBe(200);
   });
 
   afterEach(() => {

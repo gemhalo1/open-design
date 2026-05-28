@@ -1973,6 +1973,17 @@ async function ensureGhReady() {
 
 const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
 
+function renderPluginBriefTemplate(template, inputs = {}) {
+  return String(template || '').replace(/\{\{\s*([a-zA-Z_][\w-]*)\s*\}\}/g, (full, key) => {
+    if (Object.prototype.hasOwnProperty.call(inputs, key)) {
+      const value = inputs[key];
+      if (value === undefined || value === null || value === '') return full;
+      return String(value);
+    }
+    return full;
+  });
+}
+
 function reconcileAssistantMessageOnRunEnd(db, runs, run) {
   if (!run.assistantMessageId) return;
   void runs
