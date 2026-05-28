@@ -33,8 +33,8 @@ vi.mock('undici', async () => {
   }
 
   class MockSocks5ProxyAgent {
-    constructor(proxyUrl: string) {
-      socks5ProxyAgentConstructor(proxyUrl);
+    constructor(proxyUrl: string, options?: unknown) {
+      socks5ProxyAgentConstructor(proxyUrl, options);
     }
 
     dispatch(options: unknown, handler: unknown) {
@@ -103,7 +103,10 @@ describe('proxyDispatcherRequestInit', () => {
       });
 
       expect(requestInit.dispatcher).toBeTruthy();
-      expect(socks5ProxyAgentConstructor).toHaveBeenCalledWith('socks5://proxy.example.test:1080');
+      expect(socks5ProxyAgentConstructor).toHaveBeenCalledWith(
+        'socks5://proxy.example.test:1080',
+        {},
+      );
       expect(envHttpProxyAgentConstructor).not.toHaveBeenCalled();
       await expect(close()).resolves.toBeUndefined();
     } finally {
