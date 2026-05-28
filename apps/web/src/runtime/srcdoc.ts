@@ -1101,6 +1101,9 @@ function meaningfulDomFallbackTarget(el) {
   }
   var postTargetsPending = false;
   var postPreviewScrollPending = false;
+  var postActiveTargetPending = false;
+  var activeCommentElementId = null;
+  var activeCommentSelector = null;
   function previewScrollElement(){
     return document.querySelector('.design-canvas') || document.scrollingElement || document.documentElement;
   }
@@ -1126,6 +1129,34 @@ function meaningfulDomFallbackTarget(el) {
   }
   function requestPreviewScrollRestore(){
     window.parent.postMessage({ type: 'od:preview-scroll-request' }, '*');
+  }
+  function findCommentTargetByIdentity(elementId, selector){
+    var el = null;
+    if (selector) {
+      try { el = document.querySelector(String(selector)); } catch (_) { el = null; }
+    }
+    if (!el && elementId) {
+      try {
+        var id = String(elementId).replace(/"/g, '\\"');
+        el = document.querySelector('[data-od-id="' + id + '"], [data-screen-label="' + id + '"]');
+      } catch (_) { el = null; }
+    }
+    return el;
+  }
+  function postActiveCommentTarget(){
+    if (!active() || !activeCommentElementId) return;
+    var el = findCommentTargetByIdentity(activeCommentElementId, activeCommentSelector);
+    if (!el) return;
+    var payload = targetFrom(el, commentEnabled && mode === 'picker' && !inspectEnabled);
+    if (payload) window.parent.postMessage(Object.assign({}, payload, { type: 'od:comment-active-target-update' }), '*');
+  }
+  function schedulePostActiveCommentTarget(){
+    if (!active() || !activeCommentElementId || postActiveTargetPending) return;
+    postActiveTargetPending = true;
+    window.requestAnimationFrame(function(){
+      postActiveTargetPending = false;
+      postActiveCommentTarget();
+    });
   }
   function postTargets(){
     if (!active()) return;
@@ -1201,7 +1232,11 @@ function meaningfulDomFallbackTarget(el) {
       document.documentElement.toggleAttribute('data-od-comment-mode', commentEnabled);
       document.documentElement.setAttribute('data-od-comment-mode-kind', mode);
       if (active()) setTimeout(postTargets, 0);
-      else hoveredId = null;
+      else {
+        hoveredId = null;
+        activeCommentElementId = null;
+        activeCommentSelector = null;
+      }
       if (!commentEnabled || mode !== 'pod') {
         drawing = false;
         stroke = [];
@@ -1215,6 +1250,12 @@ function meaningfulDomFallbackTarget(el) {
       if (frame) frame.scrollTo(Number(data.frameLeft || 0), Number(data.frameTop || 0));
       if (el) el.scrollTo(Number(data.canvasLeft || 0), Number(data.canvasTop || 0));
       setTimeout(postPreviewScroll, 0);
+      return;
+    }
+    if (data.type === 'od:comment-active-target') {
+      activeCommentElementId = data.elementId ? String(data.elementId) : null;
+      activeCommentSelector = data.selector ? String(data.selector) : null;
+      schedulePostActiveCommentTarget();
       return;
     }
     if (data.type === 'od:inspect-mode') {
@@ -1303,7 +1344,11 @@ function meaningfulDomFallbackTarget(el) {
       var commentPickerClick = commentEnabled && mode === 'picker' && !inspectEnabled;
       var clickPoint = commentPickerClick ? { x: ev.clientX, y: ev.clientY } : null;
       var payload = targetFrom(result.target, commentPickerClick, result.clicked, clickPoint);
-      if (payload) window.parent.postMessage(payload, '*');
+      if (payload) {
+        activeCommentElementId = payload.elementId || activeCommentElementId;
+        activeCommentSelector = payload.selector || activeCommentSelector;
+        window.parent.postMessage(payload, '*');
+      }
       return;
     }
     // Free-pin fallback (comment mode only). Lets users drop a comment
@@ -1375,6 +1420,7 @@ function meaningfulDomFallbackTarget(el) {
   document.addEventListener('pointercancel', finishStroke, true);
   window.addEventListener('resize', schedulePostTargets);
   document.addEventListener('scroll', function(){
+    schedulePostActiveCommentTarget();
     schedulePostTargets();
     schedulePostPreviewScroll();
   }, true);
@@ -1499,6 +1545,8 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
       var w = Math.max(1, window.innerWidth);
       return Math.max(0, Math.min(list.length - 1, Math.round(scroller().scrollLeft / w)));
     }
+    var byTransform = activeIndexFromTransform(list);
+    if (byTransform >= 0) return byTransform;
     var byClass = findActiveByClass(list);
     if (byClass >= 0) return byClass;
     var byVis = findActiveByVisibility(list);
@@ -1533,6 +1581,53 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
       if (list[i].hasAttribute('hidden')) return true;
     }
     return false;
+  }
+  function transformTrack(list){
+    if (!list || !list.length) return null;
+    var first = list[0];
+    var node = first && first.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+      try {
+        var directSlides = 0;
+        for (var i=0; i<node.children.length; i++) {
+          if (node.children[i].classList && node.children[i].classList.contains('slide')) directSlides += 1;
+        }
+        var style = window.getComputedStyle(node);
+        if (
+          directSlides >= list.length &&
+          (
+            node.style.transform ||
+            style.transform !== 'none' ||
+            /\\b(?:flex|grid)\\b/i.test(style.display)
+          )
+        ) {
+          return node;
+        }
+      } catch (_) {}
+      node = node.parentElement;
+    }
+    return null;
+  }
+  function activeIndexFromTransform(list){
+    var track = transformTrack(list);
+    if (!track) return -1;
+    var raw = track.style.transform || '';
+    var match = raw.match(/translateX\\(\\s*(-?[0-9.]+)\\s*(vw|%)\\s*\\)/i);
+    if (!match) return -1;
+    var value = parseFloat(match[1]);
+    if (!Number.isFinite(value)) return -1;
+    return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / 100)));
+  }
+  function transformGo(i){
+    var list = slides();
+    var track = transformTrack(list);
+    if (!track) return false;
+    var target = Math.max(0, Math.min(list.length - 1, i));
+    var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
+    track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+    updateDeckChrome(target, list.length);
+    report();
+    return true;
   }
   function updateDeckChrome(i, count){
     var cur = document.getElementById('deck-cur');
@@ -1600,6 +1695,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
       return;
     }
     if (canSetActive(list) && setActive(target)) return;
+    if (transformGo(target)) return;
     if (action === 'next') dispatchKey('ArrowRight');
     else if (action === 'prev') dispatchKey('ArrowLeft');
     else if (action === 'first') dispatchKey('Home');
@@ -1612,6 +1708,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
     var target = Math.max(0, Math.min(list.length - 1, i));
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
+    if (transformGo(target)) return;
     var current = activeIndex(list);
     var diff = target - current;
     if (!diff) { report(); return; }

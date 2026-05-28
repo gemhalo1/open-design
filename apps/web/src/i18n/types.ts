@@ -1656,6 +1656,7 @@ export interface Dict {
   'chat.comments.sending': string;
   'chat.comments.edit': string;
   'chat.comments.select': string;
+  'chat.comments.selectAll': string;
   'chat.comments.deselect': string;
   'chat.comments.nSelected': string;
   'chat.comments.pin': string;
@@ -1907,6 +1908,10 @@ export interface Dict {
   'fileViewer.comment': string;
   'fileViewer.edit': string;
   'fileViewer.draw': string;
+  'fileViewer.mark': string;
+  'fileViewer.markTool': string;
+  'fileViewer.boxSelect': string;
+  'fileViewer.screenshot': string;
   'manualEdit.layers': string;
   'manualEdit.editableCount': string;
   'manualEdit.hiddenBadge': string;
