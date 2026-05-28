@@ -1,10 +1,11 @@
 # `mocks/` — replay-based mock CLIs for OD's supported agents
 
 A drop-in replacement for the real agent CLIs (`claude`, `opencode`,
-`codex`, `gemini`, `cursor-agent`, `deepseek`, `qwen`, `grok`, and the
-ACP family: `devin` / `hermes` / `kilo` / `kimi` / `kiro` / `vibe`)
-that replays pre-recorded sessions in each CLI's native protocol —
-stdout streaming for most, JSON-RPC over stdio for ACP. **Zero LLM tokens.**
+`codex`, `gemini`, `cursor-agent`, `deepseek`, `qwen`, `grok`, the
+ACP family `devin` / `hermes` / `kilo` / `kimi` / `kiro` / `vibe`, and
+the AMR `vela` CLI) that replays pre-recorded sessions in each CLI's
+native protocol — stdout streaming for most, JSON-RPC over stdio for
+ACP and AMR. **Zero LLM tokens.**
 
 Used by:
 
@@ -62,6 +63,7 @@ verified line-by-line against the parsers in `apps/daemon/src/`:
 | `cursor-agent`    | `json-event-stream` (cursor-agent kind) | `json-event-stream.ts:handleCursorEvent`     |
 | `deepseek` `qwen` `grok` | `plain`                          | `server.ts` (raw stdout = final assistant text) |
 | `devin` `hermes` `kilo` `kimi` `kiro` `vibe` | `acp-json-rpc` | `acp.ts:attachAcpSession`                       |
+| `vela` (AMR) | `acp-json-rpc` + `login` / `models` subcommands | `runtimes/defs/amr.ts` + `apps/daemon/tests/fixtures/fake-vela.mjs` (sibling stub) |
 
 > **Note on `gemini` and `cursor-agent`**: OD's parsers for these two
 > agents do NOT recognize tool-call events — only init / assistant text /
@@ -78,6 +80,27 @@ verified line-by-line against the parsers in `apps/daemon/src/`:
 > then responds to the prompt request with usage stats. Tool calls
 > aren't part of the ACP protocol on this path (tools surface via MCP or
 > other side channels), so they're dropped from playback.
+
+> **Note on `vela` (AMR)**: vela is the bin OD's AMR runtime spawns. It
+> extends the generic ACP shape with `agentCapabilities` + `models`
+> blocks in `initialize` / `session/new`, plus a **strict set_model gate**
+> — `session/prompt` is rejected with -32602 until `session/set_model`
+> (or `session/set_config_option`) has been called for the current
+> sessionId, mirroring real vela 0.0.1 contract.
+>
+> vela also has two non-ACP subcommands:
+>
+> - `vela login` → writes `~/.amr/config.json` with a fake profile so
+>   OD's daemon login route + `AmrLoginPill` poller see the same on-disk
+>   projection production produces.
+> - `vela models` → prints the production-shaped `public_model_*    vela`
+>   catalog.
+>
+> Error injection envs (kept in sync with
+> `apps/daemon/tests/fixtures/fake-vela.mjs`):
+> `FAKE_VELA_SESSION_NEW_ERROR` / `FAKE_VELA_SET_MODEL_ERROR` /
+> `FAKE_VELA_PROMPT_ERROR` / `FAKE_VELA_LOGIN_FAIL` /
+> `FAKE_VELA_REQUIRE_SET_MODEL=0`.
 
 Each tool call from the recording is rendered with the original input
 arguments and tool output. The agents' assistant text is rendered as
@@ -273,12 +296,15 @@ mocks/
 │   ├── format-gemini.mjs         ← matches handleGeminiEvent
 │   ├── format-cursor-agent.mjs   ← matches handleCursorEvent
 │   ├── format-acp.mjs            ← JSON-RPC server matching attachAcpSession
+│   ├── format-vela.mjs           ← AMR vela: ACP + models block + set_model gate
+│   ├── vela-subcommands.mjs      ← `vela login` + `vela models` handlers
 │   └── format-plain.mjs          ← raw stdout (deepseek/qwen/grok)
 ├── bin/
 │   ├── opencode  claude  codex
 │   ├── gemini    cursor-agent
 │   ├── deepseek  qwen    grok
-│   └── devin hermes kilo kimi kiro vibe    ← 14 bash wrappers, PATH-overlay
+│   ├── devin hermes kilo kimi kiro vibe
+│   └── vela                       ← 15 bash wrappers, PATH-overlay
 └── recordings/
     ├── index.json             ← histograms + per-recording metadata
     └── *.jsonl                ← 179 anonymized Langfuse traces

@@ -23,18 +23,19 @@ import { renderAsGemini }      from './lib/format-gemini.mjs';
 import { renderAsCursorAgent } from './lib/format-cursor-agent.mjs';
 import { renderAsPlain }       from './lib/format-plain.mjs';
 import { runAcpServer }        from './lib/format-acp.mjs';
+import { runVelaAcpServer }    from './lib/format-vela.mjs';
+import { runVelaLogin, runVelaModels } from './lib/vela-subcommands.mjs';
 
 function parseArgs(argv) {
-  const opts = { as: null, noDelay: false, reportFile: null };
+  const opts = { as: null, noDelay: false, reportFile: null, positionals: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--as' || a === '--agent') { opts.as = argv[++i]; continue; }
     if (a === '--no-delay')              { opts.noDelay = true; continue; }
     if (a === '--report-file')           { opts.reportFile = argv[++i]; continue; }
-    // We deliberately ignore everything else — model flags, permission
-    // modes, output formats — the mock doesn't honor them and the
-    // wrapper scripts translate any that matter into env vars before
-    // exec'ing us.
+    if (a.startsWith('-')) continue;     // Unknown flag — silently skip (model/permission flags etc.)
+    // Anything left is a positional — used by vela subcommand dispatch.
+    opts.positionals.push(a);
   }
   if (process.env.SYNCLO_EXPLORE_MOCK_NO_DELAY === '1') opts.noDelay = true;
   return opts;
@@ -60,15 +61,27 @@ async function main() {
       'mock-agent: --as <agent> required\n' +
       '  supported: opencode | claude | codex | gemini | cursor-agent |\n' +
       '             deepseek | qwen | grok | plain |\n' +
-      '             devin | hermes | kilo | kimi | kiro | vibe   (ACP)\n',
+      '             devin | hermes | kilo | kimi | kiro | vibe   (ACP)\n' +
+      '             vela                                          (AMR — vela CLI)\n',
     );
     process.exit(2);
+  }
+
+  // `vela` dispatches by the first positional arg passed by OD (login /
+  // models / agent). Subcommands run BEFORE recording selection because
+  // they don't use trace data at all.
+  if (opts.as === 'vela') {
+    const cmd = (opts.positionals[0] || '').trim();
+    if (cmd === 'login')  return runVelaLogin();
+    if (cmd === 'models') return runVelaModels();
+    // Default: `agent run --runtime opencode` — fall through to the ACP
+    // server below with the vela-flavored protocol.
   }
 
   // ACP agents read JSON-RPC messages off stdin one line at a time, so the
   // bulk-prompt buffering logic below doesn't apply — pickRecording sees no
   // prompt for hash-mode (use SYNCLO_EXPLORE_MOCK_TRACE or _POOL instead).
-  const ACP_AGENTS = new Set(['devin', 'hermes', 'kilo', 'kimi', 'kiro', 'vibe']);
+  const ACP_AGENTS = new Set(['devin', 'hermes', 'kilo', 'kimi', 'kiro', 'vibe', 'vela']);
   const isAcp = ACP_AGENTS.has(opts.as);
   const prompt = isAcp ? '' : await readStdinIfPiped();
   const picked = await pickRecording({ prompt });
@@ -106,6 +119,9 @@ async function main() {
     case 'kimi':
     case 'kiro':
     case 'vibe':         await runAcpServer(events, renderOpts);        break;
+    // AMR (vela CLI) — ACP with vela-specific protocol extensions
+    // (agentCapabilities + models block + strict set_model gate).
+    case 'vela':         await runVelaAcpServer(events, renderOpts);    break;
     default:
       process.stderr.write(`mock-agent: unknown agent "${opts.as}"\n`);
       process.exit(2);
