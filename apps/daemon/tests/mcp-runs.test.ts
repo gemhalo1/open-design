@@ -403,6 +403,36 @@ describe('public MCP discovery + generation tools', () => {
     expect(parsed.agentMessage).toBeUndefined();
   });
 
+  // get_artifact has no run context; when project is omitted it resolves
+  // through /api/active, not through the run. If an MCP client follows a
+  // hint that says "project defaults to this run's project" after creating
+  // a fresh (non-active) project, it would silently pull the user's active
+  // project instead of the completed run's project. The success hint must
+  // tell callers to pass the projectId returned here explicitly.
+  it('get_run success hint directs callers to pass project explicitly, not rely on active context', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/runs/run-42')) {
+        return new Response(JSON.stringify({ id: 'run-42', status: 'succeeded', projectId: 'project-xyz' }), { status: 200 });
+      }
+      if (url.endsWith('/api/projects/project-xyz')) {
+        return new Response(JSON.stringify({ project: { id: 'project-xyz', metadata: { entryFile: 'index.html' } } }), { status: 200 });
+      }
+      if (url.endsWith('/api/runs/run-42/events')) {
+        return new Response('not found', { status: 404 });
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await handleMcpToolCall('http://127.0.0.1:17456', 'get_run', { runId: 'run-42' });
+    const parsed = JSON.parse(firstText(result));
+    expect(parsed.status).toBe('succeeded');
+    // Hint must embed the run's projectId so callers pass it explicitly.
+    expect(parsed.hint).toContain('project-xyz');
+    // Must not tell callers to omit project and rely on active-context fallback.
+    expect(parsed.hint).not.toMatch(/project defaults to this run/i);
+  });
+
   // #2: MCP-driven projects skip Open Design's interactive discovery
   // stage. The outer agent (Codex, Cursor, …) IS the user-facing surface;
   // having OD ask a discovery form back through MCP creates a confusing

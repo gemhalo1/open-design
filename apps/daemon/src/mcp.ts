@@ -1017,7 +1017,7 @@ async function getRun(baseUrl: string, args: McpArgs) {
   if (previewUrl) enriched.previewUrl = previewUrl;
   if (agentMessage) enriched.agentMessage = agentMessage;
   enriched.hint = previewUrl
-    ? 'Run finished. Open previewUrl in the user-facing browser now to show the rendered design — clients with a built-in browser pane (e.g. Codex CLI) should navigate to it directly; otherwise surface it as a clickable link the user can click. agentMessage carries the inner agent\'s explanation; show it alongside the preview. Call get_artifact (project defaults to this run\'s project) when you need the source files. eventsLogPath, when present, holds the full inner-agent event log for forensics.'
+    ? `Run finished. Open previewUrl in the user-facing browser now to show the rendered design — clients with a built-in browser pane (e.g. Codex CLI) should navigate to it directly; otherwise surface it as a clickable link the user can click. agentMessage carries the inner agent's explanation; show it alongside the preview. Call get_artifact({ project: "${status.projectId}" }) when you need the source files — always pass project explicitly; omitting it falls back to the active project, which may differ. eventsLogPath, when present, holds the full inner-agent event log for forensics.`
     : 'Run finished but produced no files. The inner agent\'s output is in agentMessage — relay it to the user verbatim. Most often this is a clarifying question (e.g. a <question-form>) you should answer by calling start_run again with a more specific prompt or a chosen plugin. eventsLogPath, when present, holds the full event log if you need to inspect what happened.';
   return ok(enriched);
 }
