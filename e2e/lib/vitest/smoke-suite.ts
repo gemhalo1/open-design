@@ -142,6 +142,7 @@ async function runToolsDevSuite(
         break;
       } catch (error) {
         if (attempt === 3 || !toolsDev.isToolsDevPortConflict(error)) throw error;
+        await toolsDev.stopToolsDevWeb(suite).catch(() => undefined);
         runtime = await toolsDev.allocateToolsDevRuntime();
       }
     }
