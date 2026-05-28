@@ -1615,6 +1615,34 @@ describe('POST /api/test/connection provider mode', () => {
     }
   });
 
+  it('reports malformed proxy env without leaking the connection-test timer', async () => {
+    const originalHttpProxy = process.env.HTTP_PROXY;
+    const originalHttpsProxy = process.env.HTTPS_PROXY;
+    const originalAllProxy = process.env.ALL_PROXY;
+    process.env.HTTP_PROXY = 'not a valid proxy url';
+    delete process.env.HTTPS_PROXY;
+    delete process.env.ALL_PROXY;
+
+    try {
+      await expect(testProviderConnection({
+        protocol: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: 'sk-good',
+        model: 'gpt-4o',
+      })).resolves.toMatchObject({
+        ok: false,
+        kind: 'unknown',
+      });
+    } finally {
+      if (originalHttpProxy === undefined) delete process.env.HTTP_PROXY;
+      else process.env.HTTP_PROXY = originalHttpProxy;
+      if (originalHttpsProxy === undefined) delete process.env.HTTPS_PROXY;
+      else process.env.HTTPS_PROXY = originalHttpsProxy;
+      if (originalAllProxy === undefined) delete process.env.ALL_PROXY;
+      else process.env.ALL_PROXY = originalAllProxy;
+    }
+  });
+
   it('keeps loopback provider probes off the proxy when user NO_PROXY omits localhost', async () => {
     const providerServer = http.createServer((req, res) => {
       if (req.url === '/v1/models') {

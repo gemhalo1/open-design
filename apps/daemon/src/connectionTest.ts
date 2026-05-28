@@ -812,9 +812,10 @@ export async function testProviderConnection(
     input.signal?.addEventListener('abort', abortFromParent, { once: true });
   }
   const timer = setTimeout(() => controller.abort(), providerTimeoutMs());
-  const proxyDispatcher = proxyDispatcherRequestInit();
+  let proxyDispatcher: ReturnType<typeof proxyDispatcherRequestInit> | null = null;
 
   try {
+    proxyDispatcher = proxyDispatcherRequestInit();
     const modelError = await validateLocalOpenAiModel(
       input,
       validated.parsed,
@@ -1022,7 +1023,7 @@ export async function testProviderConnection(
   } finally {
     clearTimeout(timer);
     input.signal?.removeEventListener('abort', abortFromParent);
-    await proxyDispatcher.close();
+    await proxyDispatcher?.close();
   }
 }
 

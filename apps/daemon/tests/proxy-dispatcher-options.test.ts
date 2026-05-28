@@ -1,3 +1,4 @@
+import * as platform from '@open-design/platform';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const envHttpProxyAgentConstructor = vi.fn();
@@ -25,25 +26,30 @@ describe('proxyDispatcherRequestInit', () => {
   });
 
   it('forwards agent timeout options into EnvHttpProxyAgent construction', async () => {
+    const proxySpy = vi.spyOn(platform, 'resolveSystemProxyEnv').mockReturnValue({});
     const { proxyDispatcherRequestInit } = await import('../src/connectionTest.js');
 
-    const { close, requestInit } = proxyDispatcherRequestInit(
-      {
-        HTTP_PROXY: 'http://proxy.example.test:8080',
-      },
-      {
-        headersTimeout: 10 * 60 * 1000,
-        bodyTimeout: 10 * 60 * 1000,
-      },
-    );
+    try {
+      const { close, requestInit } = proxyDispatcherRequestInit(
+        {
+          HTTP_PROXY: 'http://proxy.example.test:8080',
+        },
+        {
+          headersTimeout: 10 * 60 * 1000,
+          bodyTimeout: 10 * 60 * 1000,
+        },
+      );
 
-    expect(requestInit.dispatcher).toBeTruthy();
-    expect(envHttpProxyAgentConstructor).toHaveBeenCalledWith(expect.objectContaining({
-      bodyTimeout: 10 * 60 * 1000,
-      headersTimeout: 10 * 60 * 1000,
-      httpProxy: 'http://proxy.example.test:8080',
-      noProxy: 'localhost,127.0.0.1,[::1]',
-    }));
-    await expect(close()).resolves.toBeUndefined();
+      expect(requestInit.dispatcher).toBeTruthy();
+      expect(envHttpProxyAgentConstructor).toHaveBeenCalledWith(expect.objectContaining({
+        bodyTimeout: 10 * 60 * 1000,
+        headersTimeout: 10 * 60 * 1000,
+        httpProxy: 'http://proxy.example.test:8080',
+        noProxy: 'localhost,127.0.0.1,[::1]',
+      }));
+      await expect(close()).resolves.toBeUndefined();
+    } finally {
+      proxySpy.mockRestore();
+    }
   });
 });
