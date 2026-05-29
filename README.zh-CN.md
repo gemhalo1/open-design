@@ -1,29 +1,3 @@
-<p align="center">
-  <a href="https://open-design.ai/"><img src="docs/assets/logo.png" alt="Open Design" width="96" /></a>
-</p>
-
-<h1 align="center">Open Design</h1>
-
-<p align="center"><b>开源的 Claude Design 替代品。</b><br/>
-Agent 原生、本地优先的产品设计平台。macOS 与 Windows 原生桌面应用。</p>
-
-<p align="center">
-  <a href="https://open-design.ai/"><img alt="⬇ 下载 macOS 版" src="https://img.shields.io/badge/⬇%20下载-macOS-000?style=for-the-badge&logo=apple&logoColor=white&labelColor=000" /></a>
-  <a href="https://open-design.ai/"><img alt="⬇ 下载 Windows 版" src="https://img.shields.io/badge/⬇%20下载-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white&labelColor=0078D6" /></a>
-  <a href="https://github.com/nexu-io/open-design/releases"><img alt="⬇ 下载 Linux 版" src="https://img.shields.io/badge/⬇%20下载-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black&labelColor=FCC624" /></a>
-  <a href="https://x.com/nexudotio"><img alt="关注 X" src="https://img.shields.io/badge/关注-%40nexudotio-000?style=for-the-badge&logo=x&logoColor=white&labelColor=000" /></a>
-  <a href="https://discord.gg/qhbcCH8Am4"><img alt="加入 Discord" src="https://img.shields.io/badge/加入-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=5865F2" /></a>
-</p>
-
-<p align="center">
-  <a href="https://open-design.ai/"><b>官网</b></a> ·
-  <a href="https://github.com/nexu-io/open-design/releases"><b>所有版本</b></a> ·
-  <a href="QUICKSTART.md"><b>快速开始</b></a> ·
-  <a href="docs/architecture.md"><b>架构</b></a> ·
-  <a href="https://discord.gg/qhbcCH8Am4"><b>Discord</b></a> ·
-  <a href="https://x.com/nexudotio"><b>X / Twitter</b></a>
-</p>
-
 > [!IMPORTANT]
 > ### 🔥 Open Design 0.8.0 已发布。设计的旧世界到此为止，一起构建新世界。
 >
@@ -41,27 +15,6 @@ Agent 原生、本地优先的产品设计平台。macOS 与 Windows 原生桌�
 
 <p align="center">
   <img src="docs/assets/banner-zh.png" alt="Open Design — The open-source Claude Design alternative · 129 Design Systems · 116 Plugins · 16 Coding Agents · 14 Media Providers" width="100%" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/nexu-io/open-design/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/nexu-io/open-design?style=for-the-badge&labelColor=0d1117&color=ffd700&logo=github&logoColor=white" /></a>
-  <a href="https://github.com/nexu-io/open-design/network/members"><img alt="Forks" src="https://img.shields.io/github/forks/nexu-io/open-design?style=for-the-badge&labelColor=0d1117&color=2ecc71&logo=github&logoColor=white" /></a>
-  <a href="https://github.com/nexu-io/open-design/issues"><img alt="Issues" src="https://img.shields.io/github/issues/nexu-io/open-design?style=for-the-badge&labelColor=0d1117&color=ff6b6b&logo=github&logoColor=white" /></a>
-  <a href="https://github.com/nexu-io/open-design/pulls"><img alt="PRs" src="https://img.shields.io/github/issues-pr/nexu-io/open-design?style=for-the-badge&labelColor=0d1117&color=9b59b6&logo=github&logoColor=white" /></a>
-  <a href="https://github.com/nexu-io/open-design/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/nexu-io/open-design?style=for-the-badge&labelColor=0d1117&color=3498db&logo=github&logoColor=white" /></a>
-  <a href="https://github.com/nexu-io/open-design/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/nexu-io/open-design?style=for-the-badge&labelColor=0d1117&color=8e44ad&logo=git&logoColor=white" /></a>
-</p>
-
-<p align="center">
-  <a href="https://open-design.ai/"><img alt="下载" src="https://img.shields.io/badge/download-open--design.ai-ff6b35?style=flat-square" /></a>
-  <a href="https://github.com/nexu-io/open-design/releases"><img alt="最新版本" src="https://img.shields.io/github/v/release/nexu-io/open-design?style=flat-square&color=blueviolet&label=release&include_prereleases&display_name=tag" /></a>
-  <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" /></a>
-  <a href="#平台兼容性"><img alt="Agent" src="https://img.shields.io/badge/agents-16%20CLIs%20native-black?style=flat-square" /></a>
-  <a href="#设计系统"><img alt="DESIGN.md" src="https://img.shields.io/badge/DESIGN.md-129-orange?style=flat-square" /></a>
-  <a href="#技能"><img alt="技能" src="https://img.shields.io/badge/skills-100%2B-teal?style=flat-square" /></a>
-  <a href="#插件"><img alt="插件" src="https://img.shields.io/badge/plugins-400%2B-ff69b4?style=flat-square" /></a>
-  <a href="https://discord.gg/qhbcCH8Am4"><img alt="Discord" src="https://img.shields.io/discord/1394444088866635797?style=flat-square&logo=discord&logoColor=white&label=discord&color=5865F2" /></a>
-  <a href="https://x.com/nexudotio"><img alt="X" src="https://img.shields.io/badge/follow-%40nexudotio-1DA1F2?style=flat-square&logo=x&logoColor=white" /></a>
 </p>
 
 <p align="center"><a href="README.md"><b>English</b></a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <b>简体中文</b> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ko.md">한국어</a> · <a href="README.ja-JP.md">日本語</a> · <a href="README.ar.md">العربية</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.tr.md">Türkçe</a></p>
