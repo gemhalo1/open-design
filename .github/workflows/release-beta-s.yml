@@ -19,6 +19,16 @@ on:
         required: true
         type: string
         default: "0.8.1-beta.0"
+      update_metadata_url:
+        description: "Optional external updater metadata URL for full Windows smoke."
+        required: true
+        type: string
+        default: ""
+      update_target_version:
+        description: "Optional external updater target version expected by full Windows smoke."
+        required: true
+        type: string
+        default: ""
       smoke_mode:
         description: "Windows smoke coverage."
         required: true
@@ -27,7 +37,7 @@ on:
           - fast
           - core
           - full
-        default: fast
+        default: full
       target:
         description: "Windows build target."
         required: true
@@ -72,11 +82,15 @@ jobs:
 
       - name: Build beta candidate
         shell: cmd
+        env:
+          OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL: ${{ inputs.update_metadata_url }}
+          OD_PACKAGED_E2E_WIN_UPDATE_VERSION: ${{ inputs.update_target_version }}
         run: |
           @echo on
           powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github\scripts\release\build-beta.ps1 -Platform win -Lane self-hosted -Namespace release-beta-win -ReleaseVersion "${{ inputs.release_version }}" -SmokeMode "${{ inputs.smoke_mode }}" -Target "${{ inputs.target }}" -SignMode "${{ inputs.sign_mode }}"
 
       - name: Publish beta candidate to Nexu S3
+        id: publish
         if: ${{ inputs.publish }}
         shell: cmd
         env:
@@ -89,6 +103,55 @@ jobs:
         run: |
           @echo on
           powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github\scripts\release\publish-beta.ps1 -IndexPath "C:\.tmp\runner\od-beta\win\index\index.json" -ChannelPrefix beta -Platform win -Probe -Publish
+
+      - name: Probe published beta candidate public read
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        env:
+          PUBLISHED_METADATA_URL: ${{ steps.publish.outputs.metadata_url }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Get-RequiredWebResponse([string]$Url) {
+            if ([string]::IsNullOrWhiteSpace($Url)) {
+              throw "publish step did not produce a required public URL"
+            }
+            return Invoke-WebRequest -UseBasicParsing -Uri $Url -Method Get
+          }
+
+          function Assert-PublicRangeReadable([string]$Url) {
+            if ([string]::IsNullOrWhiteSpace($Url)) {
+              throw "missing artifact URL for public-read probe"
+            }
+            & curl.exe --ssl-no-revoke --fail --silent --show-error --location --range 0-0 --output NUL $Url
+            if ($LASTEXITCODE -ne 0) {
+              throw "public artifact probe failed for $Url"
+            }
+          }
+
+          $metadataResponse = Get-RequiredWebResponse $env:PUBLISHED_METADATA_URL
+          $metadata = $metadataResponse.Content | ConvertFrom-Json
+          $win = $metadata.platforms.win
+          if ($null -eq $win) {
+            throw "published metadata is missing platforms.win"
+          }
+
+          $smallUrls = @(
+            [string]$env:PUBLISHED_METADATA_URL,
+            [string]$metadata.r2.versionMetadataUrl,
+            [string]$win.feed.latestUrl,
+            [string]$win.r2.latestManifestUrl,
+            [string]$win.r2.versionManifestUrl,
+            [string]$win.artifacts.installer.sha256Url
+          ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+          foreach ($url in $smallUrls) {
+            $response = Get-RequiredWebResponse $url
+            Write-Host "public ok: $url ($($response.StatusCode))"
+          }
+
+          Assert-PublicRangeReadable ([string]$win.artifacts.installer.url)
+          Write-Host "public ok: $($win.artifacts.installer.url) (range GET)"
 
       - name: Publish local summary
         if: ${{ always() }}

@@ -31,7 +31,14 @@ const maxInstallDurationMs = Number.parseInt(process.env.OD_PACKAGED_E2E_WIN_MAX
 const smokeProfile = process.env.OD_PACKAGED_E2E_WIN_SMOKE_PROFILE ?? 'full';
 const verifyCoreOnly = smokeProfile === 'core';
 const verifyReinstallWhileRunning = process.env.OD_PACKAGED_E2E_WIN_VERIFY_REINSTALL !== '0';
-const verifyViolentUpdater = process.env.OD_PACKAGED_E2E_WIN_UPDATER_VIOLENT !== '0';
+const externalUpdateMetadataUrl = normalizeOptionalEnv(
+  process.env.OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL ?? process.env.OD_PACKAGED_E2E_UPDATE_METADATA_URL,
+);
+const externalUpdateVersion = normalizeOptionalEnv(
+  process.env.OD_PACKAGED_E2E_WIN_UPDATE_VERSION ?? process.env.OD_PACKAGED_E2E_UPDATE_VERSION,
+);
+const useExternalUpdateFeed = externalUpdateMetadataUrl != null;
+const verifyViolentUpdater = !useExternalUpdateFeed && process.env.OD_PACKAGED_E2E_WIN_UPDATER_VIOLENT !== '0';
 const verifyRealUpdateInstaller = process.env.OD_PACKAGED_E2E_WIN_REAL_UPDATE_INSTALL === '1';
 const releaseChannel = process.env.OD_PACKAGED_E2E_RELEASE_CHANNEL;
 const releaseVersion = process.env.OD_PACKAGED_E2E_RELEASE_VERSION;
@@ -356,6 +363,12 @@ type UpdaterStartEvalValue = {
 const shouldRunPackagedWinSmoke = process.platform === 'win32' && process.env.OD_PACKAGED_E2E_WIN === '1';
 const winDescribe = shouldRunPackagedWinSmoke ? describe : describe.skip;
 
+if (useExternalUpdateFeed && externalUpdateVersion == null) {
+  throw new Error(
+    'OD_PACKAGED_E2E_WIN_UPDATE_VERSION is required when OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL is set',
+  );
+}
+
 winDescribe('packaged windows runtime smoke', () => {
   let installed = false;
   let started = false;
@@ -414,14 +427,25 @@ winDescribe('packaged windows runtime smoke', () => {
       }
 
       if (!verifyCoreOnly) {
-        updaterFixture = verifyViolentUpdater
-          ? await startViolentUpdaterFixtureProcess(updateScenario, {
-              artifactBytes: violentArtifactBytes,
-              chunkDelayMs: violentChunkDelayMs,
-            })
-          : await startUpdaterFixtureProcess(updateScenario);
-        if (verifyViolentUpdater) applyManualPackagedUpdateEnv(process.env, updateScenario, updaterFixture.info.metadataUrl);
-        else applyPackagedUpdateEnv(process.env, updateScenario, updaterFixture.info.metadataUrl);
+        if (useExternalUpdateFeed) {
+          updaterFixture = {
+            async close() {},
+            info: {
+              metadataUrl: externalUpdateMetadataUrl,
+              version: externalUpdateVersion!,
+            },
+          };
+          applyManualPackagedUpdateEnv(process.env, updateScenario, updaterFixture.info.metadataUrl);
+        } else {
+          updaterFixture = verifyViolentUpdater
+            ? await startViolentUpdaterFixtureProcess(updateScenario, {
+                artifactBytes: violentArtifactBytes,
+                chunkDelayMs: violentChunkDelayMs,
+              })
+            : await startUpdaterFixtureProcess(updateScenario);
+          if (verifyViolentUpdater) applyManualPackagedUpdateEnv(process.env, updateScenario, updaterFixture.info.metadataUrl);
+          else applyPackagedUpdateEnv(process.env, updateScenario, updaterFixture.info.metadataUrl);
+        }
       }
       await seedPackagedOnboardingComplete(install.installDir);
 
@@ -1798,4 +1822,9 @@ function formatUnknown(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function normalizeOptionalEnv(value: string | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized == null || normalized.length === 0 ? null : normalized;
 }

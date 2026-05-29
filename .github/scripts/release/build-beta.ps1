@@ -19,6 +19,8 @@ $ErrorActionPreference = "Stop"
 $scriptStartedAt = Get-Date
 $script:timings = @()
 $script:failureMessage = $null
+$script:requestedWindowsSigningEnabled = $false
+$script:signingFallbackReason = $null
 
 if ($Platform -ne "win") {
   throw "build-beta.ps1 currently supports win only"
@@ -83,6 +85,59 @@ function Invoke-Node24([string[]]$Arguments, [string]$WorkingDirectory = $worksp
   } finally {
     Pop-Location
   }
+}
+
+function Invoke-ToolsPackWinBuild([string[]]$Arguments) {
+  $stderrPath = Join-Path $platformRoot "tools-pack-win-build.stderr.log"
+  Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+
+  $stdout = & $fnm exec --using=24 -- @Arguments 2> $stderrPath
+  $exitCode = $LASTEXITCODE
+  $stderr = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+
+  if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+    Write-Host ($stderr.TrimEnd())
+  }
+
+  return [ordered]@{
+    exitCode = $exitCode
+    stderr = $stderr
+    stdoutLines = @($stdout | ForEach-Object { $_.ToString() })
+  }
+}
+
+function Test-SigningBuildFailure([string]$Text) {
+  if ([string]::IsNullOrWhiteSpace($Text)) {
+    return $false
+  }
+
+  foreach ($pattern in @(
+    "SignTool Error:",
+    "signtool.exe sign",
+    "No certificates were found that met all the given criteria",
+    "OD_WIN_SIGN_CERT_SHA1"
+  )) {
+    if ($Text -match [regex]::Escape($pattern)) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Get-SigningFailureSummary([string]$Text) {
+  if ([string]::IsNullOrWhiteSpace($Text)) {
+    return "signed build failed without stderr output"
+  }
+
+  foreach ($line in ($Text -split "`r?`n")) {
+    $trimmed = $line.Trim()
+    if ($trimmed -match "SignTool Error:" -or $trimmed -match "No certificates were found") {
+      return $trimmed
+    }
+  }
+
+  return (($Text -split "`r?`n") | Where-Object { $_.Trim().Length -gt 0 } | Select-Object -First 1)
 }
 
 function Read-GitHubOutput([string]$Path) {
@@ -166,6 +221,9 @@ function Read-JsonFile([string]$Path) {
 }
 
 function Get-SmokeSummary {
+  if ([string]::IsNullOrWhiteSpace($env:OD_PACKAGED_E2E_REPORT_DIR)) {
+    return $null
+  }
   $summaryJsonPath = Join-Path $env:OD_PACKAGED_E2E_REPORT_DIR "summary.json"
   if (-not (Test-Path -LiteralPath $summaryJsonPath)) {
     return $null
@@ -239,6 +297,8 @@ function Write-IndexAndSummary([string]$Status) {
     platform = $Platform
     target = $Target
     signed = $script:windowsSigningEnabled
+    signingRequested = $script:requestedWindowsSigningEnabled
+    signingFallback = $script:signingFallbackReason
     releaseVersion = $ReleaseVersion
     status = $Status
     failure = $script:failureMessage
@@ -269,6 +329,7 @@ function Write-IndexAndSummary([string]$Status) {
     "- platform: ``$Platform``",
     "- target: ``$Target``",
     "- signed: ``$script:windowsSigningEnabled``",
+    "- signingRequested: ``$script:requestedWindowsSigningEnabled``",
     "- lane: ``$Lane``",
     "- namespace: ``$Namespace``",
     "- releaseVersion: ``$ReleaseVersion``",
@@ -280,6 +341,9 @@ function Write-IndexAndSummary([string]$Status) {
 
   if ($script:failureMessage -ne $null) {
     $summary += "- failure: ``$script:failureMessage``"
+  }
+  if ($script:signingFallbackReason -ne $null) {
+    $summary += "- signingFallback: ``$script:signingFallbackReason``"
   }
 
   if ($artifactSummary -ne $null) {
@@ -364,6 +428,8 @@ $metadataOutputPath = Join-Path $platformRoot "metadata.outputs"
 New-Item -ItemType Directory -Force -Path $platformRoot, $toolsPackDir, $cacheDir, $reportDir, $indexDir | Out-Null
 Remove-Item -LiteralPath $buildJsonPath -Force -ErrorAction SilentlyContinue
 $script:windowsSigningEnabled = $false
+$env:OD_PACKAGED_E2E_REPORT_DIR = Join-Path $reportDir "win"
+$env:OD_PACKAGED_E2E_TOOLS_PACK_DIR = $toolsPackDir
 
 try {
   Measure-Step "toolchain" {
@@ -380,6 +446,7 @@ try {
 
   Measure-Step "windows signing" {
     $script:windowsSigningEnabled = Resolve-WindowsSigningEnabled
+    $script:requestedWindowsSigningEnabled = $script:windowsSigningEnabled
     if ($script:windowsSigningEnabled) {
       $env:OD_WIN_SIGN_CERT_SHA1 = $winSigningThumbprint
       $env:OD_WIN_SIGNTOOL_PATH = $signtool
@@ -446,11 +513,28 @@ try {
   }
 
   Measure-Step "tools-pack win build" {
-    $buildOutput = & $fnm exec --using=24 -- @buildArgs
-    if ($LASTEXITCODE -ne 0) {
-      throw "tools-pack win build failed with exit code $LASTEXITCODE"
+    $buildResult = Invoke-ToolsPackWinBuild -Arguments $buildArgs
+    if ($buildResult.exitCode -ne 0) {
+      $buildFailureText = @($buildResult.stderr, ($buildResult.stdoutLines -join "`n")) -join "`n"
+      $canRetryUnsigned =
+        $script:windowsSigningEnabled -and
+        $SignMode -eq "auto" -and
+        (Test-SigningBuildFailure $buildFailureText)
+
+      if ($canRetryUnsigned) {
+        $fallbackSummary = Get-SigningFailureSummary $buildFailureText
+        $script:signingFallbackReason = "signed build failed under SignMode=auto; retried unsigned because signing is non-blocking ($fallbackSummary)"
+        Write-Warning $script:signingFallbackReason
+        $script:windowsSigningEnabled = $false
+        $unsignedBuildArgs = @($buildArgs | Where-Object { $_ -ne "--signed" })
+        $buildResult = Invoke-ToolsPackWinBuild -Arguments $unsignedBuildArgs
+      }
     }
-    $buildOutput | Set-Content -Path $buildJsonPath -Encoding utf8
+
+    if ($buildResult.exitCode -ne 0) {
+      throw "tools-pack win build failed with exit code $($buildResult.exitCode)"
+    }
+    $buildResult.stdoutLines | Set-Content -Path $buildJsonPath -Encoding utf8
   }
 
   $env:OD_PACKAGED_E2E_BUILD_JSON_PATH = $buildJsonPath
@@ -461,8 +545,6 @@ try {
   $env:OD_PACKAGED_E2E_NAMESPACE = $Namespace
   $env:OD_PACKAGED_E2E_RELEASE_CHANNEL = "beta"
   $env:OD_PACKAGED_E2E_RELEASE_VERSION = $ReleaseVersion
-  $env:OD_PACKAGED_E2E_REPORT_DIR = Join-Path $reportDir "win"
-  $env:OD_PACKAGED_E2E_TOOLS_PACK_DIR = $toolsPackDir
 
   Measure-Step "release smoke win" {
     Remove-Item -LiteralPath $env:OD_PACKAGED_E2E_REPORT_DIR -Recurse -Force -ErrorAction SilentlyContinue

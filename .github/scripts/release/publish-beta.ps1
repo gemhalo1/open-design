@@ -25,6 +25,26 @@ function Optional-Env([string]$Name, [string]$Fallback = "") {
   return $value
 }
 
+function Set-GitHubOutput([string]$Name, [string]$Value) {
+  if ([string]::IsNullOrWhiteSpace($Name) -or [string]::IsNullOrWhiteSpace($Value)) {
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
+    return
+  }
+  "$Name=$Value" | Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8
+}
+
+function Get-BetaVersionParts([string]$Version) {
+  if ($Version -notmatch '^(?<base>\d+\.\d+\.\d+)-beta\.(?<number>\d+)$') {
+    throw "release version must match x.y.z-beta.N; got $Version"
+  }
+  return [ordered]@{
+    baseVersion = $Matches.base
+    betaNumber = [int]$Matches.number
+  }
+}
+
 function Normalize-ObjectKey([string]$Value) {
   return ($Value -replace "\\", "/").Trim("/")
 }
@@ -107,6 +127,7 @@ New-Item -ItemType Directory -Force -Path $releaseDir, $manifestDir | Out-Null
 
 $signed = [bool]$index.signed
 $assetSuffix = if ($signed) { "" } else { ".unsigned" }
+$versionParts = Get-BetaVersionParts $releaseVersion
 $installerName = "open-design-$releaseVersion$assetSuffix-win-x64-setup.exe"
 $portableZipName = "open-design-$releaseVersion$assetSuffix-win-x64-portable.zip"
 
@@ -120,10 +141,14 @@ $endpoint = Require-Env "S3_ENDPOINT"
 $bucket = Require-Env "S3_BUCKET"
 $accessKey = Require-Env "S3_ACCESS_KEY_ID"
 $secretKey = Require-Env "S3_SECRET_ACCESS_KEY"
-$publicOrigin = Optional-Env "S3_PUBLIC_ORIGIN" "$($endpoint.TrimEnd('/'))/$bucket"
+$publicOrigin = (Optional-Env "S3_PUBLIC_ORIGIN" "$($endpoint.TrimEnd('/'))/$bucket").TrimEnd('/')
 $versionPrefix = "$channel/versions/$releaseVersion$assetSuffix"
 $latestPrefix = "$channel/latest"
-$installerUrl = "$($publicOrigin.TrimEnd('/'))/$versionPrefix/$installerName"
+$installerUrl = "$publicOrigin/$versionPrefix/$installerName"
+$latestMetadataUrl = "$publicOrigin/$latestPrefix/metadata.json"
+$versionMetadataUrl = "$publicOrigin/$versionPrefix/metadata.json"
+$latestManifestUrl = "$publicOrigin/$latestPrefix/platforms/win.json"
+$versionManifestUrl = "$publicOrigin/$versionPrefix/platforms/win.json"
 $installerBytes = [System.IO.File]::ReadAllBytes($installer.path)
 $installerSha512 = [System.Convert]::ToBase64String([System.Security.Cryptography.SHA512]::Create().ComputeHash($installerBytes))
 $releaseDate = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -147,8 +172,9 @@ $artifacts = [ordered]@{
     objectKey = "$versionPrefix/$installerName"
     sha256 = $installer.sha256
     sha256ObjectKey = "$versionPrefix/$installerName.sha256"
+    sha256Url = "$publicOrigin/$versionPrefix/$installerName.sha256"
     size = $installer.size
-    url = "$($publicOrigin.TrimEnd('/'))/$versionPrefix/$installerName"
+    url = "$publicOrigin/$versionPrefix/$installerName"
   }
 }
 if ($portableZip -ne $null) {
@@ -158,8 +184,9 @@ if ($portableZip -ne $null) {
     objectKey = "$versionPrefix/$portableZipName"
     sha256 = $portableZip.sha256
     sha256ObjectKey = "$versionPrefix/$portableZipName.sha256"
+    sha256Url = "$publicOrigin/$versionPrefix/$portableZipName.sha256"
     size = $portableZip.size
-    url = "$($publicOrigin.TrimEnd('/'))/$versionPrefix/$portableZipName"
+    url = "$publicOrigin/$versionPrefix/$portableZipName"
   }
 }
 
@@ -170,10 +197,10 @@ $manifest = [ordered]@{
   enabled = $true
   feed = [ordered]@{
     latestObjectKey = "$latestPrefix/latest.yml"
-    latestUrl = "$($publicOrigin.TrimEnd('/'))/$latestPrefix/latest.yml"
+    latestUrl = "$publicOrigin/$latestPrefix/latest.yml"
     name = "latest.yml"
     objectKey = "$versionPrefix/latest.yml"
-    url = "$($publicOrigin.TrimEnd('/'))/$versionPrefix/latest.yml"
+    url = "$publicOrigin/$versionPrefix/latest.yml"
   }
   generatedAt = [DateTime]::UtcNow.ToString("o")
   github = [ordered]@{
@@ -187,6 +214,13 @@ $manifest = [ordered]@{
   label = "Windows x64"
   platform = "win"
   platformKey = "win"
+  r2 = [ordered]@{
+    latestManifestUrl = $latestManifestUrl
+    latestPrefix = $latestPrefix
+    publicOrigin = $publicOrigin
+    versionManifestUrl = $versionManifestUrl
+    versionPrefix = $versionPrefix
+  }
   releaseVersion = $releaseVersion
   s3 = [ordered]@{
     latestManifestObjectKey = "$latestPrefix/platforms/win.json"
@@ -200,6 +234,44 @@ $manifest = [ordered]@{
 }
 $manifestPath = Join-Path $manifestDir "win.json"
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -Path $manifestPath -Encoding utf8
+
+$stateSource = if ([string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) {
+  "release-beta-s local publish"
+} else {
+  "release-beta-s workflow_dispatch input"
+}
+$metadata = [ordered]@{
+  assetVersionSuffix = $assetSuffix
+  baseVersion = $versionParts.baseVersion
+  betaNumber = $versionParts.betaNumber
+  betaVersion = $releaseVersion
+  channel = "beta"
+  expectedPlatforms = @("win")
+  failedPlatforms = @()
+  generatedAt = [DateTime]::UtcNow.ToString("o")
+  github = $manifest.github
+  platforms = [ordered]@{
+    win = $manifest
+  }
+  r2 = [ordered]@{
+    latestMetadataUrl = $latestMetadataUrl
+    latestMetadataUpdated = $true
+    latestPrefix = $latestPrefix
+    publicOrigin = $publicOrigin
+    report = $null
+    reportUrl = $null
+    reportZipUrl = $null
+    versionMetadataUrl = $versionMetadataUrl
+    versionPrefix = $versionPrefix
+  }
+  readyPlatforms = @("win")
+  releaseState = "complete"
+  signed = $signed
+  stateSource = $stateSource
+  version = 1
+}
+$metadataPath = Join-Path $manifestDir "metadata.json"
+$metadata | ConvertTo-Json -Depth 10 | Set-Content -Path $metadataPath -Encoding utf8
 
 $publishIndex = [ordered]@{
   artifacts = $artifacts
@@ -219,6 +291,8 @@ $uploads = @(
   @{ path = "$($installer.path).sha256"; key = "$versionPrefix/$installerName.sha256"; cache = "public, max-age=31536000, immutable" },
   @{ path = (Join-Path $releaseDir "latest.yml"); key = "$versionPrefix/latest.yml"; cache = "public, max-age=31536000, immutable" },
   @{ path = (Join-Path $releaseDir "latest.yml"); key = "$latestPrefix/latest.yml"; cache = "public, max-age=60, must-revalidate" },
+  @{ path = $metadataPath; key = "$versionPrefix/metadata.json"; cache = "public, max-age=31536000, immutable" },
+  @{ path = $metadataPath; key = "$latestPrefix/metadata.json"; cache = "public, max-age=60, must-revalidate" },
   @{ path = $manifestPath; key = "$versionPrefix/platforms/win.json"; cache = "public, max-age=31536000, immutable" },
   @{ path = $manifestPath; key = "$latestPrefix/platforms/win.json"; cache = "public, max-age=60, must-revalidate" },
   @{ path = $publishIndexPath; key = "$versionPrefix/index.json"; cache = "public, max-age=31536000, immutable" },
@@ -233,10 +307,15 @@ Write-Host "release-beta publish plan:"
 Write-Host "- channelPrefix: $channel"
 Write-Host "- releaseVersion: $releaseVersion"
 Write-Host "- signed: $signed"
+Write-Host "- latestMetadataUrl: $latestMetadataUrl"
 foreach ($upload in $uploads) {
   $size = (Get-Item -LiteralPath $upload.path).Length
   Write-Host "- $($upload.key) ($size bytes)"
 }
+
+Set-GitHubOutput "metadata_url" $latestMetadataUrl
+Set-GitHubOutput "version_metadata_url" $versionMetadataUrl
+Set-GitHubOutput "version_prefix" $versionPrefix
 
 if (-not $Publish) {
   Write-Host "dry-run only; pass -Publish to upload"
@@ -286,6 +365,7 @@ try {
       "- channelPrefix: ``$channel``",
       "- releaseVersion: ``$releaseVersion``",
       "- signed: ``$signed``",
+      "- metadataUrl: ``$latestMetadataUrl``",
       "- versionPrefix: ``$versionPrefix``",
       "- uploadedObjects: ``$($uploads.Count)``"
     ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
