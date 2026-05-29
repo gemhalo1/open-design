@@ -35,14 +35,14 @@ on:
         type: string
         default: ""
       smoke_mode:
-        description: "Windows smoke coverage."
+        description: "Windows smoke coverage. Default to core gate; use full for updater acceptance."
         required: true
         type: choice
         options:
           - fast
           - core
           - full
-        default: full
+        default: core
       target:
         description: "Windows build target."
         required: true

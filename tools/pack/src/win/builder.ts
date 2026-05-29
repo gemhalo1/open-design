@@ -546,7 +546,9 @@ export async function runElectronBuilder(
       if (!config.signed || signedUnpacked) return;
       const signingDetails: Record<string, unknown> = {};
       await runSegment("windows-sign:unpacked-exe", async () => {
-        Object.assign(signingDetails, await signAndVerifyWinFile(materialized.executablePath));
+        // The final installer still gets a full sign+verify pass; skip the
+        // redundant local verify on the intermediate unpacked exe.
+        Object.assign(signingDetails, await signAndVerifyWinFile(materialized.executablePath, { verify: false }));
       }, signingDetails);
       signedUnpacked = true;
     };

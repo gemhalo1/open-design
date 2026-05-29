@@ -44,6 +44,10 @@ export type WinSigningDetails = {
   verifyStdoutTail: string;
 };
 
+export type WinSigningOptions = {
+  verify?: boolean;
+};
+
 export function resolveWinSigningCacheKey(config: ToolPackConfig): WinSigningCacheKey {
   if (!config.signed) return { enabled: false };
   const signing = resolveWinSigningConfig();
@@ -70,9 +74,13 @@ export function resolveWinSigningConfig(): WinSigningConfig {
   };
 }
 
-export async function signAndVerifyWinFile(file: string): Promise<WinSigningDetails> {
+export async function signAndVerifyWinFile(
+  file: string,
+  options: WinSigningOptions = {},
+): Promise<WinSigningDetails> {
   const signing = resolveWinSigningConfig();
   const signtoolPath = await resolveSigntoolPath(signing.signtoolPath);
+  const verify = options.verify !== false;
   const args = [
     "sign",
     "/sha1",
@@ -86,8 +94,10 @@ export async function signAndVerifyWinFile(file: string): Promise<WinSigningDeta
     file,
   ];
   const result = await execFileAsync(signtoolPath, args, { windowsHide: true });
-  const verifyArgs = ["verify", "/pa", "/v", file];
-  const verify = await execFileAsync(signtoolPath, verifyArgs, { windowsHide: true });
+  const verifyArgs = verify ? ["verify", "/pa", "/v", file] : [];
+  const verifyResult = verify
+    ? await execFileAsync(signtoolPath, verifyArgs, { windowsHide: true })
+    : { stderr: "", stdout: "" };
   return {
     args,
     command: signtoolPath,
@@ -97,10 +107,10 @@ export async function signAndVerifyWinFile(file: string): Promise<WinSigningDeta
     stdoutBytes: result.stdout.length,
     stdoutTail: result.stdout.slice(-2000),
     verifyArgs,
-    verifyStderrBytes: verify.stderr.length,
-    verifyStderrTail: verify.stderr.slice(-2000),
-    verifyStdoutBytes: verify.stdout.length,
-    verifyStdoutTail: verify.stdout.slice(-2000),
+    verifyStderrBytes: verifyResult.stderr.length,
+    verifyStderrTail: verifyResult.stderr.slice(-2000),
+    verifyStdoutBytes: verifyResult.stdout.length,
+    verifyStdoutTail: verifyResult.stdout.slice(-2000),
   };
 }
 
