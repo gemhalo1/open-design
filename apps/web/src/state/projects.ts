@@ -8,6 +8,7 @@
 import type {
   AppliedPluginSnapshot,
   ApplyResult,
+  ChatSessionMode,
   CreateConversationRequest,
   CreatePluginShareProjectResponse,
   CreateTerminalRequest,
@@ -60,6 +61,7 @@ export async function createProject(input: {
   designSystemId: string | null;
   pendingPrompt?: string;
   metadata?: ProjectMetadata;
+  conversationMode?: ChatSessionMode;
   // Plan §3.A1 / spec §11.5 — POST /api/projects accepts a pluginId
   // (or pre-applied snapshot id) to resolve and pin a plugin to the new
   // project. Used by the PluginLoopHome flow on Home.
@@ -246,10 +248,13 @@ export async function createConversation(
   title?: string,
   // Side Chat: seed the new conversation with another conversation's context
   // by copying its messages. The daemon ignores a missing/foreign source id.
-  opts?: { seedFromConversationId?: string | null },
+  opts?: { seedFromConversationId?: string | null; sessionMode?: ChatSessionMode },
 ): Promise<Conversation | null> {
   try {
     const body: CreateConversationRequest = { title };
+    if (opts?.sessionMode) {
+      body.sessionMode = opts.sessionMode;
+    }
     if (opts?.seedFromConversationId) {
       body.seedFromConversationId = opts.seedFromConversationId;
     }

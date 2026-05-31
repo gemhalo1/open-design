@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import {
   defaultScenarioPluginIdForProjectMetadata,
+  type ChatSessionMode,
   type PluginManifest,
 } from '@open-design/contracts';
 import { createProjectArtifactFile } from './artifact-create.js';
@@ -119,6 +120,10 @@ function injectUrlPreviewScrollBridge(html: string): string {
     return `${html.slice(0, bodyCloseIndex)}${URL_PREVIEW_SCROLL_BRIDGE}${html.slice(bodyCloseIndex)}`;
   }
   return `${html}${URL_PREVIEW_SCROLL_BRIDGE}`;
+}
+
+function normalizeChatSessionMode(value: unknown): ChatSessionMode {
+  return value === 'chat' ? 'chat' : 'design';
 }
 
 export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDeps) {
@@ -322,6 +327,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         id: cid,
         projectId: id,
         title: null,
+        sessionMode: normalizeChatSessionMode(
+          req.body?.conversationMode ?? req.body?.sessionMode,
+        ),
         createdAt: now,
         updatedAt: now,
       });
@@ -599,10 +607,24 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     }
     const { title, seedFromConversationId } = req.body || {};
     const now = Date.now();
+    const hasExplicitSessionMode = Boolean(
+      req.body && Object.prototype.hasOwnProperty.call(req.body, 'sessionMode'),
+    );
+    const sourceConversation =
+      typeof seedFromConversationId === 'string' && seedFromConversationId
+        ? getConversation(db, seedFromConversationId)
+        : null;
+    const sessionMode =
+      hasExplicitSessionMode
+        ? normalizeChatSessionMode(req.body.sessionMode)
+        : sourceConversation && sourceConversation.projectId === req.params.id
+          ? normalizeChatSessionMode(sourceConversation.sessionMode)
+          : 'design';
     const conv = insertConversation(db, {
       id: randomId(),
       projectId: req.params.id,
       title: typeof title === 'string' ? title.trim() || null : null,
+      sessionMode,
       createdAt: now,
       updatedAt: now,
     });
@@ -610,7 +632,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     // messages into the fresh conversation. Be defensive — a missing or
     // cross-project source id silently yields an empty conversation.
     if (conv && typeof seedFromConversationId === 'string' && seedFromConversationId) {
-      const source = getConversation(db, seedFromConversationId);
+      const source = sourceConversation;
       if (source && source.projectId === req.params.id) {
         for (const m of listMessages(db, seedFromConversationId)) {
           // Fresh id per copied message; upsertMessage assigns the next

@@ -30,6 +30,7 @@ import { listPlugins } from "../state/projects";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ProjectFile, ProjectMetadata, SkillSummary } from "../types";
 import type {
   ContextItem,
+  ChatSessionMode,
   ConnectorDetail,
   InstalledPluginRecord,
   PluginSourceKind,
@@ -38,6 +39,7 @@ import type {
 } from '@open-design/contracts';
 import { buildVisualAnnotationAttachment, commentTargetDisplayName } from '../comments';
 import { Icon } from "./Icon";
+import { SessionModeToggle } from './SessionModeToggle';
 import { PluginDetailsModal } from "./PluginDetailsModal";
 import { PluginsSection, type PluginsSectionHandle } from "./PluginsSection";
 import { BUILT_IN_PETS, CUSTOM_PET_ID } from "./pet/pets";
@@ -96,6 +98,8 @@ interface Props {
   projectId: string | null;
   projectFiles: ProjectFile[];
   streaming: boolean;
+  sessionMode?: ChatSessionMode;
+  onSessionModeChange?: (mode: ChatSessionMode) => void;
   sendDisabled?: boolean;
   initialDraft?: string;
   draftStorageKey?: string;
@@ -195,6 +199,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       projectId,
       projectFiles,
       streaming,
+      sessionMode = 'design',
+      onSessionModeChange,
       sendDisabled = false,
       initialDraft,
       draftStorageKey,
@@ -1864,6 +1870,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 <Icon name="attach" size={15} />
               )}
             </button>
+            <SessionModeToggle
+              mode={sessionMode}
+              onChange={onSessionModeChange}
+            />
             {footerAccessory}
             <span className="composer-spacer" />
             {showStopButton ? (

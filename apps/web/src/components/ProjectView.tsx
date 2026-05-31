@@ -115,6 +115,7 @@ import type {
   Artifact,
   ChatAttachment,
   ChatCommentAttachment,
+  ChatSessionMode,
   ChatMessage,
   ChatMessageFeedbackChange,
   Conversation,
@@ -178,6 +179,7 @@ import {
 
 type ProjectChatSendMeta = ChatSendMeta & {
   retryOfAssistantId?: string;
+  sessionMode?: ChatSessionMode;
 };
 
 interface Props {
@@ -555,6 +557,11 @@ export function ProjectView({
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
   );
+  const activeConversation = useMemo(
+    () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
+    [conversations, activeConversationId],
+  );
+  const activeSessionMode = activeConversation?.sessionMode ?? 'design';
   const [messagesConversationId, setMessagesConversationId] = useState<string | null>(null);
   const [failedMessagesConversationId, setFailedMessagesConversationId] = useState<string | null>(null);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);

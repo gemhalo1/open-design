@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatRunStatus } from './chat.js';
+import type { ChatMessage, ChatRunStatus, ChatSessionMode } from './chat.js';
 import type {
   ProjectContextConnectorRef,
   ProjectContextMcpServerRef,
@@ -193,6 +193,7 @@ export interface Conversation {
   id: string;
   projectId: string;
   title: string | null;
+  sessionMode: ChatSessionMode;
   createdAt: number;
   updatedAt: number;
   latestRun?: {
@@ -212,6 +213,8 @@ export interface CreateProjectRequest {
   pluginId?: string;
   appliedPluginSnapshotId?: string;
   pluginInputs?: Record<string, unknown>;
+  /** Session mode for the default conversation seeded with the project. */
+  conversationMode?: ChatSessionMode;
   customInstructions?: string;
   /** Persisted to metadata.skipDiscoveryBrief for automated project runs. */
   skipDiscoveryBrief?: boolean;
@@ -287,6 +290,7 @@ export interface ConversationResponse {
 
 export interface CreateConversationRequest {
   title?: string | null;
+  sessionMode?: ChatSessionMode;
   /**
    * Seed the new conversation with another conversation's context by copying
    * its messages. The source must belong to the same project; a missing or
@@ -299,6 +303,7 @@ export interface CreateConversationRequest {
 
 export interface UpdateConversationRequest {
   title?: string | null;
+  sessionMode?: ChatSessionMode;
 }
 
 export interface MessagesResponse {
