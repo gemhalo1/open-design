@@ -62,6 +62,7 @@ describe('project tabs state persistence', () => {
         },
       ],
       hasSavedState: true,
+      updatedAt: expect.any(Number),
     });
   });
 
@@ -86,6 +87,7 @@ describe('project tabs state persistence', () => {
       tabs: [],
       active: '__design_files__',
       hasSavedState: true,
+      updatedAt: expect.any(Number),
     });
   });
 });
