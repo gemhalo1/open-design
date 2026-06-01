@@ -847,6 +847,15 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
               placeholder={placeholder}
               knownEntities={promptMentionEntities}
               onChange={(plainText) => {
+                // A programmatic seed (host setPrompt → draft prop →
+                // SeedingPlugin) echoes back through Lexical's onChange. The
+                // old <textarea> never fired onChange for a controlled-value
+                // change, so skip the echo here: otherwise seeding would run
+                // the host's handlePromptChange — flipping promptEditedByUser
+                // (spurious "replace prompt?" dialogs) and re-extracting plugin
+                // inputs from the seeded text. Real user edits always differ
+                // from the current prompt.
+                if (plainText === prompt) return;
                 onPromptChange(plainText);
                 if (selectedPromptExample && plainText !== selectedPromptExample.promptText) {
                   setSelectedPromptExample(null);

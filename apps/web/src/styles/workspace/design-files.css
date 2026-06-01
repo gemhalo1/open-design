@@ -20,6 +20,11 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Reserve the scrollbar gutter so the toolbar/list (which live inside this
+     scroll container) never shift horizontally when a classic scrollbar
+     appears or disappears — e.g. on Windows/Linux, or when content crosses the
+     scroll threshold. No-op under macOS overlay scrollbars. */
+  scrollbar-gutter: stable;
   padding: 12px 0 0;
   display: flex;
   flex-direction: column;

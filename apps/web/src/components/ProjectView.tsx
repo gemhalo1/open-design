@@ -38,6 +38,7 @@ import {
   fetchSkill,
   patchPreviewCommentStatus,
   projectRawUrl,
+  uploadProjectFiles,
   upsertPreviewComment,
   writeProjectTextFile,
 } from '../providers/registry';
@@ -3150,15 +3151,27 @@ export function ProjectView({
   ]);
 
   const handleSendBoardCommentAttachments = useCallback(
-    async (commentAttachments: ChatCommentAttachment[]) => {
-      if (commentAttachments.length === 0) return;
+    async (commentAttachments: ChatCommentAttachment[], images: File[] = []) => {
+      if (commentAttachments.length === 0 && images.length === 0) return;
       setWorkspaceFocused(false);
       setCommentInspectorActive(false);
-      for (const attachment of commentAttachments) {
-        await handleSend('', [], [attachment], { queueOnly: true });
+      // Upload any attached images once, then queue. Each comment becomes its
+      // own task (so multiple notes => multiple queued tasks); the images ride
+      // along the first task rather than being duplicated across every note.
+      let uploaded: ChatAttachment[] = [];
+      if (images.length > 0) {
+        const result = await uploadProjectFiles(project.id, images);
+        uploaded = result.uploaded;
+      }
+      if (commentAttachments.length === 0) {
+        if (uploaded.length > 0) await handleSend('', uploaded, [], { queueOnly: true });
+        return;
+      }
+      for (let i = 0; i < commentAttachments.length; i++) {
+        await handleSend('', i === 0 ? uploaded : [], [commentAttachments[i]!], { queueOnly: true });
       }
     },
-    [handleSend],
+    [handleSend, project.id],
   );
 
   const handleContinueRemainingTasks = useCallback(
