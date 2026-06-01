@@ -4597,6 +4597,7 @@ export function ProjectView({
           onRetry={handleRetry}
           onAuthorizeAndRetry={handleSwitchToAmrAndRetry}
           onLaunchTerminalAuth={handleLaunchAntigravityOauth}
+          conversationId={activeConversationId}
         />
       </div>
       {projectActionsToast ? (

@@ -266,6 +266,15 @@
   gap: 8px;
 }
 
+/* "Switch to AMR" promotion card under the failure actions. Constrain the
+   width so it reads as part of the centered status card. */
+.guidance {
+  margin-top: 12px;
+  width: 100%;
+  max-width: 360px;
+  text-align: start;
+}
+
 /* Primary contextual recovery (authorize / recharge / terminal). */
 .action {
   min-height: 34px;

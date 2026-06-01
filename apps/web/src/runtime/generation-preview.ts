@@ -32,6 +32,14 @@ export interface GenerationPreviewModel {
    * retry). Only set when the run failed.
    */
   failureUi: RunFailureUi | null;
+  /**
+   * Whether to surface the "switch to AMR" promotion card on the failed
+   * surface. True for the non-AMR auth/quota cases where switching to the
+   * hosted gateway is a real recovery path — but deliberately NOT for
+   * `UPSTREAM_UNAVAILABLE`, since the same outage can hit AMR too and the
+   * card would offer no real fix there.
+   */
+  promoteAmrSwitch: boolean;
   progressPercent: number;
   /**
    * Latest human-readable activity snippet pulled from the streamed
@@ -172,6 +180,10 @@ export function buildGenerationPreviewState(input: {
 
   const errorCode = failed ? latestErrorEventCode(events) : null;
   const failureUi = failed ? resolveRunFailureUi(errorCode, latestAssistant.agentId) : null;
+  // Promote AMR for auth/quota failures only; an upstream outage can hit the
+  // hosted gateway too, so switching would not be a real fix there.
+  const promoteAmrSwitch =
+    (failureUi?.showSwitchCard ?? false) && errorCode !== 'UPSTREAM_UNAVAILABLE';
 
   const generating = phase === 'generating';
   const todos = generating ? latestTodosFromEvents(events) : [];
@@ -193,6 +205,7 @@ export function buildGenerationPreviewState(input: {
     errorMessage: derived.errorMessage,
     errorCode,
     failureUi,
+    promoteAmrSwitch,
     progressPercent: derived.progressPercent,
     activityLabel: generating ? latestActivityLabel(events) : null,
     detailLabel: generating ? generationDetailLabel(events, todos) : null,

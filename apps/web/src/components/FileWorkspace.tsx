@@ -59,6 +59,7 @@ import {
   type SketchItem,
 } from './sketch-model';
 import { GenerationPreviewStage } from './GenerationPreviewStage';
+import { AmrGuidance } from './AmrGuidance';
 import { buildGenerationPreviewState } from '../runtime/generation-preview';
 import type { ChatMessage } from '../types';
 
@@ -121,6 +122,8 @@ interface Props {
   // sign-in) instead of a bare retry.
   onAuthorizeAndRetry?: (message: ChatMessage) => void;
   onLaunchTerminalAuth?: () => void;
+  // Conversation id for the AMR promotion-card telemetry payload.
+  conversationId?: string | null;
 }
 
 interface SketchState {
@@ -246,6 +249,7 @@ export function FileWorkspace({
   onRetry,
   onAuthorizeAndRetry,
   onLaunchTerminalAuth,
+  conversationId,
 }: Props) {
   const t = useT();
   const analytics = useAnalytics();
@@ -1021,6 +1025,22 @@ export function FileWorkspace({
                 : undefined
             }
             onLaunchTerminalAuth={onLaunchTerminalAuth}
+            amrGuidance={
+              generationPreview.promoteAmrSwitch
+                && generationPreview.errorCode
+                && generationPreview.retryTarget
+                && onAuthorizeAndRetry ? (
+                <AmrGuidance
+                  errorCode={generationPreview.errorCode}
+                  projectId={projectId}
+                  projectKind={projectKind}
+                  conversationId={conversationId ?? null}
+                  assistantMessageId={generationPreview.retryTarget.id}
+                  runId={generationPreview.retryTarget.runId ?? null}
+                  onActivate={() => onAuthorizeAndRetry(generationPreview.retryTarget!)}
+                />
+              ) : undefined
+            }
           />
         ) : activeTab === DESIGN_FILES_TAB ? (
           <DesignFilesPanel

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import { AMR_RECHARGE_URL } from '../runtime/amr-guidance';
@@ -12,6 +13,9 @@ type Props = {
   // Each is pre-bound to the failed run in the parent so the stage stays dumb.
   onAuthorizeAndRetry?: (() => void) | undefined;
   onLaunchTerminalAuth?: (() => void) | undefined;
+  // "Switch to AMR" promotion card, pre-built by the parent and rendered under
+  // the actions for the non-AMR auth/quota cases (see model.promoteAmrSwitch).
+  amrGuidance?: ReactNode;
 };
 
 // Map a structured run error code to a recognizable, localized reason headline
@@ -41,6 +45,7 @@ export function GenerationPreviewStage({
   onRetry,
   onAuthorizeAndRetry,
   onLaunchTerminalAuth,
+  amrGuidance,
 }: Props) {
   const t = useT();
 
@@ -194,6 +199,9 @@ export function GenerationPreviewStage({
             </button>
           ) : null}
         </div>
+      ) : null}
+      {model.phase === 'failed' && model.promoteAmrSwitch && amrGuidance ? (
+        <div className={styles.guidance}>{amrGuidance}</div>
       ) : null}
     </section>
   );

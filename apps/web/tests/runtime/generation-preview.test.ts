@@ -285,9 +285,11 @@ describe('generation preview helpers', () => {
     expect(state?.failed).toBe(true);
     expect(state?.errorMessage).toBe('Network error');
     expect(state?.retryTarget).toBe(assistant);
-    // No structured code on this run, so it stays a generic retry.
+    // No structured code on this run, so it stays a generic retry with no
+    // AMR promotion.
     expect(state?.errorCode).toBeNull();
     expect(state?.failureUi?.primaryAction).toBe('retry');
+    expect(state?.promoteAmrSwitch).toBe(false);
   });
 
   it('classifies a rate-limited failure from the error event code', () => {
@@ -314,6 +316,33 @@ describe('generation preview helpers', () => {
     // Non-AMR agent + a model/quota code keeps a plain retry but promotes AMR.
     expect(state?.failureUi?.primaryAction).toBe('retry');
     expect(state?.failureUi?.showSwitchCard).toBe(true);
+    expect(state?.promoteAmrSwitch).toBe(true);
+  });
+
+  it('does not promote AMR for an upstream outage (switching would not help)', () => {
+    const assistant: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      runStatus: 'failed',
+      startedAt: Date.now() - 8_000,
+      events: [
+        { kind: 'status', label: 'error', detail: 'Upstream down', code: 'UPSTREAM_UNAVAILABLE' },
+      ],
+    };
+    const state = buildGenerationPreviewState({
+      designSystemProject: false,
+      messages: [assistant],
+      streaming: false,
+      activeTab: null,
+      projectFiles: [],
+      liveArtifacts: [],
+    });
+    expect(state?.errorCode).toBe('UPSTREAM_UNAVAILABLE');
+    // resolveRunFailureUi still flags showSwitchCard, but the preview gate
+    // deliberately suppresses the promotion card for outages.
+    expect(state?.failureUi?.showSwitchCard).toBe(true);
+    expect(state?.promoteAmrSwitch).toBe(false);
   });
 
   it('mirrors the AMR authorize action for an auth-required failure', () => {
@@ -339,6 +368,9 @@ describe('generation preview helpers', () => {
     expect(state?.errorCode).toBe('AMR_AUTH_REQUIRED');
     expect(state?.failureUi?.primaryAction).toBe('authorize');
     expect(state?.failureUi?.messageKey).toBe('chat.amrError.authMessage');
+    // The AMR agent itself has the inline authorize action, so there is no
+    // "switch to AMR" promotion card.
+    expect(state?.promoteAmrSwitch).toBe(false);
   });
 
   it('leaves errorCode and failureUi null while a run is still generating', () => {
