@@ -449,7 +449,7 @@ od skill list --scenario marketing
 
 ## 插件
 
-**400+ 插件**位于 [`plugins/_official/`](plugins/_official/)。每个插件是一个包含 `plugin.json` + manifest + 打包资源的文件夹——直接跳转到分类浏览：
+**400+ 插件**位于 [`plugins/_official/`](plugins/_official/)。每个插件就是一个**可移植的 agent skill 文件夹**——一个 `SKILL.md`（任何支持 Agent Skills 的 Agent 都能读），外加一个可选的 `open-design.json` manifest（给 Open Design 提供 marketplace 元数据、输入参数、预览、流水线与权限声明）。直接跳转到分类浏览：
 
 | 分类 | 数量 | 内容 |
 |---|---|---|
@@ -469,17 +469,59 @@ od skill list --scenario marketing
 - 🛠️ **将现有代码库刷新到品牌规范**——将插件指向 `git` 仓库 + `DESIGN.md`，获得一个 PR。参见 [`od-code-migration`](plugins/_official/scenarios/od-code-migration/)。
 - 💾 **持久化自定义工作流**——你团队的可复用模板与发布的模板并列。
 
-### 创建你的插件
+### 使用插件
 
-按顺序阅读：
+插件在 **Web UI** 和 **`od` CLI** 两条路上完全对等——同一套 `/api/plugins` 端点，挑顺手的用。
 
-1. [`plugins/spec/SPEC.md`](plugins/spec/SPEC.md)——manifest schema、文件布局、运行时契约。
-2. [`plugins/spec/AGENT-DEVELOPMENT.md`](plugins/spec/AGENT-DEVELOPMENT.md)——用编码 Agent *开发*插件。
-3. [`plugins/spec/CONTRIBUTING.md`](plugins/spec/CONTRIBUTING.md)——新插件的 PR 标准。
-4. [`plugins/spec/PUBLISHING-REGISTRIES.md`](plugins/spec/PUBLISHING-REGISTRIES.md)——发布到官方 / 社区注册中心。
-5. [`plugins/spec/examples/`](plugins/spec/examples/)——可复制的最小可行模板。
+**在桌面 / Web 应用里**：打开 **Plugin** 页浏览 marketplace，点 **Install**；进入项目 Studio 后，插件以 composer chip 的形式出现，点击即应用（带上它声明的输入参数）。
 
-然后将文件夹放到 [`plugins/community/`](plugins/community/)，提交 PR。插件注册端点：`GET /api/plugins`。插件 README（目录概览）→ [`plugins/README.md`](plugins/README.md)（[简体中文](plugins/README.zh-CN.md)）。
+**在命令行里**（不打开 UI 也能跑，外部 Agent 走的就是这条）：
+
+```bash
+od plugin list                       # 列出已安装插件（--task-kind / --mode / --tag 过滤）
+od plugin search "landing page"      # 按关键词搜
+od plugin info od-default            # 看某个插件的元数据、输入、权限
+od plugin install od-figma-migration # 从注册中心装；也支持 ./本地文件夹 或 https://… 直链
+od plugin apply od-default --input brief="给我们的种子轮做一页 pitch"
+od plugin upgrade od-default         # 升级
+od plugin uninstall od-default       # 卸载
+```
+
+所有命令都支持 `--json`，方便用 `jq` / `xargs` 串进自动化脚本。
+
+### 构建插件
+
+一个插件**最小只需要一个 `SKILL.md`**；要上架 Open Design marketplace，再加一个 `open-design.json`：
+
+```
+my-plugin/
+├── SKILL.md            ← 必需：YAML frontmatter（name·description）+ 触发语 + 工作流（建议 < 500 行）
+├── open-design.json    ← 上架所需：marketplace 元数据 + 输入 + 流水线 + 权限
+├── README.md           ← 可选：用法、安装、注册中心链接
+├── preview/            ← 可选：index.html / poster.png（视觉类强烈建议）
+└── examples/           ← 可选：具体用例
+```
+
+`open-design.json` 的核心字段：`specVersion`（当前 `1.0.0`）、`name`（稳定 ID）、`version`（semver）、`compat.agentSkills[].path`（指向 `./SKILL.md`）、`od.kind`（`skill` / `scenario` / `atom` / `bundle`）、`od.taskKind`（`new-generation` / `figma-migration` / `code-migration` / `tune-collab`）、`od.mode`（输出表面，如 `prototype` / `deck` / `live-artifact` / `image` / `video` / `hyperframes` / `audio` / `design-system` / `scenario`）、`od.capabilities[]`（**按最小权限声明**，默认受限安装只给 `prompt:inject`）、`od.inputs[]`（应用时的参数）。
+
+脚手架 + 本地验证：
+
+```bash
+od plugin scaffold --id my-plugin --title "My Plugin"   # 生成骨架
+od plugin validate ./my-plugin                          # 校验 manifest / 文件布局
+pnpm guard && pnpm --filter @open-design/plugin-runtime typecheck
+```
+
+字段全集与运行时契约 → [`plugins/spec/SPEC.md`](plugins/spec/SPEC.md)；用编码 Agent 自动开发插件 → [`plugins/spec/AGENT-DEVELOPMENT.md`](plugins/spec/AGENT-DEVELOPMENT.md)；可复制的最小模板 → [`plugins/spec/examples/`](plugins/spec/examples/)。
+
+### 贡献插件
+
+1. 把插件文件夹放到 [`plugins/community/`](plugins/community/)（第三方插件），或——若想随 Open Design 一起内置——放到对应 tier 的 [`plugins/_official/`](plugins/_official/)。
+2. 跑通校验：`od plugin validate`、`pnpm guard`、`pnpm --filter @open-design/plugin-runtime typecheck`。
+3. 按 [`plugins/spec/CONTRIBUTING.md`](plugins/spec/CONTRIBUTING.md) 的模板填 PR（ID、版本、lane、mode、权限、触发示例，视觉类附截图 / 预览）。
+4. 想发布到外部注册中心（skills.sh / ClawHub / 独立 GitHub）→ [`plugins/spec/PUBLISHING-REGISTRIES.md`](plugins/spec/PUBLISHING-REGISTRIES.md)。
+
+插件注册端点：`GET /api/plugins`。目录概览 → [`plugins/README.md`](plugins/README.md)（[简体中文](plugins/README.zh-CN.md)）。
 
 ---
 
