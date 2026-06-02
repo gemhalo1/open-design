@@ -12200,10 +12200,16 @@ export async function startServer({
       'tool_result',
       'artifact',
     ]);
+    // First-token timing must reflect when the user actually starts seeing
+    // model output, so only token-producing events qualify. `tool_use` is
+    // deliberately excluded: a run that opens with a Read/Glob/MCP call would
+    // otherwise stamp `firstTokenAt` before any `text_delta` streamed,
+    // making `time_to_first_token_ms` / `spawn_to_first_token_ms` under-report
+    // TTFT for tool-first runs. `thinking_delta` stays in because it is the
+    // first visible model activity the user perceives.
     const FIRST_TOKEN_AGENT_EVENT_TYPES = new Set([
       'text_delta',
       'thinking_delta',
-      'tool_use',
     ]);
     const noteFirstTokenAt = (timestamp = Date.now()) => {
       if (run.analyticsTelemetry?.firstTokenAt) return;

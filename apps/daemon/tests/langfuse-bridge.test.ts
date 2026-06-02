@@ -338,6 +338,51 @@ describe('langfuse-bridge.reportRunCompletedFromDaemon', () => {
     expect(generation.modelParameters).toEqual({ reasoning: 'high' });
   });
 
+  it('labels turn.model with the agent-reported model on default-model runs', async () => {
+    await writeAppCfg({
+      installationId: 'install-uuid-2',
+      telemetry: { metrics: true, content: true, artifactManifest: false },
+    });
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(new Response('{}', { status: 207 }));
+    process.env.LANGFUSE_PUBLIC_KEY = 'pk';
+    process.env.LANGFUSE_SECRET_KEY = 'sk';
+    try {
+      const run = makeRun({
+        // Request did not pin a model (the `default` placeholder), so the
+        // resolved model must come from the agent's reported status event —
+        // matching the agent-reported fallback server.ts uses for PostHog.
+        model: 'default',
+      }) as any;
+      run.events.unshift({
+        id: 0,
+        event: 'agent',
+        timestamp: run.createdAt + 10,
+        data: { type: 'status', label: 'model', model: 'claude-opus-4-1' },
+      });
+      await reportRunCompletedFromDaemon({
+        db: makeDbWithListMessages({ 'conv-1': [] }),
+        dataDir,
+        run,
+        fetchImpl: fetchSpy as any,
+      });
+    } finally {
+      delete process.env.LANGFUSE_PUBLIC_KEY;
+      delete process.env.LANGFUSE_SECRET_KEY;
+    }
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    const batch = JSON.parse(init.body as string).batch as any[];
+    const trace = batch[0].body;
+    const generation = bodyOf(batch, 'generation-create', 'llm');
+
+    expect(trace.metadata.model).toBe('claude-opus-4-1');
+    expect(trace.tags).toEqual(
+      expect.arrayContaining(['model:claude-opus-4-1']),
+    );
+    expect(generation.model).toBe('claude-opus-4-1');
+  });
+
   it('omits artifacts when that gate is off', async () => {
     await writeAppCfg({
       installationId: 'install-1',

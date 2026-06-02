@@ -23,6 +23,8 @@ vi.mock('../src/redact.js', () => ({
 }));
 
 vi.mock('../src/run-analytics-observability.js', () => ({
+  hasExplicitRequestedModelForAnalytics: (value: unknown): value is string =>
+    typeof value === 'string' && value.trim().length > 0 && value.trim() !== 'default',
   scanRunEventsForUsageAnalytics: vi.fn(() => ({
     cache_token_source: 'unavailable',
     token_count_source: 'unknown',

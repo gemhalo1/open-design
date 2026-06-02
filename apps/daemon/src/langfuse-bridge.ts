@@ -28,9 +28,11 @@ import {
 } from './langfuse-trace.js';
 import { redactSecrets } from './redact.js';
 import {
+  hasExplicitRequestedModelForAnalytics,
   scanRunEventsForUsageAnalytics,
   summarizeRunTimingAnalytics,
   type RunTelemetryTimestamps,
+  type RunUsageAnalytics,
 } from './run-analytics-observability.js';
 import { collectStderrTailSummary } from './run-diagnostics.js';
 import { classifyRunFailure } from './run-failure-classification.js';
@@ -100,9 +102,23 @@ function getRuntimeInfo(appVersion?: AppVersionInfo | null): RuntimeInfo {
   return info;
 }
 
-function turnInfoFromRun(run: DaemonRunRecord): TurnInfo | undefined {
+function turnInfoFromRun(
+  run: DaemonRunRecord,
+  agentReportedModel: string | null,
+): TurnInfo | undefined {
   const turn: TurnInfo = {};
-  if (run.model) turn.model = run.model;
+  // `run.model` is the request-side selection and can be the `default`
+  // placeholder. When the request did not pin an explicit model, prefer the
+  // model the agent actually reported so Langfuse traces are labeled with the
+  // resolved model — matching the agent-reported fallback `server.ts` already
+  // applies to PostHog `run_finished` (and so the two sinks agree per run).
+  if (hasExplicitRequestedModelForAnalytics(run.model)) {
+    turn.model = run.model;
+  } else if (agentReportedModel && agentReportedModel.trim().length > 0) {
+    turn.model = agentReportedModel.trim();
+  } else if (run.model) {
+    turn.model = run.model;
+  }
   if (run.reasoning) turn.reasoning = run.reasoning;
   if (run.skillId) turn.skillId = run.skillId;
   if (run.designSystemId) turn.designSystemId = run.designSystemId;
@@ -128,16 +144,9 @@ function summarizeEvents(
   return { toolCalls, errors, durationMs };
 }
 
-function findUsage(
-  events: DaemonRunRecord['events'],
-  reqBodyModel: unknown,
-  userQueryTokens: number,
+function messageUsageFromAnalytics(
+  usage: RunUsageAnalytics,
 ): MessageSummary['usage'] | undefined {
-  const usage = scanRunEventsForUsageAnalytics(
-    events,
-    reqBodyModel,
-    userQueryTokens,
-  );
   if (usage.input_tokens === undefined && usage.output_tokens === undefined) {
     return undefined;
   }
@@ -342,7 +351,12 @@ export async function reportRunCompletedFromDaemon(
       typeof run.userPrompt === 'string' ? run.userPrompt : '';
     const userQueryTokens =
       telemetryPrompt.length > 0 ? Math.ceil(telemetryPrompt.length / 4) : 0;
-    const usage = findUsage(run.events, run.model, userQueryTokens);
+    const usageAnalytics = scanRunEventsForUsageAnalytics(
+      run.events,
+      run.model,
+      userQueryTokens,
+    );
+    const usage = messageUsageFromAnalytics(usageAnalytics);
     const error = pickRunError(run, status);
     const errorCode = deriveRunErrorCode({
       status,
@@ -374,7 +388,7 @@ export async function reportRunCompletedFromDaemon(
     const stderr = status === 'succeeded'
       ? undefined
       : collectStderrTailSummary(run.events);
-    const turn = turnInfoFromRun(run);
+    const turn = turnInfoFromRun(run, usageAnalytics.agent_reported_model);
     const runtime: RuntimeInfo = {
       ...getRuntimeInfo(opts.appVersion ?? null),
       ...(run.clientType ? { clientType: run.clientType } : {}),
