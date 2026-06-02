@@ -100,11 +100,13 @@ export function summarizeRunDiagnosticsForAnalytics(args: {
   signal?: string | null;
 }): RunDiagnosticsAnalytics {
   const events = args.events ?? [];
-  const stderrLineCount = events.reduce((total, event) => {
-    if (event.event !== 'stderr') return total;
+  let stderr = '';
+  for (const event of events) {
+    if (event.event !== 'stderr') continue;
     const chunk = readStderrChunk(event.data);
-    return total + (chunk ? countLines(chunk) : 0);
-  }, 0);
+    if (chunk) stderr += chunk;
+  }
+  const stderrLineCount = countLines(stderr);
   const hasErrorEvent = events.some((event) => event.event === 'error');
   const stderrPresent = stderrLineCount > 0;
 
