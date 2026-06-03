@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
+import { Button, VisuallyHidden } from '@open-design/components';
 import { validateBaseUrl } from '@open-design/contracts/api/connectionTest';
 import {
   agentIdToTracking,
@@ -116,6 +117,7 @@ import {
   blockingByokDraftFields,
   blockingByokDraftIssues,
   cleanByokApiKey,
+  resolveByokModelPreference,
   validateByokDraft,
   type ByokDraftField,
   type ByokDraftIssue,
@@ -713,10 +715,14 @@ export function agentRefreshOptionsForConfig(cfg: AppConfig): AgentRefreshOption
   };
 }
 
-function apiModelOptionLabel(model: ProviderModelOption): string {
-  return model.label && model.label !== model.id
+function apiModelOptionLabel(
+  model: ProviderModelOption,
+  sourceLabel?: string,
+): string {
+  const baseLabel = model.label && model.label !== model.id
     ? `${model.label} (${model.id})`
     : model.id;
+  return sourceLabel ? `${baseLabel} · ${sourceLabel}` : baseLabel;
 }
 
 function codexPathRepairState(
@@ -998,6 +1004,11 @@ export function SettingsDialog({
   const modelSelectRef = useRef<HTMLButtonElement | null>(null);
   const customModelInputRef = useRef<HTMLInputElement | null>(null);
   const focusByokRequiredFieldAfterProtocolSwitchRef = useRef(false);
+  // Tracks whether the current BYOK model value came from an explicit user
+  // pick (combobox selection or custom entry) rather than an auto-populated
+  // provider preset. The account-model auto-switch must never overwrite a
+  // deliberate choice, even when that choice equals the provider preset id.
+  const apiModelUserSelectedRef = useRef(false);
   const [apiModelCustomEditing, setApiModelCustomEditing] = useState(false);
   const [agentCustomModelIds, setAgentCustomModelIds] = useState<
     ReadonlySet<string>
@@ -1177,6 +1188,7 @@ export function SettingsDialog({
   };
   const setApiProtocol = (protocol: ApiProtocol) => {
     setApiModelCustomEditing(false);
+    apiModelUserSelectedRef.current = false;
     focusByokRequiredFieldAfterProtocolSwitchRef.current = true;
     setCfg((c) => switchApiProtocolConfig(c, protocol));
   };
@@ -1359,6 +1371,9 @@ export function SettingsDialog({
         return;
       }
       setProviderTestState({ status: 'done', result });
+      if (!result.ok && result.kind === 'not_found_model') {
+        focusByokRequiredField('model');
+      }
       const byokProviderId = byokProtocolToTracking(apiProtocol);
       if (byokProviderId) {
         trackSettingsByokTestResult(analytics.track, {
@@ -2097,10 +2112,43 @@ export function SettingsDialog({
     ),
     [fetchedApiModelOptions, suggestedApiModelIds],
   );
+  const fetchedApiModelIds = useMemo(
+    () => new Set(fetchedApiModelOptions.map((model) => model.id.trim())),
+    [fetchedApiModelOptions],
+  );
   const apiModelIds = useMemo(
     () => apiModelOptions.map((m) => m.id),
     [apiModelOptions],
   );
+  const providerDefaultModel =
+    selectedProvider?.model.trim() || suggestedApiModelIds[0] || '';
+  useEffect(() => {
+    if (cfg.mode !== 'api') return;
+    if (apiModelCustomEditing) return;
+    // Respect an explicit user pick — even when it equals the provider preset
+    // id, the user deliberately chose it and discovery must not rewrite it.
+    if (apiModelUserSelectedRef.current) return;
+    if (fetchedApiModelOptions.length === 0) return;
+    const currentModel = cfg.model.trim();
+    if (currentModel && fetchedApiModelIds.has(currentModel)) return;
+    if (currentModel && currentModel !== providerDefaultModel) return;
+
+    const preference = resolveByokModelPreference({
+      currentModel: '',
+      accountModels: fetchedApiModelOptions,
+      providerDefaultModel,
+    });
+    if (preference.source !== 'account') return;
+    if (preference.model === currentModel) return;
+    updateApiConfig({ model: preference.model });
+  }, [
+    apiModelCustomEditing,
+    cfg.mode,
+    cfg.model,
+    fetchedApiModelIds,
+    fetchedApiModelOptions,
+    providerDefaultModel,
+  ]);
   const apiModelCustomActive =
     shouldShowCustomModelInput(
       cfg.model,
@@ -3452,7 +3500,14 @@ export function SettingsDialog({
                 modelSelectRef={modelSelectRef}
                 models={apiModelOptions.map((m) => ({
                   id: m.id,
-                  label: apiModelOptionLabel(m),
+                  label: apiModelOptionLabel(
+                    m,
+                    loadedAccountModelCount > 0
+                      ? fetchedApiModelIds.has(m.id)
+                        ? t('settings.modelSourceAccount')
+                        : t('settings.modelSourceSuggested')
+                      : undefined,
+                  ),
                 }))}
                 modelsLoadedFromAccountMessage={
                   loadedAccountModelCount > 0
@@ -3468,6 +3523,7 @@ export function SettingsDialog({
                 azureModelFetchHint={t('settings.azureModelFetchHint')}
                 onCustomModelChange={(value) => updateApiConfig({ model: value })}
                 onCustomModelSelect={() => {
+                  apiModelUserSelectedRef.current = true;
                   setApiModelCustomEditing(true);
                   updateApiConfig({ model: '' });
                 }}
@@ -3484,6 +3540,7 @@ export function SettingsDialog({
                   }
                 }}
                 onModelSelect={(nextValue) => {
+                  apiModelUserSelectedRef.current = true;
                   setApiModelCustomEditing(false);
                   updateApiConfig({ model: nextValue });
                 }}
@@ -5318,9 +5375,9 @@ function MediaProvidersSection({
         // Off-screen announcement so assistive tech still hears the
         // success state even though the visible feedback collapses
         // into a transient button label change.
-        <span className="sr-only" role="status">
+        <VisuallyHidden role="status">
           {reloadNotice.message}
-        </span>
+        </VisuallyHidden>
       ) : null}
       {onReloadMediaProviders ? (
         <div className="media-provider-reload-row">
@@ -6618,7 +6675,7 @@ function NotificationsSection({
         ) : null}
         {notif.desktopEnabled && permission === 'granted' ? (
           <>
-            <button type="button" className="ghost" onClick={() => {
+            <Button variant="ghost" onClick={() => {
               trackSettingsNotificationsClick(analytics.track, {
                 page_name: 'settings',
                 area: 'notifications',
@@ -6627,7 +6684,7 @@ function NotificationsSection({
               void sendTestNotification();
             }}>
               {t('settings.notifyTest')}
-            </button>
+            </Button>
             {testStatus ? <p className="hint" role="status">{t(testStatus)}</p> : null}
           </>
         ) : null}

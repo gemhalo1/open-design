@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from 'react-dom';
+import { Button } from '@open-design/components';
 import { useI18n, useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import {
@@ -161,6 +162,10 @@ interface Props {
   // ChatPane). Pass `null` (or omit) to render the full rail.
   pinnedPluginId?: string | null;
   footerAccessory?: ReactNode;
+  // Design-system picker slot rendered at the top of the composer (above
+  // the textarea). The former standalone chrome header row was removed;
+  // ProjectView owns the project record so it renders the picker as a slot.
+  designSystemPicker?: ReactNode;
   // Project's current `designSystemId`. The mid-chat design-system picker
   // uses this to surface a "current" indicator and to no-op a redundant
   // switch. Optional so test/screenshot harnesses can omit it.
@@ -238,6 +243,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       onProjectSkillChange,
       pinnedPluginId = null,
       footerAccessory,
+      designSystemPicker,
       currentDesignSystemId = null,
       onActiveDesignSystemChange,
       onShowToast,
@@ -1707,6 +1713,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         onDrop={handleDrop}
       >
         <div className="composer-shell">
+          {designSystemPicker ? (
+            <div className="composer-design-system-row">
+              {designSystemPicker}
+            </div>
+          ) : null}
           {stagedSkills.length > 0 ? (
             <StagedSkills
               skills={stagedSkills}
@@ -2277,8 +2288,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 ) : null}
               </div>
             ) : null}
-            <button
-              className="icon-btn"
+            <Button
+              size="icon"
               data-testid="chat-attach"
               onClick={() => {
                 trackChatPanelClick(analytics.track, {
@@ -2297,7 +2308,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               ) : (
                 <Icon name="attach" size={15} />
               )}
-            </button>
+            </Button>
             {footerAccessory}
             <span className="composer-spacer" />
             {showStopButton ? (
