@@ -20,6 +20,7 @@ const execFileAsync = promisify(execFile);
 export const PRODUCTION_INSTALL_PNPM_BIN_ENV = "OD_TOOLS_PACK_PNPM_BIN";
 
 export const INTERNAL_PACKAGES = [
+  { directory: "packages/components", name: "@open-design/components" },
   { directory: "packages/contracts", name: "@open-design/contracts" },
   { directory: "packages/registry-protocol", name: "@open-design/registry-protocol" },
   { directory: "packages/sidecar-proto", name: "@open-design/sidecar-proto" },
@@ -215,6 +216,7 @@ export async function buildWorkspaceArtifacts(config: ToolPackConfig): Promise<v
   await runPnpm(config, ["--filter", "@open-design/agui-adapter", "build"]);
   await runPnpm(config, ["--filter", "@open-design/plugin-runtime", "build"]);
   await runPnpm(config, ["--filter", "@open-design/diagnostics", "build"]);
+  await runPnpm(config, ["--filter", "@open-design/components", "build"]);
   await runPnpm(config, ["--filter", "@open-design/daemon", "build"]);
   try {
     await runPnpm(config, ["--filter", "@open-design/web", "build"], { OD_WEB_OUTPUT_MODE: "server" });
