@@ -99,7 +99,7 @@ describe('prompt telemetry builder', () => {
     expect(first.sections[0]!.fingerprint).toBe(second.sections[0]!.fingerprint);
   });
 
-  it('normalizes arbitrary absolute project roots before fingerprinting', () => {
+  it('normalizes app project roots before fingerprinting', () => {
     const first = buildPromptStackTelemetry({
       composedPrompt: 'Your working directory: /app/project',
       sections: [
@@ -123,6 +123,29 @@ describe('prompt telemetry builder', () => {
     expect(second.sections[0]!.redactedContent).not.toContain('/app/other');
     expect(first.promptFingerprint).toBe(second.promptFingerprint);
     expect(first.sections[0]!.fingerprint).toBe(second.sections[0]!.fingerprint);
+  });
+
+  it('preserves semantic slash-prefixed prompt tokens', () => {
+    const telemetry = buildPromptStackTelemetry({
+      composedPrompt:
+        'POST /api/runs/:id/tool-result, match /foo/bar, cwd /app/project',
+      sections: [
+        {
+          kind: 'daemonSystemPrompt',
+          content:
+            'POST /api/runs/:id/tool-result, match /foo/bar, cwd /app/project',
+        },
+      ],
+    });
+
+    expect(telemetry.sections[0]!.redactedContent).toBe(
+      `POST /api/runs/:id/tool-result, match /foo/bar, cwd ${PROMPT_STACK_PATH_MARKER}`,
+    );
+    expect(telemetry.sections[0]!.redactedContent).toContain(
+      '/api/runs/:id/tool-result',
+    );
+    expect(telemetry.sections[0]!.redactedContent).toContain('/foo/bar');
+    expect(telemetry.sections[0]!.redactedContent).not.toContain('/app/project');
   });
 
   it('normalizes file URL local paths before fingerprinting', () => {
