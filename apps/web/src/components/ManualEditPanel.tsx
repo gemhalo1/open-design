@@ -94,6 +94,7 @@ export function ManualEditPanel({
   };
   const applyContent = () => {
     if (!targetForInspector) return;
+    if (!isContentEditableTarget(targetForInspector)) return;
     onError('');
     if (targetForInspector.kind === 'link') {
       onApplyPatch(
@@ -179,13 +180,15 @@ export function ManualEditPanel({
         <div className="manual-edit-scroll">
           {targetForInspector ? (
             <>
-              <ContentEditor
-                target={targetForInspector}
-                draft={draft}
-                busy={Boolean(busy)}
-                onDraftChange={onDraftChange}
-                onApply={applyContent}
-              />
+              {isContentEditableTarget(targetForInspector) ? (
+                <ContentEditor
+                  target={targetForInspector}
+                  draft={draft}
+                  busy={Boolean(busy)}
+                  onDraftChange={onDraftChange}
+                  onApply={applyContent}
+                />
+              ) : null}
               <StyleInspector
                 targetKind={targetForInspector.kind}
                 styles={draft.styles}
@@ -321,6 +324,10 @@ export function ManualEditPanel({
       </section>
     </aside>
   );
+}
+
+function isContentEditableTarget(target: ManualEditTarget): boolean {
+  return target.kind === 'text' || target.kind === 'link' || target.kind === 'image';
 }
 
 function ContentEditor({

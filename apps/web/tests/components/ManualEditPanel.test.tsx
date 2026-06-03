@@ -103,6 +103,31 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('.manual-edit-titlebar')?.textContent).not.toContain('div.container');
   });
 
+  it('does not show content editing controls for non-content targets', () => {
+    for (const selectedTarget of [
+      {
+        ...target,
+        id: 'layout-wrap',
+        kind: 'container' as const,
+        label: 'div.hero-wrap',
+        className: 'hero-wrap',
+        isLayoutContainer: true,
+      },
+      {
+        ...target,
+        id: 'color-token',
+        kind: 'token' as const,
+        label: 'Color token',
+      },
+    ]) {
+      renderPanel({ selectedTarget });
+
+      expect(host.querySelector('.manual-edit-content-editor')).toBeNull();
+      expect(host.textContent).not.toContain('Apply Content');
+      expect(host.querySelector('.cc-inspector')).not.toBeNull();
+    }
+  });
+
   it('shows a drag handle for floating edit panels', () => {
     renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, height: 380 } });
 
