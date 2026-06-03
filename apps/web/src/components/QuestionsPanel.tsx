@@ -92,8 +92,9 @@ export function QuestionsPanel({
   // Still producing: the turn is streaming, OR we're mid reveal animation.
   const building = generating || (!answered && !fullyRevealed);
 
-  // Every question is optional, so submission only needs the form present,
-  // active, fully revealed, and not blocked by a busy/streaming turn.
+  // Submission needs the form present, active, fully revealed, and not blocked
+  // by a busy/streaming turn. Required-field readiness is tracked separately by
+  // `ready` (from QuestionForm) and gates Continue via `canContinue`.
   const canSubmit = !!form && interactive && !building && !submitDisabled;
   const canContinue = canSubmit && ready;
   const canSkip = canSubmit;

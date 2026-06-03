@@ -749,6 +749,8 @@ export function ProjectView({
   }, [messages]);
   const lastAssistantContent =
     lastAssistantIndex >= 0 ? messages[lastAssistantIndex]?.content ?? '' : '';
+  const lastAssistantMessageId =
+    lastAssistantIndex >= 0 ? messages[lastAssistantIndex]?.id ?? null : null;
   const questionForm: QuestionForm | null = useMemo(
     () => findFirstQuestionForm(lastAssistantContent)?.form ?? null,
     [lastAssistantContent],
@@ -783,14 +785,20 @@ export function ProjectView({
   const hasQuestions =
     Boolean(questionForm || questionsGenerating) && questionFormSubmittedAnswers === undefined;
   // Stable identity for the current form occurrence, used to remember that its
-  // one-by-one reveal already played. Keyed on the conversation + template id
-  // (not the message index) so the brief streaming→persisted message swap —
-  // which unmounts and re-focuses the Questions tab — doesn't replay the
-  // animation, while a genuinely new form in another conversation still does.
+  // one-by-one reveal already played. Keyed on the conversation + the hosting
+  // assistant message id + template id (not the message index). The assistant
+  // message id is allocated once and kept in place across the streaming→
+  // persisted swap (same `assistantId` throughout), so it survives the brief
+  // unmount/re-focus of the Questions tab without replaying the animation —
+  // yet it differs for every distinct form occurrence, so a second discovery
+  // form later in the same conversation (which shares the `discovery` template
+  // id) gets its own key and still animates from the frame.
   const questionFormKey = useMemo(() => {
     const f = questionForm ?? questionFormPreview;
-    return activeConversationId && f ? `${activeConversationId}:${f.id}` : null;
-  }, [activeConversationId, questionForm, questionFormPreview]);
+    return activeConversationId && lastAssistantMessageId && f
+      ? `${activeConversationId}:${lastAssistantMessageId}:${f.id}`
+      : null;
+  }, [activeConversationId, lastAssistantMessageId, questionForm, questionFormPreview]);
 
   // Auto-switch the workspace to the Questions tab when a new discovery form
   // first appears, and let the chat banner re-focus it on click. The nonce

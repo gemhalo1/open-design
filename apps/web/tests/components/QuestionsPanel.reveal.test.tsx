@@ -134,6 +134,36 @@ describe('QuestionsPanel staggered reveal', () => {
     expect(fieldCount()).toBe(1);
   });
 
+  it('animates a second same-template form in the same conversation', () => {
+    vi.useFakeTimers();
+    const base = {
+      form,
+      interactive: true,
+      generating: false,
+      onSubmit: () => {},
+    } as const;
+
+    // First discovery form: conversation `conv-1`, assistant message `msg-a`.
+    // Both forms share the `discovery` template id, so the key must fold in the
+    // hosting message id to stay distinct across occurrences.
+    const first = render(<QuestionsPanel {...base} formKey="conv-1:msg-a:discovery" />);
+    revealAll();
+    expect(fieldCount()).toBe(4);
+    first.unmount();
+
+    // A second discovery form later in the SAME conversation lives in a new
+    // assistant message (`msg-b`), so it gets a distinct key and must animate
+    // again from the frame rather than mounting fully-revealed.
+    act(() => {
+      render(<QuestionsPanel {...base} formKey="conv-1:msg-b:discovery" />);
+    });
+    expect(fieldCount()).toBe(0);
+    act(() => {
+      vi.advanceTimersByTime(280);
+    });
+    expect(fieldCount()).toBe(1);
+  });
+
   it('shows an already-answered form in full immediately (no re-animation)', () => {
     vi.useFakeTimers();
     act(() => {
