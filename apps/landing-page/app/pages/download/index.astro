@@ -139,11 +139,20 @@ const jsonLd = [
       <p class="lead">{page.lead}</p>
 
       <div class="dl-hero-actions">
+        {/*
+         * Static fallback points at the neutral release page, not a specific
+         * asset: with JS disabled/blocked every platform (Windows, Linux, and
+         * Macs whose arch we can't sniff) should reach a usable page rather
+         * than be handed a macOS Apple Silicon DMG. The enhancer below swaps
+         * in the detected platform's direct installer once it runs; platforms
+         * with no single asset (Linux) intentionally keep this release-page href.
+         */}
         <a
           class="btn btn-primary"
-          href={m.macArm64Dmg?.url ?? release.releaseUrl}
+          href={release.releaseUrl}
           data-dl-auto
-          {...(m.macArm64Dmg?.url ? {} : { target: '_blank', rel: 'noreferrer noopener' })}
+          target="_blank"
+          rel="noreferrer noopener"
         >
           <span data-dl-auto-label>{page.autoCtaFallback}</span>
           <span class="dl-auto-os" data-dl-auto-os hidden></span>
@@ -170,7 +179,7 @@ const jsonLd = [
               <span class="dl-card-version">{release.versionLabel}</span>
               <span class="dl-rec" data-dl-rec hidden>{page.recommended}</span>
             </div>
-            {card.rows.length > 0 ? (
+            {card.rows.length > 0 && (
               <ul class="dl-rows">
                 {card.rows.map((row) => (
                   <li class="dl-row">
@@ -192,7 +201,15 @@ const jsonLd = [
                   </li>
                 ))}
               </ul>
-            ) : (
+            )}
+            {/*
+             * Keep the platform note visible even when there are rows — e.g.
+             * Linux ships an AppImage row but still needs to surface the
+             * Docker / Podman Compose path the page copy advertises. Without
+             * this the second Linux install path vanished once a real release
+             * had an AppImage asset.
+             */}
+            {card.note && (
               <p class="dl-note">
                 <a class="inline-link" href={release.releaseUrl} target="_blank" rel="noreferrer noopener">{card.note}</a>
               </p>
@@ -321,6 +338,29 @@ const jsonLd = [
     })();
   </script>
 </Layout>
+
+<!--
+  Tighten the shared sub-page rhythm for the download page only. The shared
+  .info-page scale (56px head, 64px between sections, 56px CTA) is tuned for
+  long-form info pages; the download page is a short, scannable matrix and
+  reads as too sparse at that scale. Scoped to [data-download-root] so other
+  info pages keep their spacing. is:global because these elements are rendered
+  by the layout/sub-pages.css, not this page's scoped component tree.
+-->
+<style is:global>
+  [data-download-root].info-page .catalog-head { margin-bottom: 32px; }
+  /*
+   * globals.css gives every <section> 130px top/bottom padding — right for the
+   * homepage's full-bleed bands, far too airy for this short download matrix.
+   * Neutralize it here and drive rhythm with a modest margin between sections.
+   */
+  [data-download-root].info-page .info-section { padding: 0; }
+  [data-download-root].info-page .info-section + .info-section { margin-top: 36px; }
+  [data-download-root].info-page .info-section h2 { margin-bottom: 12px; }
+  [data-download-root].info-page .info-cta { margin-top: 36px; padding-top: 28px; }
+  /* The requirements + all-releases sections are short; pull their bodies in. */
+  [data-download-root].info-page #requirements ul { margin-top: 4px; }
+</style>
 
 <style>
   .dl-hero-actions {
