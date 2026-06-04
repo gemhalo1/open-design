@@ -1884,14 +1884,6 @@
   padding: 10px 12px 10px 0;
   vertical-align: middle;
   overflow: hidden;
-  /* Force ellipsis truncation in auto-layout tables (#3260). Without
-     `max-width: 0` and `min-width: 0`, a long `f.name` would expand
-     this td and push the kind / mtime / menu cells off-screen — even
-     though `.df-row-name` already has `text-overflow: ellipsis`. The
-     `:not(.no-preview)` overrides in `routines.css` already pin the
-     row's children to `width: 100%` when a preview pane is open; this
-     baseline rule covers the no-preview state the issue reports. */
-  max-width: 0;
 }
 .df-cell-openable {
   cursor: pointer;
