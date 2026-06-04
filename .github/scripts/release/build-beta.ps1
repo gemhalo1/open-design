@@ -307,9 +307,9 @@ function Test-WorkspaceInstallReusable {
   try {
     Invoke-Node24 -Arguments @(
       "node",
-      ".\scripts\tool-build-metadata.mjs",
+      "--experimental-strip-types",
+      ".\packages\metatool\src\cli.ts",
       "check",
-      "tools-pack",
       ".\tools\pack"
     )
     Invoke-Node24 -Arguments @("pnpm.cmd", "exec", "tsx", "--version")
@@ -732,7 +732,12 @@ try {
 
   $localUpdateArtifactPath = $null
   $localUpdateVersion = $null
-  if ($SmokeMode -eq "full") {
+  $externalUpdateMetadataUrl = [string]$env:OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL
+  $externalUpdateArtifactPath = [string]$env:OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH
+  $externalUpdateVersion = [string]$env:OD_PACKAGED_E2E_WIN_UPDATE_VERSION
+  $hasExternalUpdateMetadata = -not [string]::IsNullOrWhiteSpace($externalUpdateMetadataUrl)
+  $hasExternalUpdateArtifactPair = -not [string]::IsNullOrWhiteSpace($externalUpdateArtifactPath) -and -not [string]::IsNullOrWhiteSpace($externalUpdateVersion)
+  if ($SmokeMode -eq "full" -and -not $hasExternalUpdateMetadata -and -not $hasExternalUpdateArtifactPair) {
     $updateFixtureVersion = Get-NextBetaFixtureVersion $ReleaseVersion
     $updateFixtureBuildJsonPath = Join-Path $platformRoot "windows-tools-pack-update-build.json"
     Remove-Item -LiteralPath $updateFixtureBuildJsonPath -Force -ErrorAction SilentlyContinue
@@ -773,16 +778,20 @@ try {
   $env:OD_PACKAGED_E2E_RELEASE_CHANNEL = "beta"
   $env:OD_PACKAGED_E2E_RELEASE_VERSION = $ReleaseVersion
   if ([string]::IsNullOrWhiteSpace($localUpdateArtifactPath)) {
-    Remove-Item Env:OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH -ErrorAction SilentlyContinue
+    if (-not $hasExternalUpdateArtifactPair) {
+      Remove-Item Env:OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH -ErrorAction SilentlyContinue
+    }
   } else {
     $env:OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH = $localUpdateArtifactPath
   }
   if ([string]::IsNullOrWhiteSpace($localUpdateVersion)) {
-    Remove-Item Env:OD_PACKAGED_E2E_WIN_UPDATE_VERSION -ErrorAction SilentlyContinue
+    if (-not $hasExternalUpdateArtifactPair -and -not $hasExternalUpdateMetadata) {
+      Remove-Item Env:OD_PACKAGED_E2E_WIN_UPDATE_VERSION -ErrorAction SilentlyContinue
+    }
   } else {
     $env:OD_PACKAGED_E2E_WIN_UPDATE_VERSION = $localUpdateVersion
   }
-  if ($SmokeMode -eq "full") {
+  if ($SmokeMode -eq "full" -and -not [string]::IsNullOrWhiteSpace($localUpdateArtifactPath)) {
     $env:OD_PACKAGED_E2E_WIN_UPDATE_BUILD_JSON_PATH = (Join-Path $platformRoot "windows-tools-pack-update-build.json")
   } else {
     Remove-Item Env:OD_PACKAGED_E2E_WIN_UPDATE_BUILD_JSON_PATH -ErrorAction SilentlyContinue

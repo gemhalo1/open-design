@@ -9,6 +9,7 @@ const workspaceRoot = dirname(e2eRoot);
 const ciWorkflowPath = join(workspaceRoot, ".github", "workflows", "ci.yml");
 const releaseBetaWorkflowPath = join(workspaceRoot, ".github", "workflows", "release-beta.yml");
 const releaseBetaSelfHostedWorkflowPath = join(workspaceRoot, ".github", "workflows", "release-beta-s.yml");
+const releaseBetaSelfHostedWinScriptPath = join(workspaceRoot, ".github", "scripts", "release", "build-beta.ps1");
 const releasePreviewWorkflowPath = join(workspaceRoot, ".github", "workflows", "release-preview.yml");
 const releaseStableWorkflowPath = join(workspaceRoot, ".github", "workflows", "release-stable.yml");
 const releaseStableScriptPath = join(workspaceRoot, "scripts", "release-stable.ts");
@@ -239,6 +240,28 @@ describe("packaged smoke workflow", () => {
     expect(publishCommonScript).toContain("Compress-Archive -LiteralPath $reportItems");
     expect(winReportScript).not.toMatch(/Compress-Archive -LiteralPath\s+\(Join-Path\s+\$ReportRoot\s+"\\*"\)/);
     expect(publishCommonScript).not.toMatch(/Compress-Archive -LiteralPath\s+\(Join-Path\s+\$ReportRoot\s+"\\*"\)/);
+  });
+
+  it("keeps self-hosted Windows install reuse and external full-smoke update paths wired", async () => {
+    const [winScript, winSpec] = await Promise.all([
+      readFile(releaseBetaSelfHostedWinScriptPath, "utf8"),
+      readFile(join(e2eRoot, "specs", "win.spec.ts"), "utf8"),
+    ]);
+
+    const reuseProbe = winScript.match(/function Test-WorkspaceInstallReusable[\s\S]+?function Write-WorkspaceInstallState/)?.[0];
+    expect(reuseProbe).toBeDefined();
+    expect(reuseProbe).toContain(".\\packages\\metatool\\src\\cli.ts");
+    expect(reuseProbe).toContain(".\\tools\\pack");
+    expect(reuseProbe).not.toContain(".\\scripts\\tool-build-metadata.mjs");
+    expect(reuseProbe).toContain('reason = "workspace install state unchanged"');
+
+    expect(winScript).toContain("$hasExternalUpdateMetadata");
+    expect(winScript).toContain("$hasExternalUpdateArtifactPair");
+    expect(winScript).toContain('if ($SmokeMode -eq "full" -and -not $hasExternalUpdateMetadata -and -not $hasExternalUpdateArtifactPair)');
+    expect(winSpec).toContain("OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL");
+    expect(winSpec).toContain("resolveExternalMetadataUpgradeTarget(updateMetadataUrl, configuredTargetVersion)");
+    expect(winSpec).toContain("platforms.win.artifacts.installer");
+    expect(winSpec).toContain("downloadUrlToFile");
   });
 });
 

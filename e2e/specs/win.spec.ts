@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
@@ -29,6 +30,7 @@ const verifyRealUpdateInstaller =
 const updateArtifactPath = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH);
 const updateVersion = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_VERSION);
 const updateBuildJsonPath = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_BUILD_JSON_PATH);
+const updateMetadataUrl = normalizeOptionalEnv(process.env.OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL);
 const releaseVersion = process.env.OD_PACKAGED_E2E_RELEASE_VERSION;
 const installIdentity = resolvePackagedWinInstallIdentity({ namespace, releaseVersion });
 const toolsPackReleaseVersionArgs = releaseAppVersionArgs(releaseVersion);
@@ -188,6 +190,15 @@ type RealUpdateInstallerSummary = {
 type DirectInstallerResult = {
   code: number | null;
   nsisLogTail: string[];
+};
+
+type ReleaseMetadata = {
+  betaVersion?: unknown;
+  nightlyVersion?: unknown;
+  previewVersion?: unknown;
+  releaseVersion?: unknown;
+  stableVersion?: unknown;
+  platforms?: unknown;
 };
 
 type InstalledPackagedConfig = {
@@ -609,10 +620,14 @@ async function resolveUpgradeTarget(): Promise<{ installerPath: string; targetVe
     };
   }
 
+  if (updateMetadataUrl != null && updateMetadataUrl !== '') {
+    return resolveExternalMetadataUpgradeTarget(updateMetadataUrl, configuredTargetVersion);
+  }
+
   const fallbackBuildJsonPath = resolveFallbackUpdateBuildJsonPath();
   if (fallbackBuildJsonPath == null) {
     throw new Error(
-      'full packaged windows smoke requires update installer metadata; set OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH/OD_PACKAGED_E2E_WIN_UPDATE_VERSION or provide windows-tools-pack-update-build.json next to OD_PACKAGED_E2E_BUILD_JSON_PATH',
+      'full packaged windows smoke requires update installer metadata; set OD_PACKAGED_E2E_WIN_UPDATE_METADATA_URL, set OD_PACKAGED_E2E_WIN_UPDATE_ARTIFACT_PATH/OD_PACKAGED_E2E_WIN_UPDATE_VERSION, or provide windows-tools-pack-update-build.json next to OD_PACKAGED_E2E_BUILD_JSON_PATH',
     );
   }
   const updateBuild = JSON.parse(stripUtf8Bom(await readFile(fallbackBuildJsonPath, 'utf8'))) as {
@@ -634,6 +649,86 @@ async function resolveUpgradeTarget(): Promise<{ installerPath: string; targetVe
     installerPath: updateBuild.installerPath,
     targetVersion,
   };
+}
+
+async function resolveExternalMetadataUpgradeTarget(
+  metadataUrl: string,
+  configuredTargetVersion: string | null,
+): Promise<{ installerPath: string; targetVersion: string }> {
+  const metadataResponse = await fetch(metadataUrl);
+  if (!metadataResponse.ok) {
+    throw new Error(`failed to fetch Windows update metadata ${metadataUrl}: ${metadataResponse.status}`);
+  }
+  const metadata = await metadataResponse.json() as ReleaseMetadata;
+  const winPlatform = isRecord(metadata.platforms)
+    ? metadata.platforms.win
+    : null;
+  if (!isRecord(winPlatform) || !isRecord(winPlatform.artifacts) || !isRecord(winPlatform.artifacts.installer)) {
+    throw new Error(`Windows update metadata missing platforms.win.artifacts.installer: ${metadataUrl}`);
+  }
+  const installer = winPlatform.artifacts.installer;
+  if (typeof installer.url !== 'string' || installer.url.length === 0) {
+    throw new Error(`Windows update metadata missing installer url: ${metadataUrl}`);
+  }
+  const targetVersion = configuredTargetVersion ?? metadataVersion(metadata);
+  if (targetVersion == null || targetVersion.length === 0) {
+    throw new Error(
+      `Windows update metadata missing target version; set OD_PACKAGED_E2E_WIN_UPDATE_VERSION for ${metadataUrl}`,
+    );
+  }
+
+  const artifactName = typeof installer.name === 'string' && installer.name.length > 0
+    ? installer.name
+    : basename(new URL(installer.url).pathname);
+  const installerPath = join(outputNamespaceRoot, 'external-update', safeFileName(artifactName || 'open-design-update.exe'));
+  await mkdir(dirname(installerPath), { recursive: true });
+
+  const expectedSha256 = typeof installer.sha256Url === 'string' && installer.sha256Url.length > 0
+    ? await fetchSha256(new URL(installer.sha256Url, metadataUrl).toString())
+    : null;
+  const actualSha256 = await downloadUrlToFile(new URL(installer.url, metadataUrl).toString(), installerPath);
+  if (expectedSha256 != null && actualSha256 !== expectedSha256) {
+    throw new Error(`Windows update installer checksum mismatch for ${installer.url}: expected ${expectedSha256}, got ${actualSha256}`);
+  }
+
+  return {
+    installerPath,
+    targetVersion,
+  };
+}
+
+function metadataVersion(metadata: ReleaseMetadata): string | null {
+  for (const value of [
+    metadata.betaVersion,
+    metadata.releaseVersion,
+    metadata.stableVersion,
+    metadata.previewVersion,
+    metadata.nightlyVersion,
+  ]) {
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return null;
+}
+
+async function fetchSha256(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`failed to fetch Windows update checksum ${url}: ${response.status}`);
+  const text = await response.text();
+  const match = /\b([a-fA-F0-9]{64})\b/.exec(text);
+  if (match?.[1] == null) throw new Error(`Windows update checksum response did not contain sha256: ${url}`);
+  return match[1].toLowerCase();
+}
+
+async function downloadUrlToFile(url: string, destinationPath: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`failed to download Windows update installer ${url}: ${response.status}`);
+  const body = Buffer.from(await response.arrayBuffer());
+  await writeFile(destinationPath, body);
+  return createHash('sha256').update(body).digest('hex');
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, '-');
 }
 
 function resolveFallbackUpdateBuildJsonPath(): string | null {
