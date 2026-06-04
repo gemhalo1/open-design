@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
@@ -54,6 +54,56 @@ describe('visual validation atom runner', () => {
       const saved = JSON.parse(await readFile(reportPath, 'utf8')) as { comparison?: { diffPixels?: number } };
       expect(saved.comparison?.diffPixels).toBe(result.report.comparison?.diffPixels);
     } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed when capture throws', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'od-visual-fail-'));
+    try {
+      await writeFile(path.join(cwd, 'index.html'), '<!doctype html><html><body>ok</body></html>', 'utf8');
+      await writeFile(
+        path.join(cwd, 'reference-home.png'),
+        PNG.sync.write(createFilledPng(200, 120, [255, 255, 255, 255])),
+      );
+      const result = await runVisualValidation({
+        cwd,
+        captureScreenshot: async () => {
+          throw new Error('playwright launch failed');
+        },
+      });
+
+      expect(result.report.status).toBe('failed');
+      expect(result.report.message).toContain('playwright launch failed');
+      expect(result.signals['preview.ok']).toBe(false);
+      expect(result.signals['critique.score']).toBe(1);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('skips ignored dependency trees before recursing for references', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'od-visual-ignore-'));
+    try {
+      await writeFile(path.join(cwd, 'index.html'), '<!doctype html><html><body>ok</body></html>', 'utf8');
+      await mkdir(path.join(cwd, 'references'), { recursive: true });
+      await writeFile(
+        path.join(cwd, 'references', 'reference-home.png'),
+        PNG.sync.write(createFilledPng(200, 120, [255, 255, 255, 255])),
+      );
+      await mkdir(path.join(cwd, 'node_modules', 'huge-package', 'assets'), { recursive: true });
+      await chmod(path.join(cwd, 'node_modules'), 0o000);
+
+      const result = await runVisualValidation({
+        cwd,
+        captureScreenshot: async ({ outputPath }) => {
+          await writeFile(outputPath, PNG.sync.write(createFilledPng(200, 120, [255, 255, 255, 255])));
+        },
+      });
+
+      expect(result.report.status).toBe('ok');
+    } finally {
+      await chmod(path.join(cwd, 'node_modules'), 0o755).catch(() => {});
       await rm(cwd, { recursive: true, force: true });
     }
   });

@@ -14,6 +14,7 @@ const DEFAULT_DIFF_BOX_STROKE_WIDTH = 2;
 const DEFAULT_MAX_DIFF_BOX_REGIONS = 12;
 const DEFAULT_MAX_CANVAS_PIXELS = 16_000_000;
 const DIFF_COLOR = [255, 76, 76] as const;
+const IGNORED_REFERENCE_SCAN_DIRS = new Set(['critique', 'dist', 'node_modules', '.next']);
 
 export interface VisualValidationCaptureInput {
   entryFile: string;
@@ -97,68 +98,81 @@ export async function runVisualValidation(
   const outputDir = path.join(cwd, 'critique', 'visual-validation');
   await fsp.mkdir(outputDir, { recursive: true });
 
-  let best: VisualValidationComparison | null = null;
-  for (const referencePath of referenceImages) {
-    const reference = PNG.sync.read(await fsp.readFile(referencePath));
-    assertPngSize(reference, referencePath);
-    const viewport = {
-      width: clamp(reference.width, 320, 1600),
-      height: clamp(Math.min(reference.height, 1200), 480, 1200),
-    };
-    const stem = sanitizeStem(path.basename(referencePath, path.extname(referencePath)));
-    const actualPath = path.join(outputDir, `${stem}.actual.png`);
-    const diffPath = path.join(outputDir, `${stem}.diff.png`);
-    const capture = input.captureScreenshot ?? captureWithPlaywright;
-    await capture({
-      entryFile,
-      entryUrl: pathToFileURL(path.join(cwd, entryFile)).href,
-      outputPath: actualPath,
-      viewport,
-    });
-    const actual = PNG.sync.read(await fsp.readFile(actualPath));
-    assertPngSize(actual, actualPath);
-    const comparison = await comparePngs({
-      cwd,
-      reference,
-      referencePath,
-      actual,
-      actualPath,
-      diffPath,
-      pixelmatchThreshold: input.pixelmatchThreshold ?? DEFAULT_PIXELMATCH_THRESHOLD,
-    });
-    if (!best || comparison.similarity > best.similarity) best = comparison;
-  }
+  try {
+    let best: VisualValidationComparison | null = null;
+    for (const referencePath of referenceImages) {
+      const reference = PNG.sync.read(await fsp.readFile(referencePath));
+      assertPngSize(reference, referencePath);
+      const viewport = {
+        width: clamp(reference.width, 320, 1600),
+        height: clamp(Math.min(reference.height, 1200), 480, 1200),
+      };
+      const stem = sanitizeStem(path.basename(referencePath, path.extname(referencePath)));
+      const actualPath = path.join(outputDir, `${stem}.actual.png`);
+      const diffPath = path.join(outputDir, `${stem}.diff.png`);
+      const capture = input.captureScreenshot ?? captureWithPlaywright;
+      await capture({
+        entryFile,
+        entryUrl: pathToFileURL(path.join(cwd, entryFile)).href,
+        outputPath: actualPath,
+        viewport,
+      });
+      const actual = PNG.sync.read(await fsp.readFile(actualPath));
+      assertPngSize(actual, actualPath);
+      const comparison = await comparePngs({
+        cwd,
+        reference,
+        referencePath,
+        actual,
+        actualPath,
+        diffPath,
+        pixelmatchThreshold: input.pixelmatchThreshold ?? DEFAULT_PIXELMATCH_THRESHOLD,
+      });
+      if (!best || comparison.similarity > best.similarity) best = comparison;
+    }
 
-  if (!best) {
+    if (!best) {
+      return {
+        report: {
+          status: 'failed',
+          entryFile,
+          message: 'visual validation failed before any comparisons completed',
+          comparedAt: new Date().toISOString(),
+          comparison: null,
+        },
+        signals: { 'preview.ok': false, 'critique.score': 1 },
+      };
+    }
+
+    const similarity = best.similarity;
+    const critiqueBand = similarityToCritiqueScore(similarity);
+    const report: VisualValidationReport = {
+      status: 'ok',
+      entryFile,
+      message: summarizeComparison(best),
+      comparedAt: new Date().toISOString(),
+      comparison: best,
+    };
+    await writeVisualValidationArtifacts(outputDir, report);
+    return {
+      report,
+      signals: {
+        'preview.ok': true,
+        'critique.score': critiqueBand,
+      },
+    };
+  } catch (error) {
     return {
       report: {
         status: 'failed',
         entryFile,
-        message: 'visual validation failed before any comparisons completed',
+        message: `visual validation failed: ${formatVisualValidationError(error)}`,
         comparedAt: new Date().toISOString(),
         comparison: null,
       },
       signals: { 'preview.ok': false, 'critique.score': 1 },
     };
   }
-
-  const similarity = best.similarity;
-  const critiqueBand = similarityToCritiqueScore(similarity);
-  const report: VisualValidationReport = {
-    status: 'ok',
-    entryFile,
-    message: summarizeComparison(best),
-    comparedAt: new Date().toISOString(),
-    comparison: best,
-  };
-  await writeVisualValidationArtifacts(outputDir, report);
-  return {
-    report,
-    signals: {
-      'preview.ok': true,
-      'critique.score': critiqueBand,
-    },
-  };
 }
 
 export function similarityToCritiqueScore(similarity: number): number {
@@ -318,9 +332,6 @@ async function resolveReferenceImages(
     const lower = relPath.toLowerCase();
     if (!/\.(png|jpe?g|webp)$/i.test(lower)) return false;
     if (lower.startsWith('critique/')) return false;
-    if (lower.includes('/node_modules/')) return false;
-    if (lower.includes('/dist/')) return false;
-    if (lower.includes('/.next/')) return false;
     const name = path.basename(lower);
     const dir = path.dirname(lower);
     return name.startsWith('reference')
@@ -343,6 +354,7 @@ async function walkFiles(root: string, relDir: string): Promise<string[]> {
     if (entry.name.startsWith('.')) continue;
     const relPath = relDir ? path.join(relDir, entry.name) : entry.name;
     if (entry.isDirectory()) {
+      if (IGNORED_REFERENCE_SCAN_DIRS.has(entry.name)) continue;
       out.push(...await walkFiles(root, relPath));
       continue;
     }
@@ -360,6 +372,11 @@ function summarizeComparison(comparison: VisualValidationComparison): string {
     parts.push(`focus: ${comparison.suggestions[0]}`);
   }
   return parts.join('; ');
+}
+
+function formatVisualValidationError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return 'unknown error';
 }
 
 function buildSuggestions(input: {
