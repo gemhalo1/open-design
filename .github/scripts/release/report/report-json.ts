@@ -10,7 +10,7 @@ function optional(name: string, fallback = ""): string {
 
 function readJsonFile(path: string): JsonRecord | null {
   if (!existsSync(path) || !statSync(path).isFile()) return null;
-  return JSON.parse(readFileSync(path, "utf8")) as JsonRecord;
+  return JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, "")) as JsonRecord;
 }
 
 function resolvePath(value: string): string {
