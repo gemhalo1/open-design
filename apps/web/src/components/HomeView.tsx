@@ -177,6 +177,8 @@ interface Props {
   onOpenProject: (id: string) => void;
   onViewAllProjects: () => void;
   onBrowseRegistry?: () => void;
+  onOpenIntegrations?: () => void;
+  onOpenMcp?: () => void;
   // Stage B: optional callbacks the rail's migration chips need.
   // HomeView itself never imports them; EntryShell threads them
   // through so the dispatcher can stay declarative.
@@ -202,6 +204,8 @@ export function HomeView({
   onOpenProject,
   onViewAllProjects,
   onBrowseRegistry,
+  onOpenIntegrations,
+  onOpenMcp,
   onOpenNewProject,
   promptHandoff,
   skills = EMPTY_SKILLS,
@@ -1383,6 +1387,9 @@ export function HomeView({
         onRemovePluginContext={removePluginContext}
         onRemoveMcpContext={removeMcpContext}
         onRemoveConnectorContext={removeConnectorContext}
+        onAddPlugin={onBrowseRegistry}
+        onAddConnector={onOpenIntegrations}
+        onAddMcp={onOpenMcp}
         onOpenPluginDetails={setDetailsRecord}
         pluginInputFields={active?.inputFields ?? []}
         pluginInputValues={active?.inputs ?? {}}
