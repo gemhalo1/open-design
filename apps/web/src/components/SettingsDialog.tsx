@@ -77,6 +77,7 @@ import {
 import type {
   AgentInfo,
   AgentHealthCheckResult,
+  AgentHealthStatus,
   ApiProtocol,
   ApiProtocolConfig,
   AppConfig,
@@ -317,6 +318,17 @@ type AgentHealthState =
   | { status: 'idle' }
   | { status: 'running' }
   | { status: 'done'; result: AgentHealthCheckResult };
+
+// Verdict label for the header status pill — same strings the detail panel uses
+// for its headline, so the collapsed pill and the expanded panel agree.
+const HEALTH_OVERALL_KEY: Record<
+  Exclude<AgentHealthStatus, 'skip'>,
+  keyof Dict
+> = {
+  pass: 'settings.healthcheck.overall.pass',
+  warn: 'settings.healthcheck.overall.warn',
+  fail: 'settings.healthcheck.overall.fail',
+};
 
 const GATEWAY_API_PROTOCOLS = new Set<ApiProtocol>([
   'ollama',
@@ -1012,6 +1024,54 @@ export function SettingsDialog({
   const [agentHealthState, setAgentHealthState] = useState<AgentHealthState>({
     status: 'idle',
   });
+  // The verdict badge sits after the agent name; hovering it (or the popover it
+  // anchors) reveals the full health-check detail. Tracked in JS rather than via
+  // CSS `:hover` because the popover must render outside the name's <button> to
+  // avoid nesting interactive fix actions inside it.
+  const [healthPopoverOpen, setHealthPopoverOpen] = useState(false);
+  // Anchor coordinates (relative to .agent-card-main) measured from the badge on
+  // open, so the popover hugs the verdict pill instead of the whole header row.
+  const [healthPopoverPos, setHealthPopoverPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const healthBadgeRef = useRef<HTMLSpanElement | null>(null);
+  const healthPopoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const POPOVER_WIDTH = 320;
+  const openHealthPopover = useCallback(() => {
+    if (healthPopoverTimerRef.current) {
+      clearTimeout(healthPopoverTimerRef.current);
+      healthPopoverTimerRef.current = null;
+    }
+    const badge = healthBadgeRef.current;
+    const parent = badge?.offsetParent;
+    if (badge && parent instanceof HTMLElement) {
+      const maxLeft = Math.max(8, parent.clientWidth - POPOVER_WIDTH);
+      const left = Math.min(Math.max(8, badge.offsetLeft), maxLeft);
+      const top = badge.offsetTop + badge.offsetHeight;
+      setHealthPopoverPos({ left, top });
+    }
+    setHealthPopoverOpen(true);
+  }, []);
+  const closeHealthPopoverSoon = useCallback(() => {
+    if (healthPopoverTimerRef.current) {
+      clearTimeout(healthPopoverTimerRef.current);
+    }
+    healthPopoverTimerRef.current = setTimeout(
+      () => setHealthPopoverOpen(false),
+      180,
+    );
+  }, []);
+  useEffect(
+    () => () => {
+      if (healthPopoverTimerRef.current) {
+        clearTimeout(healthPopoverTimerRef.current);
+      }
+    },
+    [],
+  );
   const [amrCardStatus, setAmrCardStatus] = useState<VelaLoginStatus | null>(null);
   const [amrCardStatusReady, setAmrCardStatusReady] = useState(false);
   const [hoveredAgentCardId, setHoveredAgentCardId] = useState<string | null>(null);
@@ -1482,6 +1542,7 @@ export function SettingsDialog({
     const revision = agentHealthRevisionRef.current;
     agentHealthAbortRef.current?.abort();
     agentHealthAbortRef.current = controller;
+    setHealthPopoverOpen(false);
     setAgentHealthState({ status: 'running' });
     try {
       const result = await healthcheckAgent(
@@ -3545,6 +3606,32 @@ export function SettingsDialog({
                                             </span>
                                           </>
                                         ) : null}
+                                        {active &&
+                                        !isAmrAgent &&
+                                        agentHealthState.status === 'done' ? (
+                                          <span
+                                            ref={healthBadgeRef}
+                                            className={
+                                              'agent-health-badge agent-health-badge--' +
+                                              agentHealthState.result.overall
+                                            }
+                                            onMouseEnter={openHealthPopover}
+                                            onMouseLeave={closeHealthPopoverSoon}
+                                          >
+                                            <span
+                                              className="agent-health-badge__dot"
+                                              data-status={
+                                                agentHealthState.result.overall
+                                              }
+                                              aria-hidden="true"
+                                            />
+                                            {t(
+                                              HEALTH_OVERALL_KEY[
+                                                agentHealthState.result.overall
+                                              ],
+                                            )}
+                                          </span>
+                                        ) : null}
                                       </div>
                                       {metaLabel ? (
                                         <div className="agent-card-meta">
@@ -3625,8 +3712,14 @@ export function SettingsDialog({
                                         : '')
                                     }
                                     onClick={() => void handleHealthCheck()}
-                                    disabled={agentHealthState.status === 'running'}
-                                    title={t('settings.healthcheck.run')}
+                                    disabled={
+                                      agentHealthState.status === 'running'
+                                    }
+                                    title={
+                                      agentHealthState.status === 'done'
+                                        ? t('settings.healthcheck.rerun')
+                                        : t('settings.healthcheck.run')
+                                    }
                                   >
                                     {agentHealthState.status === 'running' ? (
                                       <>
@@ -3635,12 +3728,95 @@ export function SettingsDialog({
                                           size={13}
                                           className="icon-spin"
                                         />
-                                        <span>{t('settings.healthcheck.button')}</span>
+                                        <span>
+                                          {t('settings.healthcheck.button')}
+                                        </span>
                                       </>
                                     ) : (
                                       t('settings.healthcheck.button')
                                     )}
                                   </button>
+                                ) : null}
+                                {active &&
+                                !isAmrAgent &&
+                                agentHealthState.status === 'done' ? (
+                                  // Detail popover for the name-row verdict
+                                  // badge. Rendered here (a sibling of the name
+                                  // <button>) so its fix actions aren't nested
+                                  // inside that button; anchored under the name
+                                  // via CSS and toggled by JS hover intent.
+                                  <div
+                                    className={
+                                      'agent-health-popover' +
+                                      (healthPopoverOpen ? ' is-open' : '')
+                                    }
+                                    style={
+                                      healthPopoverPos
+                                        ? {
+                                            left: healthPopoverPos.left,
+                                            top: healthPopoverPos.top,
+                                          }
+                                        : undefined
+                                    }
+                                    onMouseEnter={openHealthPopover}
+                                    onMouseLeave={closeHealthPopoverSoon}
+                                  >
+                                    <div className="agent-health-popover-card">
+                                      <AgentHealthCheckPanel
+                                        className="agent-health-panel--floating"
+                                        hideHeader
+                                        result={agentHealthState.result}
+                                        handlers={{
+                                          onRescan: () =>
+                                            void handleRefreshAgents(),
+                                        }}
+                                      />
+                                      {(() => {
+                                        const codexRepair =
+                                          cfg.agentId === 'codex' &&
+                                          agentHealthState.result.smoke
+                                            ? codexPathRepairState(
+                                                agentHealthState.result.smoke,
+                                              )
+                                            : null;
+                                        const codexStrings = codexRepair
+                                          ? codexPathStrings(locale)
+                                          : null;
+                                        if (!codexRepair || !codexStrings) {
+                                          return null;
+                                        }
+                                        return (
+                                          <div className="settings-test-actions">
+                                            <span className="settings-test-actions-hint">
+                                              {codexStrings.repairHint}
+                                            </span>
+                                            <div className="settings-test-actions-row">
+                                              {codexRepair.canUseDetected ? (
+                                                <button
+                                                  type="button"
+                                                  className="settings-test-btn"
+                                                  onClick={() =>
+                                                    applyCodexDetectedPath(
+                                                      codexRepair.detectedPath,
+                                                    )
+                                                  }
+                                                >
+                                                  {codexStrings.useDetected}
+                                                </button>
+                                              ) : null}
+                                              <button
+                                                type="button"
+                                                className="ghost icon-btn settings-rescan-btn"
+                                                onClick={clearCodexCustomPath}
+                                              >
+                                                {codexStrings.clearCustom}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
                                 ) : null}
                               </div>
                               {(a.diagnostics ?? []).map((diagnostic, i) => (
@@ -3653,68 +3829,10 @@ export function SettingsDialog({
                               {active ? renderAgentModelConfig(a) : null}
                             </div>
                           );
-                          const rows = [cardEl];
-                          if (active && agentHealthState.status === 'done') {
-                            // Codex resolves to a bundled fallback when a
-                            // configured CODEX_BIN is wrong; surface the same
-                            // path-repair affordance off the health check's
-                            // smoke result (which replaces the old standalone
-                            // connection test).
-                            const codexRepair =
-                              cfg.agentId === 'codex' &&
-                              agentHealthState.result.smoke
-                                ? codexPathRepairState(
-                                    agentHealthState.result.smoke,
-                                  )
-                                : null;
-                            const codexStrings = codexRepair
-                              ? codexPathStrings(locale)
-                              : null;
-                            rows.push(
-                              <div
-                                key={`${a.id}__health-result`}
-                                className="agent-test-result-row"
-                              >
-                                <AgentHealthCheckPanel
-                                  result={agentHealthState.result}
-                                  onRerun={() => void handleHealthCheck()}
-                                  handlers={{
-                                    onRescan: () => void handleRefreshAgents(),
-                                  }}
-                                />
-                                {codexRepair && codexStrings ? (
-                                  <div className="settings-test-actions">
-                                    <span className="settings-test-actions-hint">
-                                      {codexStrings.repairHint}
-                                    </span>
-                                    <div className="settings-test-actions-row">
-                                      {codexRepair.canUseDetected ? (
-                                        <button
-                                          type="button"
-                                          className="settings-test-btn"
-                                          onClick={() =>
-                                            applyCodexDetectedPath(
-                                              codexRepair.detectedPath,
-                                            )
-                                          }
-                                        >
-                                          {codexStrings.useDetected}
-                                        </button>
-                                      ) : null}
-                                      <button
-                                        type="button"
-                                        className="ghost icon-btn settings-rescan-btn"
-                                        onClick={clearCodexCustomPath}
-                                      >
-                                        {codexStrings.clearCustom}
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </div>,
-                            );
-                          }
-                          return rows;
+                          // The health-check verdict + details now live in the
+                          // header status pill's hover popover, so no standalone
+                          // result row is appended below the card.
+                          return [cardEl];
                         })}
                       </div>
                     ) : null}

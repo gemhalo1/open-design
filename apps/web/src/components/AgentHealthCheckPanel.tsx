@@ -19,6 +19,14 @@ interface Props {
   /** True while a (re-)run is in flight; disables the re-run button. */
   running?: boolean;
   onRerun?: () => void;
+  /** Extra class on the root — e.g. to flatten the panel inside a popover. */
+  className?: string;
+  /**
+   * Drops the verdict + re-run header. Used when the panel floats inside a
+   * popover whose anchor (the status pill) already shows the verdict and owns
+   * the re-run click, so repeating both here is redundant.
+   */
+  hideHeader?: boolean;
 }
 
 const OVERALL_KEY: Record<Exclude<AgentHealthStatus, 'skip'>, keyof Dict> = {
@@ -38,7 +46,14 @@ function formatLatency(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
 }
 
-export function AgentHealthCheckPanel({ result, handlers = {}, running, onRerun }: Props) {
+export function AgentHealthCheckPanel({
+  result,
+  handlers = {},
+  running,
+  onRerun,
+  className,
+  hideHeader,
+}: Props) {
   const t = useT();
   const [showDetails, setShowDetails] = useState(false);
 
@@ -81,29 +96,35 @@ export function AgentHealthCheckPanel({ result, handlers = {}, running, onRerun 
   );
 
   return (
-    <div className={styles.root} role="group" data-overall={result.overall}>
-      <div className={styles.header}>
-        <span className={styles.overall} data-status={result.overall}>
-          <span className={styles.dot} data-status={result.overall} aria-hidden="true" />
-          {t(OVERALL_KEY[result.overall])}
-        </span>
-        {onRerun ? (
-          <button
-            type="button"
-            className={'ghost icon-btn ' + styles.rerun + (running ? ' loading' : '')}
-            onClick={onRerun}
-            disabled={running}
-            title={t('settings.healthcheck.rerun')}
-            aria-label={t('settings.healthcheck.rerun')}
-          >
-            <Icon
-              name={running ? 'spinner' : 'reload'}
-              size={13}
-              className={running ? 'icon-spin' : undefined}
-            />
-          </button>
-        ) : null}
-      </div>
+    <div
+      className={styles.root + (className ? ` ${className}` : '')}
+      role="group"
+      data-overall={result.overall}
+    >
+      {hideHeader ? null : (
+        <div className={styles.header}>
+          <span className={styles.overall} data-status={result.overall}>
+            <span className={styles.dot} data-status={result.overall} aria-hidden="true" />
+            {t(OVERALL_KEY[result.overall])}
+          </span>
+          {onRerun ? (
+            <button
+              type="button"
+              className={'ghost icon-btn ' + styles.rerun + (running ? ' loading' : '')}
+              onClick={onRerun}
+              disabled={running}
+              title={t('settings.healthcheck.rerun')}
+              aria-label={t('settings.healthcheck.rerun')}
+            >
+              <Icon
+                name={running ? 'spinner' : 'reload'}
+                size={13}
+                className={running ? 'icon-spin' : undefined}
+              />
+            </button>
+          ) : null}
+        </div>
+      )}
 
       {latency ? (
         <p className={styles.summary}>
