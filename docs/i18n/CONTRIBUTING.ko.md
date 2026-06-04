@@ -166,7 +166,7 @@ design-systems/your-brand/
 4. **마케팅 문구는 빼세요.** 브랜드 슬로건은 design 토큰이 아닙니다. 잘라내세요.
 5. **slug는 ASCII로 작성하세요.** `linear.app`은 `linear-app`이 되고 `x.ai`는 `x-ai`가 됩니다. 이미 가져온 69개 시스템이 이 규칙을 따르니 그대로 맞추세요.
 
-우리가 제공하는 69개 제품 시스템은 [`scripts/sync-design-systems.ts`](scripts/sync-design-systems.ts)를 통해 [`VoltAgent/awesome-design-md`][acd2]에서 가져온 것입니다. 브랜드가 그 upstream에 속한다면 **그쪽에 먼저 PR을 보내세요.** 다음 동기화 때 자동으로 반영됩니다. `design-systems/` 폴더는 upstream에 맞지 않는 시스템과, 우리가 직접 작성한 스타터 2개를 위한 곳입니다.
+우리가 제공하는 69개 제품 시스템은 [`scripts/sync-design-systems.ts`](../../scripts/sync-design-systems.ts)를 통해 [`VoltAgent/awesome-design-md`][acd2]에서 가져온 것입니다. 브랜드가 그 upstream에 속한다면 **그쪽에 먼저 PR을 보내세요.** 다음 동기화 때 자동으로 반영됩니다. `design-systems/` 폴더는 upstream에 맞지 않는 시스템과, 우리가 직접 작성한 스타터 2개를 위한 곳입니다.
 
 ---
 
@@ -221,7 +221,7 @@ node --experimental-strip-types scripts/sync-litellm-models.ts
 
 독일어는 격식 있는 `Sie`를 씁니다. OD는 1인 창작자, 에이전시, 엔지니어링 팀이 뒤섞인 사용자층에 말을 걸기 때문입니다. 비격식 `du` 어조가 더 잘 맞는다는 프로젝트 피드백이 나오기 전까지는, 격식 독일어가 가장 무난한 기본값입니다. 로케일 PR은 UI 요소, 핵심 문서, 그리고 `apps/web/src/i18n/content.ts`의 표시 전용 갤러리 메타데이터를 번역해야 하지만, `skills/`나 `design-systems/`, 또는 agent가 실행하는 프롬프트 본문은 번역하면 안 됩니다. 이런 원본 프롬프트는 워크플로우 입력으로 관리되며, 원본 언어를 하나로 유지해야 로케일마다 프롬프트 QA가 늘어나는 일을 막을 수 있습니다. skill, design system, 프롬프트 템플릿을 추가하거나 이름을 바꿀 때는 독일어 표시 메타데이터를 갱신하고 `pnpm --filter @open-design/web test`를 실행하세요. 독일어 표시 항목이 누락되면 `content.test.ts`가 실패합니다. daemon 오류, export 파일명, agent가 생성한 artifact 텍스트는 PR이 명시적으로 범위에 넣지 않는 한 알려진 한계로 둡니다.
 
-새 로케일을 추가하는 단계별 안내(UI 사전, README, 언어 전환기, 지역별 용어)는 [`TRANSLATIONS.md`](TRANSLATIONS.md)를 참고하세요.
+새 로케일을 추가하는 단계별 안내(UI 사전, README, 언어 전환기, 지역별 용어)는 [`TRANSLATIONS.md`](../../TRANSLATIONS.md)를 참고하세요.
 
 ---
 
@@ -236,7 +236,7 @@ node --experimental-strip-types scripts/sync-litellm-models.ts
 
 - **설명조 주석은 쓰지 마세요.** `// import the module`이나 `// loop through items` 같은 것 말입니다. 코드만 봐도 명백하다면 그 주석은 잡음입니다. 주석은 코드로 표현할 수 없는 의도나 제약에만 쓰세요.
 - **`apps/web/src/`는 TypeScript를 씁니다.** daemon(`apps/daemon/`)은 타입이 중요한 곳에 JSDoc을 붙인 순수 ESM JavaScript입니다. 그대로 유지하세요.
-- **새 최상위 의존성을 추가하지 마세요.** 추가한다면 얻는 것과 늘어나는 번들 크기를 PR 설명에 한 단락으로 적으세요. [`package.json`](package.json)의 의존성 목록은 일부러 작게 둡니다.
+- **새 최상위 의존성을 추가하지 마세요.** 추가한다면 얻는 것과 늘어나는 번들 크기를 PR 설명에 한 단락으로 적으세요. [`package.json`](../../package.json)의 의존성 목록은 일부러 작게 둡니다.
 - **푸시 전에 `pnpm typecheck`를 실행하세요.** CI에서도 돌립니다. 실패하면 "고쳐주세요" 코멘트를 받게 됩니다.
 
 ---
@@ -245,7 +245,7 @@ node --experimental-strip-types scripts/sync-litellm-models.ts
 
 - **PR 하나에 관심사 하나.** skill 추가 + 파서 리팩터링 + 의존성 버전 업은 PR 세 개입니다.
 - **제목은 명령형 + 범위.** `add dating-web skill`, `fix daemon SSE backpressure when CLI hangs`, `docs: clarify .od layout`처럼 씁니다.
-- **PR 템플릿을 사용하세요.** [`.github/pull_request_template.md`](.github/pull_request_template.md)의 모든 섹션(Why, What users will see, Surface area, Screenshots(UI인 경우), Bug fix verification(버그 수정인 경우), Validation)을 채우세요. 빈 섹션에는 "채워주세요" 답변이 달립니다.
+- **PR 템플릿을 사용하세요.** [`.github/pull_request_template.md`](../../.github/pull_request_template.md)의 모든 섹션(Why, What users will see, Surface area, Screenshots(UI인 경우), Bug fix verification(버그 수정인 경우), Validation)을 채우세요. 빈 섹션에는 "채워주세요" 답변이 달립니다.
 - **본문에는 이유를 적으세요.** "이게 뭘 하는지"는 보통 diff만 봐도 알 수 있습니다. 정작 드러나지 않는 것은 "이게 왜 있어야 하는지"입니다.
 - **issue가 있다면 연결하세요.** issue가 없고 PR이 사소하지 않다면 먼저 issue를 열어주세요. 시간을 쏟기 전에 그 변경을 원하는지 합의할 수 있습니다.
 - **리뷰 중에는 squash하지 마세요.** fixup 커밋을 푸시하면 머지할 때 우리가 squash합니다.
