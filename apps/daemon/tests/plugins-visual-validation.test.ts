@@ -58,6 +58,35 @@ describe('visual validation atom runner', () => {
     }
   });
 
+  it('captures with the reference dimensions instead of the old clamp bounds', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'od-visual-reference-viewport-'));
+    try {
+      await writeFile(path.join(cwd, 'index.html'), '<!doctype html><html><body>ok</body></html>', 'utf8');
+      await writeFile(
+        path.join(cwd, 'reference-home.png'),
+        PNG.sync.write(createFilledPng(1920, 300, [255, 255, 255, 255])),
+      );
+
+      let capturedViewport: { width: number; height: number } | null = null;
+      const result = await runVisualValidation({
+        cwd,
+        captureScreenshot: async ({ outputPath, viewport }) => {
+          capturedViewport = viewport;
+          await writeFile(outputPath, PNG.sync.write(createFilledPng(viewport.width, viewport.height, [255, 255, 255, 255])));
+        },
+      });
+
+      expect(result.report.status).toBe('ok');
+      expect(capturedViewport).toEqual({ width: 1920, height: 300 });
+      expect(result.report.comparison?.referenceWidth).toBe(1920);
+      expect(result.report.comparison?.actualWidth).toBe(1920);
+      expect(result.report.comparison?.referenceHeight).toBe(300);
+      expect(result.report.comparison?.actualHeight).toBe(300);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('fails closed when capture throws', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'od-visual-fail-'));
     try {

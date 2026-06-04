@@ -103,10 +103,7 @@ export async function runVisualValidation(
     for (const [index, referencePath] of referenceImages.entries()) {
       const reference = PNG.sync.read(await fsp.readFile(referencePath));
       assertPngSize(reference, referencePath);
-      const viewport = {
-        width: clamp(reference.width, 320, 1600),
-        height: clamp(Math.min(reference.height, 1200), 480, 1200),
-      };
+      const viewport = viewportForReference(reference, referencePath);
       const stem = buildReferenceArtifactStem(cwd, referencePath, index);
       const actualPath = path.join(outputDir, `${stem}.actual.png`);
       const diffPath = path.join(outputDir, `${stem}.diff.png`);
@@ -414,6 +411,11 @@ function clonePng(source: PNG): PNG {
   const target = new PNG({ width: source.width, height: source.height });
   source.data.copy(target.data);
   return target;
+}
+
+function viewportForReference(reference: PNG, label: string): ViewportSize {
+  assertPngSize(reference, label);
+  return { width: reference.width, height: reference.height };
 }
 
 function normalizePng(source: PNG, width: number, height: number): PNG {
