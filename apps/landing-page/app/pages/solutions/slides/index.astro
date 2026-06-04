@@ -1,16 +1,22 @@
 ---
 /*
- * /solutions/slides/ — Solution use-case page.
- * Structure mirrors /solutions/prototype/ (the template); copy lives in
- * solution-pages-i18n.ts under the 'slides' key (English + Simplified Chinese,
- * other locales fall back to English). Hero illustration is warm-paper
- * editorial, on the marketing R2 bucket under landing/assets/solutions/slides/.
- * The gallery uses real example thumbnails that ship in public/previews/plugins.
+ * /solutions/slides/ — Solution use-case page: presentation decks with Open
+ * Design.
+ *
+ * Structure mirrors /solutions/prototype/ (the template), with ONE
+ * difference: the feature grid is replaced by real deck-category plugins
+ * (the same <TemplateCard> the /plugins/ catalogue uses). Hand-screened for
+ * decks whose preview is a designed content slide (not a bare title page),
+ * across varied styles (pitch, product, editorial, dark-graph, blueprint).
+ * Copy lives in solution-pages-i18n.ts under the 'slides' key.
  */
 import Layout from '../../../_components/sub-page-layout.astro';
 import LazyImg from '../../../_components/lazy-img.astro';
+import TemplateCard from '../../../_components/template-card.astro';
 import { getInfoPageCopy } from '../../../info-page-i18n';
 import { getSolutionPageCopy } from '../../../solution-pages-i18n';
+import { getBundledPlugins } from '../../../_lib/bundled-plugins';
+import { bundledRecordOf, categorizePlugin } from '../../../_lib/plugin-facets';
 import { imageAsset, imageAssetSrcset } from '../../../image-assets';
 import { localeFromPath, localizedHref } from '../../../i18n';
 
@@ -25,8 +31,30 @@ const page = getSolutionPageCopy(locale, 'slides');
 const title = page.title;
 const description = page.description;
 
-const heroImg = imageAsset('solutions/slides/hero.png', { width: 1536, quality: 82 });
-const heroSrcset = imageAssetSrcset('solutions/slides/hero.png', [768, 1280, 1536]);
+const heroImg = imageAsset('solutions/slides/hero.png', { width: 1280, quality: 82 });
+const heroSrcset = imageAssetSrcset('solutions/slides/hero.png', [768, 1280]);
+
+// Real deck-category plugins, hand-screened so each card's preview is a
+// designed slide with a strong cover (not a plain title page), across varied
+// deck styles. Pulled from the same catalogue the /plugins/ page uses.
+const FEATURED_DECK_IDS = [
+  'example-html-ppt-pitch-deck',
+  'example-html-ppt-product-launch',
+  'example-html-ppt-graphify-dark-graph',
+  'example-html-ppt-knowledge-arch-blueprint',
+  'example-deck-swiss-international',
+  'example-html-ppt-obsidian-claude-gradient',
+  'example-html-ppt-zhangzara-bold-poster',
+  'example-html-ppt-zhangzara-biennale-yellow',
+  'example-ib-pitch-book',
+];
+const deckPlugins = getBundledPlugins().filter(
+  (p) => categorizePlugin(bundledRecordOf(p)) === 'deck',
+);
+const pluginById = new Map(deckPlugins.map((p) => [p.manifestId, p]));
+const featuredDecks = FEATURED_DECK_IDS
+  .map((id) => pluginById.get(id))
+  .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
 const faq = page.faq;
 
@@ -67,23 +95,28 @@ const jsonLd = [
   </nav>
 
   <article class="info-page solution-page">
-    <header class="catalog-head">
-      <span class="label">{page.label}</span>
-      <h1 class="display">{page.heading}</h1>
-      <p class="lead">{page.lead}</p>
-    </header>
-
-    <figure class="solution-hero">
-      <LazyImg
-        src={heroImg}
-        srcset={heroSrcset}
-        sizes="(max-width: 920px) 100vw, 920px"
-        alt={page.heroImageAlt}
-        loading="priority"
-        width={1536}
-        height={1024}
-      />
-    </figure>
+    <div class="solution-hero-band">
+      <header class="catalog-head">
+        <span class="label">{page.label}</span>
+        <h1 class="display">{page.heading}</h1>
+        <p class="lead">{page.lead}</p>
+        <div class="solution-hero-cta">
+          <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
+          <a class="btn btn-ghost" href={href('/download/')}>{common.downloadDesktop}</a>
+        </div>
+      </header>
+      <figure class="solution-hero">
+        <LazyImg
+          src={heroImg}
+          srcset={heroSrcset}
+          sizes="(max-width: 880px) 100vw, 540px"
+          alt={page.heroImageAlt}
+          loading="priority"
+          width={1280}
+          height={853}
+        />
+      </figure>
+    </div>
 
     <div class="tldr-card">
       <h3>{page.tldrTitle}</h3>
@@ -103,6 +136,15 @@ const jsonLd = [
           </li>
         ))}
       </ol>
+    </section>
+
+    <section class="info-section" id="features">
+      <h2>{page.featuresTitle}</h2>
+      <ul class="tpl-grid solution-tpl-grid">
+        {featuredDecks.map((record, idx) => (
+          <TemplateCard record={record} index={idx} />
+        ))}
+      </ul>
     </section>
 
     <section class="info-section" id="compare">
@@ -129,25 +171,8 @@ const jsonLd = [
       </div>
     </section>
 
-    <section class="info-section" id="gallery">
-      <h2>{page.galleryTitle}</h2>
+    <section class="info-section" id="browse">
       <p>{page.galleryLead}</p>
-      <ul class="solution-gallery">
-        {page.gallery.map((item) => (
-          <li class="solution-gallery-item">
-            <a href={href(page.exampleHref)}>
-              <LazyImg
-                src={`/previews/plugins/${item.thumb}.png`}
-                sizes="(max-width: 600px) 100vw, 440px"
-                alt={item.caption}
-                width={1280}
-                height={800}
-              />
-              <span class="solution-gallery-caption">{item.caption}</span>
-            </a>
-          </li>
-        ))}
-      </ul>
       <p>
         <a class="inline-link" href={href(page.exampleHref)}>{page.exampleLinkLabel} →</a>
       </p>
@@ -178,7 +203,6 @@ const jsonLd = [
       </div>
       <div class="info-cta-actions">
         <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
-        <a class="btn btn-ghost" href={href('/quickstart/')}>{common.quickstart}</a>
         <a class="btn btn-ghost" href={REPO_RELEASES} target="_blank" rel="noreferrer noopener">{common.downloadDesktop}</a>
       </div>
       <div class="info-cta-meta">

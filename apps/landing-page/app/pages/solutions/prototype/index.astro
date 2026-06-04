@@ -1,17 +1,18 @@
 ---
 /*
- * /solutions/prototype/ — Use-case page: prototyping with Open Design.
+ * /solutions/prototype/ — Solution use-case page: prototyping with Open Design.
  *
- * Image + text + table surface explaining how a coding agent uses Open
- * Design to turn a prompt into a clickable, multi-screen prototype. First of
- * the Solution use-case pages; the layout here is the template the other ten
- * (5 use cases + 5 roles) copy. Copy lives in `solution-pages-i18n.ts`
+ * This is the TEMPLATE the other five use-case pages copy (see
+ * scripts-generated siblings). Layout is a wide, Figma-marketing-style flow:
+ * a two-column hero band, a compact how-it-works list, a capability table, a
+ * feature grid (each card a real in-repo example thumbnail), and a template
+ * gallery — all responsive and scoped via `.solution-page` so the other
+ * info-pages keep their narrow measure. Copy lives in `solution-pages-i18n.ts`
  * (English + Simplified Chinese; other locales fall back to English).
  *
- * Illustrations are AI-generated, warm-paper editorial style, hosted on the
- * marketing R2 bucket (static.open-design.ai) under
- * `landing/assets/solutions/prototype/` and served through the same
- * `cdn-cgi/image` pipeline as the homepage hero.
+ * The hero illustration is AI-generated warm-paper editorial art on the
+ * marketing R2 bucket; feature-grid and gallery images are real example
+ * thumbnails shipped in public/previews/plugins.
  */
 import Layout from '../../../_components/sub-page-layout.astro';
 import LazyImg from '../../../_components/lazy-img.astro';
@@ -31,12 +32,8 @@ const page = getSolutionPageCopy(locale, 'prototype');
 const title = page.title;
 const description = page.description;
 
-// Illustrations (warm-paper editorial). hero is the LCP element; the rest
-// lazy-load. Names are relative to the `landing/assets/` R2 prefix.
-const heroImg = imageAsset('solutions/prototype/hero.png', { width: 1536, quality: 82 });
-const heroSrcset = imageAssetSrcset('solutions/prototype/hero.png', [768, 1280, 1536]);
-const flowImg = imageAsset('solutions/prototype/flow.png', { width: 1536, quality: 82 });
-const flowSrcset = imageAssetSrcset('solutions/prototype/flow.png', [768, 1280, 1536]);
+const heroImg = imageAsset('solutions/prototype/hero.png', { width: 1280, quality: 82 });
+const heroSrcset = imageAssetSrcset('solutions/prototype/hero.png', [768, 1280]);
 
 const faq = page.faq;
 
@@ -77,23 +74,28 @@ const jsonLd = [
   </nav>
 
   <article class="info-page solution-page">
-    <header class="catalog-head">
-      <span class="label">{page.label}</span>
-      <h1 class="display">{page.heading}</h1>
-      <p class="lead">{page.lead}</p>
-    </header>
-
-    <figure class="solution-hero">
-      <LazyImg
-        src={heroImg}
-        srcset={heroSrcset}
-        sizes="(max-width: 920px) 100vw, 920px"
-        alt={page.heroImageAlt}
-        loading="priority"
-        width={1536}
-        height={1024}
-      />
-    </figure>
+    <div class="solution-hero-band">
+      <header class="catalog-head">
+        <span class="label">{page.label}</span>
+        <h1 class="display">{page.heading}</h1>
+        <p class="lead">{page.lead}</p>
+        <div class="solution-hero-cta">
+          <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
+          <a class="btn btn-ghost" href={href('/download/')}>{common.downloadDesktop}</a>
+        </div>
+      </header>
+      <figure class="solution-hero">
+        <LazyImg
+          src={heroImg}
+          srcset={heroSrcset}
+          sizes="(max-width: 880px) 100vw, 540px"
+          alt={page.heroImageAlt}
+          loading="priority"
+          width={1280}
+          height={853}
+        />
+      </figure>
+    </div>
 
     <div class="tldr-card">
       <h3>{page.tldrTitle}</h3>
@@ -113,16 +115,25 @@ const jsonLd = [
           </li>
         ))}
       </ol>
-      <figure class="solution-figure">
-        <LazyImg
-          src={flowImg}
-          srcset={flowSrcset}
-          sizes="(max-width: 920px) 100vw, 920px"
-          alt={page.steps.map((s) => s.imageAlt).join('. ')}
-          width={1536}
-          height={1024}
-        />
-      </figure>
+    </section>
+
+    <section class="info-section" id="features">
+      <h2>{page.featuresTitle}</h2>
+      <ul class="solution-feature-grid">
+        {page.features.map((f) => (
+          <li class="solution-feature-card">
+            <LazyImg
+              src={`/previews/plugins/${f.thumb}.png`}
+              sizes="(max-width: 560px) 100vw, (max-width: 880px) 50vw, 360px"
+              alt={f.title}
+              width={1280}
+              height={800}
+            />
+            <h3>{f.title}</h3>
+            <p>{f.body}</p>
+          </li>
+        ))}
+      </ul>
     </section>
 
     <section class="info-section" id="compare">
@@ -158,7 +169,7 @@ const jsonLd = [
             <a href={href(page.exampleHref)}>
               <LazyImg
                 src={`/previews/plugins/${item.thumb}.png`}
-                sizes="(max-width: 600px) 100vw, 440px"
+                sizes="(max-width: 560px) 100vw, (max-width: 880px) 50vw, 360px"
                 alt={item.caption}
                 width={1280}
                 height={800}
@@ -198,7 +209,6 @@ const jsonLd = [
       </div>
       <div class="info-cta-actions">
         <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
-        <a class="btn btn-ghost" href={href('/quickstart/')}>{common.quickstart}</a>
         <a class="btn btn-ghost" href={REPO_RELEASES} target="_blank" rel="noreferrer noopener">{common.downloadDesktop}</a>
       </div>
       <div class="info-cta-meta">

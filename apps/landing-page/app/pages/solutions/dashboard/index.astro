@@ -1,11 +1,9 @@
 ---
 /*
- * /solutions/dashboard/ — Solution use-case page.
- * Structure mirrors /solutions/prototype/ (the template); copy lives in
- * solution-pages-i18n.ts under the 'dashboard' key (English + Simplified Chinese,
- * other locales fall back to English). Hero illustration is warm-paper
- * editorial, on the marketing R2 bucket under landing/assets/solutions/dashboard/.
- * The gallery uses real example thumbnails that ship in public/previews/plugins.
+ * /solutions/dashboard/ — Solution use-case page: prototyping with Open Design.
+ *
+ * Solution use-case page; structure mirrors /solutions/prototype/ (the
+ * template). Copy lives in solution-pages-i18n.ts under the 'dashboard' key.
  */
 import Layout from '../../../_components/sub-page-layout.astro';
 import LazyImg from '../../../_components/lazy-img.astro';
@@ -25,8 +23,8 @@ const page = getSolutionPageCopy(locale, 'dashboard');
 const title = page.title;
 const description = page.description;
 
-const heroImg = imageAsset('solutions/dashboard/hero.png', { width: 1536, quality: 82 });
-const heroSrcset = imageAssetSrcset('solutions/dashboard/hero.png', [768, 1280, 1536]);
+const heroImg = imageAsset('solutions/dashboard/hero.png', { width: 1280, quality: 82 });
+const heroSrcset = imageAssetSrcset('solutions/dashboard/hero.png', [768, 1280]);
 
 const faq = page.faq;
 
@@ -67,23 +65,28 @@ const jsonLd = [
   </nav>
 
   <article class="info-page solution-page">
-    <header class="catalog-head">
-      <span class="label">{page.label}</span>
-      <h1 class="display">{page.heading}</h1>
-      <p class="lead">{page.lead}</p>
-    </header>
-
-    <figure class="solution-hero">
-      <LazyImg
-        src={heroImg}
-        srcset={heroSrcset}
-        sizes="(max-width: 920px) 100vw, 920px"
-        alt={page.heroImageAlt}
-        loading="priority"
-        width={1536}
-        height={1024}
-      />
-    </figure>
+    <div class="solution-hero-band">
+      <header class="catalog-head">
+        <span class="label">{page.label}</span>
+        <h1 class="display">{page.heading}</h1>
+        <p class="lead">{page.lead}</p>
+        <div class="solution-hero-cta">
+          <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
+          <a class="btn btn-ghost" href={href('/download/')}>{common.downloadDesktop}</a>
+        </div>
+      </header>
+      <figure class="solution-hero">
+        <LazyImg
+          src={heroImg}
+          srcset={heroSrcset}
+          sizes="(max-width: 880px) 100vw, 540px"
+          alt={page.heroImageAlt}
+          loading="priority"
+          width={1280}
+          height={853}
+        />
+      </figure>
+    </div>
 
     <div class="tldr-card">
       <h3>{page.tldrTitle}</h3>
@@ -103,6 +106,25 @@ const jsonLd = [
           </li>
         ))}
       </ol>
+    </section>
+
+    <section class="info-section" id="features">
+      <h2>{page.featuresTitle}</h2>
+      <ul class="solution-feature-grid">
+        {page.features.map((f) => (
+          <li class="solution-feature-card">
+            <LazyImg
+              src={`/previews/plugins/${f.thumb}.png`}
+              sizes="(max-width: 560px) 100vw, (max-width: 880px) 50vw, 360px"
+              alt={f.title}
+              width={1280}
+              height={800}
+            />
+            <h3>{f.title}</h3>
+            <p>{f.body}</p>
+          </li>
+        ))}
+      </ul>
     </section>
 
     <section class="info-section" id="compare">
@@ -138,7 +160,7 @@ const jsonLd = [
             <a href={href(page.exampleHref)}>
               <LazyImg
                 src={`/previews/plugins/${item.thumb}.png`}
-                sizes="(max-width: 600px) 100vw, 440px"
+                sizes="(max-width: 560px) 100vw, (max-width: 880px) 50vw, 360px"
                 alt={item.caption}
                 width={1280}
                 height={800}
@@ -178,7 +200,6 @@ const jsonLd = [
       </div>
       <div class="info-cta-actions">
         <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
-        <a class="btn btn-ghost" href={href('/quickstart/')}>{common.quickstart}</a>
         <a class="btn btn-ghost" href={REPO_RELEASES} target="_blank" rel="noreferrer noopener">{common.downloadDesktop}</a>
       </div>
       <div class="info-cta-meta">

@@ -1,16 +1,22 @@
 ---
 /*
- * /solutions/video/ — Solution use-case page.
- * Structure mirrors /solutions/prototype/ (the template); copy lives in
- * solution-pages-i18n.ts under the 'video' key (English + Simplified Chinese,
- * other locales fall back to English). Hero illustration is warm-paper
- * editorial, on the marketing R2 bucket under landing/assets/solutions/video/.
- * The gallery uses real example thumbnails that ship in public/previews/plugins.
+ * /solutions/video/ — Solution use-case page: motion & video with Open Design.
+ *
+ * Structure mirrors /solutions/prototype/ (the template), with ONE
+ * difference: the feature grid is replaced by real Video-category plugins
+ * (the same <TemplateCard> the /plugins/ catalogue uses). Those carry a
+ * Cloudflare Stream clip, so the card plays the actual motion on hover —
+ * far better than a static thumbnail for a video page. Hand-picked for the
+ * best-looking, most cinematic covers. Copy lives in solution-pages-i18n.ts
+ * under the 'video' key.
  */
 import Layout from '../../../_components/sub-page-layout.astro';
 import LazyImg from '../../../_components/lazy-img.astro';
+import TemplateCard from '../../../_components/template-card.astro';
 import { getInfoPageCopy } from '../../../info-page-i18n';
 import { getSolutionPageCopy } from '../../../solution-pages-i18n';
+import { getBundledPlugins } from '../../../_lib/bundled-plugins';
+import { bundledRecordOf, categorizePlugin } from '../../../_lib/plugin-facets';
 import { imageAsset, imageAssetSrcset } from '../../../image-assets';
 import { localeFromPath, localizedHref } from '../../../i18n';
 
@@ -25,8 +31,31 @@ const page = getSolutionPageCopy(locale, 'video');
 const title = page.title;
 const description = page.description;
 
-const heroImg = imageAsset('solutions/video/hero.png', { width: 1536, quality: 82 });
-const heroSrcset = imageAssetSrcset('solutions/video/hero.png', [768, 1280, 1536]);
+const heroImg = imageAsset('solutions/video/hero.png', { width: 1280, quality: 82 });
+const heroSrcset = imageAssetSrcset('solutions/video/hero.png', [768, 1280]);
+
+// Real Video-category plugins, hand-screened for the best cinematic covers
+// and clean (minimal-watermark) thumbnails, across varied genres (sci-fi,
+// 3D animation, anime, automotive, aerial, game, fashion). Each plays its
+// Cloudflare Stream clip on hover via <TemplateCard>.
+const FEATURED_VIDEO_IDS = [
+  'video-template-crimson-horizon-sci-fi-cinematic-sequence',
+  'video-template-3d-animated-boy-building-lego',
+  'video-template-live-action-anime-adaptation-water-vs-thunder-breathing-duel',
+  'video-template-cinematic-street-racing-sequence-for-seedance-2',
+  'video-template-ancient-indian-kingdom-fpv-video',
+  'video-template-cyberpunk-game-trailer-script',
+  'video-template-luxury-supercar-cinematic-narrative',
+  'video-template-cinematic-dragon-interaction-flight',
+  'video-template-cinematic-vampire-alley-fight-sequence',
+];
+const videoPlugins = getBundledPlugins().filter(
+  (p) => categorizePlugin(bundledRecordOf(p)) === 'video',
+);
+const pluginById = new Map(videoPlugins.map((p) => [p.manifestId, p]));
+const featuredVideos = FEATURED_VIDEO_IDS
+  .map((id) => pluginById.get(id))
+  .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
 const faq = page.faq;
 
@@ -67,23 +96,28 @@ const jsonLd = [
   </nav>
 
   <article class="info-page solution-page">
-    <header class="catalog-head">
-      <span class="label">{page.label}</span>
-      <h1 class="display">{page.heading}</h1>
-      <p class="lead">{page.lead}</p>
-    </header>
-
-    <figure class="solution-hero">
-      <LazyImg
-        src={heroImg}
-        srcset={heroSrcset}
-        sizes="(max-width: 920px) 100vw, 920px"
-        alt={page.heroImageAlt}
-        loading="priority"
-        width={1536}
-        height={1024}
-      />
-    </figure>
+    <div class="solution-hero-band">
+      <header class="catalog-head">
+        <span class="label">{page.label}</span>
+        <h1 class="display">{page.heading}</h1>
+        <p class="lead">{page.lead}</p>
+        <div class="solution-hero-cta">
+          <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
+          <a class="btn btn-ghost" href={href('/download/')}>{common.downloadDesktop}</a>
+        </div>
+      </header>
+      <figure class="solution-hero">
+        <LazyImg
+          src={heroImg}
+          srcset={heroSrcset}
+          sizes="(max-width: 880px) 100vw, 540px"
+          alt={page.heroImageAlt}
+          loading="priority"
+          width={1280}
+          height={853}
+        />
+      </figure>
+    </div>
 
     <div class="tldr-card">
       <h3>{page.tldrTitle}</h3>
@@ -103,6 +137,15 @@ const jsonLd = [
           </li>
         ))}
       </ol>
+    </section>
+
+    <section class="info-section" id="features">
+      <h2>{page.featuresTitle}</h2>
+      <ul class="tpl-grid solution-tpl-grid">
+        {featuredVideos.map((record, idx) => (
+          <TemplateCard record={record} index={idx} />
+        ))}
+      </ul>
     </section>
 
     <section class="info-section" id="compare">
@@ -129,25 +172,8 @@ const jsonLd = [
       </div>
     </section>
 
-    <section class="info-section" id="gallery">
-      <h2>{page.galleryTitle}</h2>
+    <section class="info-section" id="browse">
       <p>{page.galleryLead}</p>
-      <ul class="solution-gallery">
-        {page.gallery.map((item) => (
-          <li class="solution-gallery-item">
-            <a href={href(page.exampleHref)}>
-              <LazyImg
-                src={`/previews/plugins/${item.thumb}.png`}
-                sizes="(max-width: 600px) 100vw, 440px"
-                alt={item.caption}
-                width={1280}
-                height={800}
-              />
-              <span class="solution-gallery-caption">{item.caption}</span>
-            </a>
-          </li>
-        ))}
-      </ul>
       <p>
         <a class="inline-link" href={href(page.exampleHref)}>{page.exampleLinkLabel} →</a>
       </p>
@@ -178,7 +204,6 @@ const jsonLd = [
       </div>
       <div class="info-cta-actions">
         <a class="btn btn-primary" href={REPO} target="_blank" rel="noreferrer noopener">{common.starOnGithub}</a>
-        <a class="btn btn-ghost" href={href('/quickstart/')}>{common.quickstart}</a>
         <a class="btn btn-ghost" href={REPO_RELEASES} target="_blank" rel="noreferrer noopener">{common.downloadDesktop}</a>
       </div>
       <div class="info-cta-meta">

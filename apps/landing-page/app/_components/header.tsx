@@ -22,6 +22,10 @@ import {
   type HeaderCopy,
   type LandingLocaleCode,
 } from '../i18n';
+import {
+  getSolutionPageCopy,
+  type SolutionPageKey,
+} from '../solution-pages-i18n';
 
 const REPO = 'https://github.com/nexu-io/open-design';
 const DISCORD = 'https://discord.gg/9ptkbbqRu';
@@ -43,23 +47,30 @@ const ext = {
  */
 
 // Solution → Use cases. Placeholder hrefs until the dedicated pages ship.
-const SOLUTION_USE_CASES: ReadonlyArray<{ name: string; href: string }> = [
-  { name: 'Prototype', href: '/solutions/prototype/' },
-  { name: 'Dashboard', href: '/solutions/dashboard/' },
-  { name: 'Slides', href: '/solutions/slides/' },
-  { name: 'Image', href: '/solutions/image/' },
-  { name: 'Video', href: '/solutions/video/' },
-  { name: 'Design System', href: '/solutions/design-system/' },
+// Solution → Use cases. `key` maps to the solution page's copy block so the
+// dropdown label is the page's localized breadcrumb (single source of truth,
+// 18 locales) rather than a hard-coded English string.
+const SOLUTION_USE_CASES: ReadonlyArray<{
+  key: SolutionPageKey;
+  href: string;
+}> = [
+  { key: 'prototype', href: '/solutions/prototype/' },
+  { key: 'dashboard', href: '/solutions/dashboard/' },
+  { key: 'slides', href: '/solutions/slides/' },
+  { key: 'image', href: '/solutions/image/' },
+  { key: 'video', href: '/solutions/video/' },
+  { key: 'designSystem', href: '/solutions/design-system/' },
 ];
 
-// Solution → Roles. Placeholder hrefs until the dedicated pages ship.
-const SOLUTION_ROLES: ReadonlyArray<{ name: string; href: string }> = [
-  { name: 'Solo Builder', href: '/compare/' },
-  { name: 'Designer', href: '/compare/' },
-  { name: 'Engineering', href: '/compare/' },
-  { name: 'Product Managers', href: '/compare/' },
-  { name: 'Marketing', href: '/compare/' },
-];
+// Solution → Roles. Hidden until the Role pages ship (next PR). Kept here so
+// re-enabling the group in the Solution dropdown is a one-line change.
+// const SOLUTION_ROLES: ReadonlyArray<{ name: string; href: string }> = [
+//   { name: 'Solo Builder', href: '/for/solo-builder/' },
+//   { name: 'Designer', href: '/for/designer/' },
+//   { name: 'Engineering', href: '/for/engineering/' },
+//   { name: 'Product Managers', href: '/for/product-managers/' },
+//   { name: 'Marketing', href: '/for/marketing/' },
+// ];
 
 /*
  * Agent dropdown — AMR (the design Agent) plus the 17 first-party coding-agent
@@ -279,29 +290,25 @@ export function Header({
                   <span className='nav-dropdown-group-label'>{headerCopy.nav.useCases}</span>
                 </li>
                 {SOLUTION_USE_CASES.map((item) => (
-                  <li role='none' key={`uc-${item.name}`}>
+                  <li role='none' key={`uc-${item.key}`}>
                     <a role='menuitem' href={href(item.href)}>
-                      <span className='dropdown-name'>{item.name}</span>
+                      <span className='dropdown-name'>{getSolutionPageCopy(locale, item.key).breadcrumb}</span>
                     </a>
                   </li>
                 ))}
-                <li role='none' className='nav-dropdown-group'>
-                  <span className='nav-dropdown-group-label'>{headerCopy.nav.roles}</span>
-                </li>
-                {SOLUTION_ROLES.map((item) => (
-                  <li role='none' key={`role-${item.name}`}>
-                    <a role='menuitem' href={href(item.href)}>
-                      <span className='dropdown-name'>{item.name}</span>
-                    </a>
-                  </li>
-                ))}
+                {/*
+                  Roles group (Solo Builder / Designer / Engineering / Product
+                  Managers / Marketing) is hidden for now — those pages have no
+                  content yet. Re-add the SOLUTION_ROLES block here, plus the
+                  nav.roles group label, when the Role pages ship (next PR).
+                */}
               </ul>
             </li>
             {/*
-              Agent — AMR (the design Agent) heads the list, followed by the 17
-              first-party coding-agent adapters deep-linking to their anchors on
-              the /agents/ hub. The trigger points at the hub itself. Agent
-              product names are not localized.
+              Agent — for now this dropdown lists only AMR (the design Agent).
+              The 17 first-party coding-agent adapters (see AGENT_LINKS) and the
+              per-agent /agents/ hub anchors are intentionally held back for a
+              later pass; re-add the AGENT_LINKS map below when that ships.
             */}
             <li className='has-dropdown'>
               <a
@@ -313,19 +320,13 @@ export function Header({
                 {headerCopy.nav.agent}
                 <span className='dropdown-caret' aria-hidden='true'>▾</span>
               </a>
-              <ul className='nav-dropdown nav-dropdown-agents' role='menu'>
+              <ul className='nav-dropdown' role='menu'>
                 <li role='none'>
                   <a role='menuitem' href={AMR_URL}>
                     <span className='dropdown-name'>{productMenuCopy.amrName}</span>
+                    <span className='dropdown-blurb'>{productMenuCopy.amrBlurb}</span>
                   </a>
                 </li>
-                {AGENT_LINKS.map((item) => (
-                  <li role='none' key={item.slug}>
-                    <a role='menuitem' href={href(`/agents/#${item.slug}`)}>
-                      <span className='dropdown-name'>{item.name}</span>
-                    </a>
-                  </li>
-                ))}
               </ul>
             </li>
             {/*
@@ -354,8 +355,8 @@ export function Header({
                 {headerCopy.nav.plugins}
                 <span className='dropdown-caret' aria-hidden='true'>▾</span>
               </a>
-              {/* Names follow the Header spec verbatim: "Design Templates /
-                Design Skills / Design Systems". */}
+              {/* Labels come from the localized nav copy (Templates / Skills /
+                Systems) so the dropdown is translated in every locale. */}
               <ul className='nav-dropdown' role='menu'>
                 <li role='none'>
                   <a
@@ -363,7 +364,7 @@ export function Header({
                     href={href('/plugins/templates/')}
                     className={linkClass('templates')}
                   >
-                    <span className='dropdown-name'>Design Templates</span>
+                    <span className='dropdown-name'>{headerCopy.nav.templates}</span>
                   </a>
                 </li>
                 <li role='none'>
@@ -372,7 +373,7 @@ export function Header({
                     href={href('/plugins/skills/')}
                     className={linkClass('skills')}
                   >
-                    <span className='dropdown-name'>Design Skills</span>
+                    <span className='dropdown-name'>{headerCopy.nav.skills}</span>
                   </a>
                 </li>
                 <li role='none'>
@@ -381,18 +382,16 @@ export function Header({
                     href={href('/plugins/systems/')}
                     className={linkClass('systems')}
                   >
-                    <span className='dropdown-name'>Design Systems</span>
+                    <span className='dropdown-name'>{headerCopy.nav.systems}</span>
                   </a>
                 </li>
               </ul>
             </li>
             {/*
-              Resources — Blog, Video Tutorials, Weekly Newsletter, Download
-              per the Header spec. Blog/Tutorials were standalone top-level
-              items before; folding them here frees slots for the new
-              Solution/Agent dropdowns. Weekly Newsletter has no product yet,
-              so it renders as a disabled placeholder until the subscribe page
-              ships.
+              Resources — Blog, Tutorials, Download. Blog/Tutorials were
+              standalone top-level items before; folding them here frees slots
+              for the new Solution/Agent dropdowns. (Weekly Newsletter was
+              dropped — no product yet; re-add when the subscribe page ships.)
             */}
             <li className='has-dropdown'>
               <a
@@ -426,17 +425,8 @@ export function Header({
                     href={href('/tutorials/')}
                     className={linkClass('tutorials')}
                   >
-                    <span className='dropdown-name'>Video Tutorials</span>
+                    <span className='dropdown-name'>{headerCopy.nav.tutorials}</span>
                   </a>
-                </li>
-                <li role='none'>
-                  <span
-                    className='dropdown-name dropdown-disabled'
-                    aria-disabled='true'
-                    title='Coming soon'
-                  >
-                    Weekly Newsletter
-                  </span>
                 </li>
                 <li role='none'>
                   <a role='menuitem' href={href('/download/')}>
@@ -469,17 +459,17 @@ export function Header({
               <ul className='nav-dropdown' role='menu'>
                 <li role='none'>
                   <a role='menuitem' href='/community/#contributors'>
-                    <span className='dropdown-name'>Contributors</span>
+                    <span className='dropdown-name'>{headerCopy.nav.contributors}</span>
                   </a>
                 </li>
                 <li role='none'>
                   <a role='menuitem' href='/community/#ambassadors'>
-                    <span className='dropdown-name'>Ambassadors</span>
+                    <span className='dropdown-name'>{headerCopy.nav.ambassadors}</span>
                   </a>
                 </li>
                 <li role='none'>
                   <a role='menuitem' href='/community/#moderators'>
-                    <span className='dropdown-name'>Moderators</span>
+                    <span className='dropdown-name'>{headerCopy.nav.moderators}</span>
                   </a>
                 </li>
                 <li role='none'>
