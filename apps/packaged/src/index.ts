@@ -96,8 +96,10 @@ async function main(): Promise<void> {
   // below. Cold boot otherwise leaves the user staring at no window at all for
   // the few seconds the sidecars take to come up; putting the animation on
   // screen in parallel masks that gap, and the runtime keeps it up until the
-  // real app has mounted (see createDesktopRuntime).
-  const splashWindow = createSplashWindow();
+  // real app has mounted (see createDesktopRuntime). The handle carries the
+  // creation timestamp so the runtime's minimum-hold timer counts from here —
+  // BEFORE the sidecar boot below — rather than re-adding the delay afterwards.
+  const splash = createSplashWindow();
 
   applyLaunchEnv(paths.runtimeRoot, stamp);
 
@@ -129,7 +131,8 @@ async function main(): Promise<void> {
 
   const { runDesktopMain } = await import("@open-design/desktop/main");
   await runDesktopMain(runtime, {
-    splashWindow,
+    splashWindow: splash.window,
+    splashStartedAt: splash.startedAt,
     async beforeShutdown() {
       try {
         await sidecars.close();

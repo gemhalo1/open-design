@@ -375,6 +375,14 @@ export type DesktopRuntimeOptions = {
    * once the main window is revealed.
    */
   splashWindow?: BrowserWindow | null;
+  /**
+   * Wall-clock instant the pre-created `splashWindow` first appeared (from
+   * {@link SplashWindowHandle.startedAt}). The minimum-hold timer is measured
+   * from here, so when packaged creates the splash before the sidecars boot the
+   * hold overlaps the boot instead of being added after it. Ignored when
+   * `splashWindow` is omitted (the runtime stamps its own splash at creation).
+   */
+  splashStartedAt?: number;
   updater?: DesktopUpdater;
 };
 
@@ -841,15 +849,30 @@ function createPendingHtml(): string {
 </html>`)}`;
 }
 
+export type SplashWindowHandle = {
+  /**
+   * Wall-clock instant the splash window was created. Carried alongside the
+   * window so the minimum-hold calculation measures how long the splash has
+   * ACTUALLY been on screen — in packaged builds the window is created before
+   * the sidecars boot, so the hold overlaps the boot instead of being added on
+   * top of it. (Originally this clock started inside `createDesktopRuntime`,
+   * after the sidecars had already finished — re-adding the full delay.)
+   */
+  startedAt: number;
+  window: BrowserWindow;
+};
+
 /**
  * Create and immediately show the white brand-splash window. The packaged entry
  * calls this BEFORE awaiting the daemon/web sidecars so the animation masks the
  * whole cold boot (no black no-window gap); the desktop runtime then adopts it
- * via `DesktopRuntimeOptions.splashWindow` and closes it once the real app has
- * mounted in the (initially hidden) main window. Frameless + matching size so
- * the reveal swap reads as a single window, never a flash.
+ * via `DesktopRuntimeOptions.splashWindow` + `splashStartedAt` and closes it
+ * once the real app has mounted in the (initially hidden) main window. Frameless
+ * + matching size so the reveal swap reads as a single window, never a flash.
  */
-export function createSplashWindow(): BrowserWindow {
+export function createSplashWindow(): SplashWindowHandle {
+  // Stamp creation time at the instant the window appears (see SplashWindowHandle).
+  const startedAt = Date.now();
   const splash = new BrowserWindow({
     autoHideMenuBar: true,
     backgroundColor: "#ffffff",
@@ -866,7 +889,7 @@ export function createSplashWindow(): BrowserWindow {
     },
   });
   void splash.loadURL(createPendingHtml());
-  return splash;
+  return { startedAt, window: splash };
 }
 
 function resolveDesktopIconPath(): string {
@@ -1778,8 +1801,18 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
   // entry hands us one it created BEFORE the sidecars booted (so it overlaps the
   // whole cold start); otherwise we create our own. The main window above stays
   // hidden behind it until the real app has mounted.
-  const splashStartedAt = Date.now();
-  const splash: BrowserWindow | null = options.splashWindow ?? createSplashWindow();
+  // When the caller (packaged) hands us a pre-created splash, honour the
+  // creation time it captured so the minimum hold is measured from when the
+  // animation actually appeared — before the sidecar boot — not from now (which
+  // in packaged is already post-boot). When we create our own splash (tools-dev)
+  // its handle carries a fresh, correct timestamp.
+  let splash: BrowserWindow | null = options.splashWindow ?? null;
+  let splashStartedAt = options.splashStartedAt ?? Date.now();
+  if (splash == null) {
+    const created = createSplashWindow();
+    splash = created.window;
+    splashStartedAt = created.startedAt;
+  }
 
   let revealed = false;
   let revealing = false;

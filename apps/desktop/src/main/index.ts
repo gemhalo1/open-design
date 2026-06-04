@@ -124,6 +124,9 @@ export type DesktopMainOptions = {
    * main window is revealed. Omitted by tools-dev (the runtime makes its own).
    */
   splashWindow?: BrowserWindow | null;
+  /** Creation time of `splashWindow` (from `createSplashWindow().startedAt`), so
+   * the runtime measures the minimum splash hold from when it actually appeared. */
+  splashStartedAt?: number;
   update?: {
     currentVersion?: string | null;
     downloadRoot?: string | null;
@@ -456,6 +459,7 @@ export async function runDesktopMain(
     rendererLogPath,
     requestQuit: shutdownAndExit,
     splashWindow: options.splashWindow,
+    splashStartedAt: options.splashStartedAt,
     updater,
   });
   options.onDesktopReady?.({ show: () => desktop?.show() });
