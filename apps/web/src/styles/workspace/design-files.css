@@ -3,7 +3,7 @@
   position: relative;
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(460px, 1fr) minmax(320px, 380px);
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 380px);
   min-height: 0;
   background: var(--bg);
 }
@@ -24,6 +24,9 @@
   min-height: 0;
   background: var(--bg);
   border-right: 1px solid var(--border);
+  /* Query container so the toolbar can react to the *list column* width
+     (which depends on the chat/preview split, not the viewport). */
+  container-type: inline-size;
 }
 .df-main:last-child { border-right: none; }
 .df-body {
@@ -79,13 +82,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
+  /* Stay on a single row: the breadcrumb (min-width:0 + ellipsis) shrinks
+     and the actions hold their place on the right, instead of the actions
+     wrapping below the breadcrumb. */
+  flex-wrap: nowrap;
 }
 .df-topbar-left {
   display: flex;
   align-items: center;
   min-width: 0;
-  flex: 1 1 180px;
+  flex: 1 1 auto;
 }
 .df-topbar-left .df-breadcrumbs {
   padding: 0;
@@ -106,8 +112,11 @@
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  flex-wrap: wrap;
-  min-width: 0;
+  /* Keep the action cluster intact on one row; the breadcrumb yields space
+     instead. Combined with the icon-only collapse below, the toolbar never
+     wraps to a second line. */
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 .df-actions button {
   background: transparent;
@@ -128,6 +137,15 @@
 .df-actions button.danger:hover:not(:disabled) {
   background: var(--red-bg);
   color: var(--red);
+}
+/* When the list column is too narrow to fit labelled actions beside the
+   breadcrumb (~180px breadcrumb basis + ~243px of action text), drop the
+   button text to icons-only so the toolbar stays on a single row instead
+   of wrapping below the breadcrumb. The `title`/tooltip on each button is
+   kept for hover + a11y. */
+@container (max-width: 470px) {
+  .df-actions button > span { display: none; }
+  .df-actions button { padding: 6px; }
 }
 /* Upload error banner. */
 .df-upload-banner {

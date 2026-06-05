@@ -49,10 +49,36 @@ describe('Design Files preview list styles', () => {
     const previewGrid = cssDeclarations(routinesCss, '.app .df-panel:not(.no-preview)');
     const topbar = cssDeclarations(designFilesCss, '.df-topbar');
     const actions = cssDeclarations(designFilesCss, '.df-actions');
+    const topbarLeft = cssDeclarations(designFilesCss, '.df-topbar-left');
 
-    expect(ruleValue(previewGrid, 'grid-template-columns')).toContain('minmax(460px, 1fr)');
-    expect(ruleValue(topbar, 'flex-wrap')).toBe('wrap');
-    expect(ruleValue(actions, 'flex-wrap')).toBe('wrap');
+    const cols = ruleValue(previewGrid, 'grid-template-columns');
+    // The file list keeps a usable minimum so its toolbar + names stay
+    // clickable on a narrow split…
+    expect(cols).toContain('minmax(280px, 1fr)');
+    // …while the preview pane YIELDS (minmax(0, …)) instead of pinning a
+    // rigid track, so the two columns never sum past the panel width and
+    // push the toolbar / preview off-screen.
+    expect(cols).toMatch(/minmax\(0,\s*\d+px\)/);
+    // The toolbar stays on a single row: it does NOT wrap; instead the
+    // breadcrumb (the growable/shrinkable side) yields while the action
+    // cluster holds its place on the right.
+    expect(ruleValue(topbar, 'flex-wrap')).toBe('nowrap');
+    expect(ruleValue(actions, 'flex-wrap')).toBe('nowrap');
+    expect(ruleValue(actions, 'flex-shrink')).toBe('0');
+    expect(ruleValue(topbarLeft, 'min-width')).toBe('0');
+  });
+
+  it('collapses toolbar actions to icons-only on a narrow list column', () => {
+    const main = cssDeclarations(designFilesCss, '.df-main');
+    // The list column is its own query container so the toolbar reacts to
+    // the column width (chat/preview split), not the viewport.
+    expect(ruleValue(main, 'container-type')).toBe('inline-size');
+    // Below the labelled-actions wrap threshold the button text is hidden
+    // (icons remain) so the toolbar stays on one row instead of wrapping
+    // the actions below the breadcrumb.
+    expect(designFilesCss).toMatch(
+      /@container[^{]*max-width:\s*470px[^{]*\{[\s\S]*?\.df-actions button\s*>\s*span\s*\{\s*display:\s*none/,
+    );
   });
 
   it('opens the working directory menu below the top chrome instead of behind it', () => {
