@@ -64,7 +64,12 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     return false;
   };
   const importedDesignSystemResponse = async <T extends { id: string }>(designSystem: T) => {
-    const tokenContractRebuild = await ctx.tokenContractRebuild?.maybeStartForImportedDesignSystem?.(designSystem.id);
+    let tokenContractRebuild: DesignSystemTokenContractRebuildJobResponse | undefined;
+    try {
+      tokenContractRebuild = await ctx.tokenContractRebuild?.maybeStartForImportedDesignSystem?.(designSystem.id);
+    } catch (err) {
+      console.warn('[design-systems] import token-contract rebuild auto-queue failed', err);
+    }
     return {
       designSystem,
       ...(tokenContractRebuild ? { tokenContractRebuild } : {}),
