@@ -68,7 +68,7 @@ export const ko: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (지원 중단됨)',
   'plugins.availableDetails.versionYankedSuffix': ' (철회됨)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': '무결성',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': '권한',
   'plugins.availableDetails.capabilitySummary': '기능 요약',
   'plugins.actions.copyInstallCommand': '설치 명령 복사',

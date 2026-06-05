@@ -68,7 +68,7 @@ export const de: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (veraltet)',
   'plugins.availableDetails.versionYankedSuffix': ' (zurückgezogen)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': 'Integrität',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'Berechtigungen',
   'plugins.availableDetails.capabilitySummary': 'Funktionsübersicht',
   'plugins.actions.copyInstallCommand': 'Installationsbefehl kopieren',

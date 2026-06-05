@@ -68,7 +68,7 @@ export const id: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (usang)',
   'plugins.availableDetails.versionYankedSuffix': ' (ditarik)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': 'Integritas',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'Izin',
   'plugins.availableDetails.capabilitySummary': 'Ringkasan kemampuan',
   'plugins.actions.copyInstallCommand': 'Salin perintah instal',

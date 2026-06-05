@@ -68,7 +68,7 @@ export const ar: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (مهمَل)',
   'plugins.availableDetails.versionYankedSuffix': ' (مسحوب)',
   'plugins.availableDetails.ref': 'المرجع',
-  'plugins.availableDetails.integrity': 'السلامة',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'الأذونات',
   'plugins.availableDetails.capabilitySummary': 'ملخص الإمكانات',
   'plugins.actions.copyInstallCommand': 'نسخ أمر التثبيت',

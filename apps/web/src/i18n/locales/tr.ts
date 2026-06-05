@@ -68,7 +68,7 @@ export const tr: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (kullanımdan kaldırıldı)',
   'plugins.availableDetails.versionYankedSuffix': ' (geri çekildi)',
   'plugins.availableDetails.ref': 'Referans',
-  'plugins.availableDetails.integrity': 'Bütünlük',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'İzinler',
   'plugins.availableDetails.capabilitySummary': 'Yetenek özeti',
   'plugins.actions.copyInstallCommand': 'Kurulum komutunu kopyala',

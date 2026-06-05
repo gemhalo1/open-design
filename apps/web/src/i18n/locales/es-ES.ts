@@ -68,7 +68,7 @@ export const esES: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (obsoleto)',
   'plugins.availableDetails.versionYankedSuffix': ' (retirada)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': 'Integridad',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'Permisos',
   'plugins.availableDetails.capabilitySummary': 'Resumen de capacidades',
   'plugins.actions.copyInstallCommand': 'Copiar comando de instalación',

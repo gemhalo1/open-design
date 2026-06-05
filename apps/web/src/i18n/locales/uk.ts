@@ -68,7 +68,7 @@ export const uk: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (застаріле)',
   'plugins.availableDetails.versionYankedSuffix': ' (відкликано)',
   'plugins.availableDetails.ref': 'Реф',
-  'plugins.availableDetails.integrity': 'Цілісність',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'Дозволи',
   'plugins.availableDetails.capabilitySummary': 'Зведення можливостей',
   'plugins.actions.copyInstallCommand': 'Скопіювати команду встановлення',

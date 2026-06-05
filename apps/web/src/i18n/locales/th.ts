@@ -68,7 +68,7 @@ export const th: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (เลิกใช้งานแล้ว)',
   'plugins.availableDetails.versionYankedSuffix': ' (ถูกถอนแล้ว)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': 'ความถูกต้องสมบูรณ์',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'สิทธิ์การเข้าถึง',
   'plugins.availableDetails.capabilitySummary': 'สรุปความสามารถ',
   'plugins.actions.copyInstallCommand': 'คัดลอกคำสั่งติดตั้ง',

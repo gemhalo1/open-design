@@ -68,7 +68,7 @@ export const ja: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': '（非推奨）',
   'plugins.availableDetails.versionYankedSuffix': '（取り下げ済み）',
   'plugins.availableDetails.ref': '参照',
-  'plugins.availableDetails.integrity': '整合性',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': '権限',
   'plugins.availableDetails.capabilitySummary': '機能の概要',
   'plugins.actions.copyInstallCommand': 'インストールコマンドをコピー',

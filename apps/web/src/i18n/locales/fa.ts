@@ -68,7 +68,7 @@ export const fa: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (منسوخ‌شده)',
   'plugins.availableDetails.versionYankedSuffix': ' (برداشته‌شده)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': 'یکپارچگی',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'دسترسی‌ها',
   'plugins.availableDetails.capabilitySummary': 'خلاصه قابلیت‌ها',
   'plugins.actions.copyInstallCommand': 'کپی دستور نصب',

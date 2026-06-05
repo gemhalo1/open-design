@@ -261,4 +261,21 @@ describe('i18n locales', () => {
         'If you need to add new keys, declare them with their Japanese values directly.',
     ).not.toMatch(/\.\.\.en\b/);
   });
+
+  // Brand / proper-noun lock: these labels are product or technical proper
+  // nouns and must stay verbatim English in EVERY locale, never translated.
+  // (e.g. the plugin-details "Integrity" field was wrongly localized to
+  // 完整性 / Integrität / etc.; lock it so a future translation pass can't
+  // re-localize it.)
+  it('keeps brand/proper-noun labels verbatim English across every locale', async () => {
+    const verbatim: Array<{ key: keyof Dict; value: string }> = [
+      { key: 'plugins.availableDetails.integrity', value: 'Integrity' },
+    ];
+    for (const locale of LOCALES) {
+      const dict = await loadDict(locale);
+      for (const { key, value } of verbatim) {
+        expect(dict[key], `${locale}.${String(key)}`).toBe(value);
+      }
+    }
+  });
 });

@@ -68,7 +68,7 @@ export const hu: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (elavult)',
   'plugins.availableDetails.versionYankedSuffix': ' (visszavonva)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': 'Integritás',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'Engedélyek',
   'plugins.availableDetails.capabilitySummary': 'Képességek összefoglalása',
   'plugins.actions.copyInstallCommand': 'Telepítési parancs másolása',

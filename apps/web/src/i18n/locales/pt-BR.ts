@@ -68,7 +68,7 @@ export const ptBR: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': ' (obsoleto)',
   'plugins.availableDetails.versionYankedSuffix': ' (removido)',
   'plugins.availableDetails.ref': 'Ref',
-  'plugins.availableDetails.integrity': 'Integridade',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': 'Permissões',
   'plugins.availableDetails.capabilitySummary': 'Resumo de recursos',
   'plugins.actions.copyInstallCommand': 'Copiar comando de instalação',

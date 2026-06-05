@@ -68,7 +68,7 @@ export const zhTW: Dict = {
   'plugins.availableDetails.versionDeprecatedSuffix': '（已淘汰）',
   'plugins.availableDetails.versionYankedSuffix': '（已撤回）',
   'plugins.availableDetails.ref': '參照',
-  'plugins.availableDetails.integrity': '完整性',
+  'plugins.availableDetails.integrity': 'Integrity',
   'plugins.availableDetails.permissions': '權限',
   'plugins.availableDetails.capabilitySummary': '功能摘要',
   'plugins.actions.copyInstallCommand': '複製安裝命令',
