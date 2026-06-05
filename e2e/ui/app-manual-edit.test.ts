@@ -88,8 +88,7 @@ test('[P0] manual edit inspector previews and persists page and selected element
   await expect(inspectorRow(page, 'Font').locator('select')).toHaveValue('Georgia, serif');
   await expect(inspectorRow(page, 'Base size').locator('input')).toHaveValue('18');
 
-  await frame.getByRole('heading', { name: 'Original Hero' }).click();
-  await expect(page.locator('.manual-edit-modal')).toContainText('TYPOGRAPHY');
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="hero-title"]', 'TYPOGRAPHY');
   const selectedTitleMarker = frame.locator('[data-od-id="hero-title"][data-od-edit-selected="true"]');
   await expect(selectedTitleMarker).toHaveCount(1);
   const fontSizeInput = inspectorSection(page, 'TYPOGRAPHY').locator('.cc-row').filter({ hasText: 'Size' }).locator('input');
@@ -142,6 +141,7 @@ test('[P0] manual edit mode preserves preview actions after style edits', async 
   await expect(frame.getByRole('heading', { name: 'Original Hero' })).toBeVisible();
 
   await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="hero-title"]', 'TYPOGRAPHY');
   const fontSizeInput = await selectStyleRowInput(page, frame, '[data-od-id="hero-title"]', 'TYPOGRAPHY', 'Size');
   await fontSizeInput.fill('48');
   await inspectSaveButton(page).click({ force: true });
@@ -155,6 +155,18 @@ test('[P0] manual edit mode preserves preview actions after style edits', async 
   await expect(page.getByRole('button', { name: /^Share$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Download$/ })).toBeVisible();
 });
+
+async function selectPreviewElementThroughBridge(
+  page: Page,
+  frame: ReturnType<Page['frameLocator']>,
+  selector: string,
+  section: string,
+) {
+  await expect(frame.locator('html[data-od-edit-mode]')).toHaveCount(1);
+  await frame.locator(selector).click();
+  await expect(page.locator('.manual-edit-modal')).toContainText(section);
+  await expect(frame.locator(`${selector}[data-od-edit-selected="true"]`)).toHaveCount(1);
+}
 
 async function selectStyleRowInput(
   page: Page,
