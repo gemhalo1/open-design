@@ -492,6 +492,7 @@ describe("packaged smoke workflow", () => {
       expect(fixture.uploadedObjectKeys()).toEqual([
         "beta/versions/1.2.3-beta.4/metadata.json",
         "beta/latest/metadata.json",
+        "beta/latest/platforms/mac_arm64.json",
       ]);
     } finally {
       await fixture.close();
@@ -500,7 +501,9 @@ describe("packaged smoke workflow", () => {
   });
 
   it("accepts target-first win_x64 platform manifests in beta metadata publish", async () => {
-    const fixture = await startReleaseMetadataObjectStore({});
+    const fixture = await startReleaseMetadataObjectStore({
+      "beta/versions/1.2.3-beta.4.unsigned/latest.yml": "versioned windows updater feed",
+    });
     const runnerTemp = await mkdtemp(join(tmpdir(), "od-release-beta-win-metadata-"));
     const platformManifestRoot = join(runnerTemp, "release-platform-manifests");
 
@@ -520,6 +523,11 @@ describe("packaged smoke workflow", () => {
               commit: "current-sha",
               runAttempt: 2,
               runId: 222222222,
+            },
+            feed: {
+              latestUrl: "https://releases.open-design.ai/beta/latest/latest.yml",
+              name: "latest.yml",
+              url: "https://releases.open-design.ai/beta/versions/1.2.3-beta.4.unsigned/latest.yml",
             },
             legacyPlatformKey: "win",
             platform: "win",
@@ -575,6 +583,8 @@ describe("packaged smoke workflow", () => {
       expect(fixture.uploadedObjectKeys()).toEqual([
         "beta/versions/1.2.3-beta.4.unsigned/metadata.json",
         "beta/latest/metadata.json",
+        "beta/latest/platforms/win_x64.json",
+        "beta/latest/latest.yml",
       ]);
     } finally {
       await fixture.close();

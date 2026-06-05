@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  contentType,
   githubInfo,
   optional,
   publicUrl,
@@ -15,6 +16,7 @@ type PlatformManifest = {
   artifacts?: Record<string, { url?: string }>;
   channel?: string;
   enabled?: boolean;
+  feed?: { latestUrl?: string; name?: string; url?: string } | null;
   github?: {
     commit?: string;
     runAttempt?: number;
@@ -93,12 +95,12 @@ function compareReleaseVersions(left: string, right: string): number {
   return 0;
 }
 
-async function upload(path: string, objectKey: string, cacheControl: string): Promise<void> {
+async function upload(path: string, objectKey: string, cacheControl: string, objectContentType = "application/json; charset=utf-8"): Promise<void> {
   await putStorageObject({
     ...storage,
     bodyPath: path,
     cacheControl,
-    contentType: "application/json; charset=utf-8",
+    contentType: objectContentType,
     objectKey,
   });
 }
@@ -151,6 +153,29 @@ async function uploadLatestMetadataWithCas(path: string, objectKey: string): Pro
   }
 
   throw new Error(`failed to update latest metadata with CAS after 5 attempts: ${objectKey}`);
+}
+
+async function uploadLatestPlatformObjects(): Promise<void> {
+  const latestFeedsDir = join(metadataDir, "latest-feeds");
+
+  for (const [target, manifest] of Object.entries(releaseTargets)) {
+    if (manifest.status !== "published") continue;
+
+    const manifestPath = join(manifestDir, `${target}.json`);
+    await upload(manifestPath, `${latestPrefix}/platforms/${target}.json`, "public, max-age=60, must-revalidate");
+
+    const feedName = typeof manifest.feed?.name === "string" ? manifest.feed.name : "";
+    if (feedName.length === 0) continue;
+
+    const feed = await getStorageObject({ ...storage, objectKey: `${versionPrefix}/${feedName}` });
+    if (feed == null) {
+      throw new Error(`missing versioned feed for latest publish: ${versionPrefix}/${feedName}`);
+    }
+    mkdirSync(latestFeedsDir, { recursive: true });
+    const feedPath = join(latestFeedsDir, feedName);
+    writeFileSync(feedPath, feed.text, "utf8");
+    await upload(feedPath, `${latestPrefix}/${feedName}`, "public, max-age=60, must-revalidate", contentType(feedName));
+  }
 }
 
 function enabled(name: string): boolean {
@@ -263,6 +288,7 @@ writeJson(metadataPath, metadata);
 await upload(metadataPath, `${versionPrefix}/metadata.json`, "public, max-age=31536000, immutable");
 if (latestMetadataUpdated) {
   await uploadLatestMetadataWithCas(metadataPath, `${latestPrefix}/metadata.json`);
+  await uploadLatestPlatformObjects();
 } else {
   console.log(`left ${metadata.r2.latestMetadataUrl} unchanged because releaseState=${releaseState}`);
 }
