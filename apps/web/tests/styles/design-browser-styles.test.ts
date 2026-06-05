@@ -35,6 +35,30 @@ function definedClasses(css: string): Set<string> {
   return defined;
 }
 
+// Classes the panel renders purely as JS state hooks / value spans / modifiers
+// that never had a dedicated CSS rule — verified against the pre-#3358
+// stylesheet (640893756^), which design-browser.css restores verbatim. They are
+// intentionally style-less, so the coverage check exempts them rather than
+// demanding a rule that never existed. A class only belongs here if it carries
+// no layout of its own; anything that paints or positions must stay covered.
+const STYLELESS_HOOKS = new Set([
+  'db-action-browser-use',
+  'db-action-menu',
+  'db-action-primary',
+  'db-action-save',
+  'db-action-screenshot',
+  'db-inspect-bg',
+  'db-inspect-color',
+  'db-inspect-font-size',
+  'db-inspect-padding',
+  'db-inspect-radius',
+  'db-inspect-weight',
+  'db-viewport-height',
+  'db-viewport-icon',
+  'db-viewport-menu-label',
+  'db-viewport-width',
+]);
+
 describe('design browser panel styles', () => {
   it('is imported into the global stylesheet so the panel ships styled', () => {
     expect(indexCss).toContain("@import './styles/workspace/design-browser.css';");
@@ -71,15 +95,24 @@ describe('design browser panel styles', () => {
     expect(board).toMatch(/(grid|flex|padding)/);
   });
 
-  it('keeps the component class usage covered by the stylesheet', () => {
-    // The component is the source of truth for which structural classes exist;
-    // assert the chrome/address/reference family it renders is all defined.
+  it('keeps every styled browser-panel class the component renders defined in the stylesheet', () => {
+    // The component is the source of truth: collect EVERY `design-browser`/`db-*`
+    // token it renders (not a hard-coded family subset) so dropping the rules for
+    // any part of the panel — viewport switcher, browser-use menu, suggestions,
+    // comment layer, etc. — turns this guard red.
     const used = new Set<string>();
-    for (const token of component.matchAll(/["'`]((?:design-browser|db-(?:chrome|nav|actions|address|content|start|reference)[\w-]*))["'` ]/g)) {
-      used.add(token[1]!.trim());
+    for (const token of component.matchAll(/\b(?:design-browser|db-[a-z][a-z0-9-]*)\b/g)) {
+      const cls = token[0];
+      // Dynamic class built from a template literal (e.g. `db-viewport-${mode}`):
+      // the word boundary truncates the stem just before the interpolated `-`,
+      // so the very next source char is `-`. Such classes can't be matched
+      // statically — skip the stem (its static siblings are still asserted).
+      if (cls.endsWith('-') || component[token.index + cls.length] === '-') continue;
+      if (STYLELESS_HOOKS.has(cls)) continue;
+      used.add(cls);
     }
     const defined = definedClasses(designBrowserCss);
-    const orphans = [...used].filter((cls) => !defined.has(cls));
+    const orphans = [...used].filter((cls) => !defined.has(cls)).sort();
     expect(orphans).toEqual([]);
   });
 });
