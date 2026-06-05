@@ -108,10 +108,12 @@ semantic task stages so humans and agents can diagnose by product intent.
 
 ### Score Model
 
-An eligible run is a terminal, non-test agent run with enough trace metadata to
-identify trace id, task kind, agent, model, final status, and timing/token
-baselines. Each eligible run should receive automatic scores where the signal can
-be computed safely:
+A score-eligible run is a terminal production agent run or fixed-dataset
+experiment/evaluation run with enough trace metadata to identify trace id,
+dataset item id when applicable, task kind, agent, model, final status, and
+timing/token baselines. Local smoke tests and harness-only runs are excluded
+unless they are recorded as fixed-dataset evaluation runs. Each eligible run
+should receive automatic scores where the signal can be computed safely:
 
 | Score | Meaning |
 | --- | --- |
@@ -133,16 +135,21 @@ be computed because required trace fields or evaluator inputs are missing, it
 should record `score_applicability.<score> = "insufficient_signal"` and treat the
 missing score as an observability gap, not as a failed run.
 
+Fixed-dataset experiment and release-gate runs must reuse the same score fields,
+score applicability values, and latency/cost bucket definitions as production
+runs. The release gate compares candidate and baseline evaluation runs through
+these shared fields instead of a separate QA-only scoring schema.
+
 | Score | Applies to |
 | --- | --- |
-| `task_success` | All eligible user-facing and scheduled agent runs with a terminal result. |
-| `artifact_valid` | Artifact-producing tasks that create, edit, export, or inspect project files with a required manifest or file contract. |
-| `preview_ok` | Artifact-producing tasks whose primary output has a supported preview renderer. |
-| `user_request_covered` | User-facing tasks with a natural-language request and terminal output to compare. |
-| `design_quality` | Visual, product, deck, prototype, image, video, audio, or document outputs with an applicable rubric. |
+| `task_success` | All score-eligible production, scheduled, and fixed-dataset evaluation runs with a terminal result. |
+| `artifact_valid` | Artifact-producing production or evaluation tasks that create, edit, export, or inspect project files with a required manifest or file contract. |
+| `preview_ok` | Artifact-producing production or evaluation tasks whose primary output has a supported preview renderer. |
+| `user_request_covered` | Production and fixed-dataset evaluation tasks with a natural-language request or expected outcome and terminal output to compare. |
+| `design_quality` | Production and evaluation outputs for visual, product, deck, prototype, image, video, audio, or document tasks with an applicable rubric. |
 | `stability_risk` | All eligible runs. |
-| `cost_bucket` | All eligible runs with model and token metadata. |
-| `latency_bucket` | All eligible runs with timing metadata. |
+| `cost_bucket` | All score-eligible runs with model and token metadata. |
+| `latency_bucket` | All score-eligible runs with timing metadata. |
 | `user_rating` | Runs where the user submitted explicit feedback. |
 
 Automatic scores should start conservative. Deterministic evaluators are
