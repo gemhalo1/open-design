@@ -1621,9 +1621,9 @@
 }
 .app .working-dir-pill-menu {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 220;
   min-width: 260px;
   max-width: 340px;
   padding: 6px;
@@ -1766,7 +1766,7 @@
   background: var(--bg-panel);
 }
 .app .df-panel:not(.no-preview) {
-  grid-template-columns: minmax(320px, 1fr) minmax(320px, 360px);
+  grid-template-columns: minmax(460px, 1fr) minmax(320px, 360px);
 }
 .app .df-main {
   border-right-color: var(--border);

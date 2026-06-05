@@ -44,4 +44,22 @@ describe('Design Files preview list styles', () => {
     expect(ruleValue(rowSub, 'overflow')).toBe('hidden');
     expect(ruleValue(rowSubPart, 'text-overflow')).toBe('ellipsis');
   });
+
+  it('keeps the preview split from squeezing the file list toolbar', () => {
+    const previewGrid = cssDeclarations(routinesCss, '.app .df-panel:not(.no-preview)');
+    const topbar = cssDeclarations(designFilesCss, '.df-topbar');
+    const actions = cssDeclarations(designFilesCss, '.df-actions');
+
+    expect(ruleValue(previewGrid, 'grid-template-columns')).toContain('minmax(460px, 1fr)');
+    expect(ruleValue(topbar, 'flex-wrap')).toBe('wrap');
+    expect(ruleValue(actions, 'flex-wrap')).toBe('wrap');
+  });
+
+  it('opens the working directory menu below the top chrome instead of behind it', () => {
+    const menu = cssDeclarations(routinesCss, '.app .working-dir-pill-menu');
+
+    expect(ruleValue(menu, 'top')).toBe('calc(100% + 6px)');
+    expect(ruleValue(menu, 'right')).toBe('0');
+    expect(ruleValue(menu, 'z-index')).toBe('220');
+  });
 });
