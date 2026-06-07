@@ -378,7 +378,7 @@ winDescribe('packaged windows runtime smoke', () => {
       let expectedPayloadUpdateVersion: string | null = updateVersion;
       if (!verifyCoreOnly) {
         if (updateMetadataUrl != null && updateMetadataUrl !== '') {
-          applyPackagedUpdateEnv(process.env, updateScenario, updateMetadataUrl);
+          applyPackagedUpdateEnv(process.env, updateScenario, updateMetadataUrl, { openDryRun: false });
         } else {
           const localPayload = await resolveLocalPayloadUpdateFixture();
           expectedPayloadUpdateVersion = localPayload.targetVersion;
@@ -388,7 +388,7 @@ winDescribe('packaged windows runtime smoke', () => {
             platform: 'win',
             version: localPayload.targetVersion,
           });
-          applyPackagedUpdateEnv(process.env, updateScenario, payloadFixture.info.metadataUrl);
+          applyPackagedUpdateEnv(process.env, updateScenario, payloadFixture.info.metadataUrl, { openDryRun: false });
         }
       }
 
@@ -1035,7 +1035,7 @@ async function printUpdaterHelperLogs(): Promise<void> {
 }
 
 async function printLauncherRuntimeSnapshot(): Promise<void> {
-  const runtimePath = join(runtimeNamespaceRoot, 'launcher', 'channels', updateScenario.channel, 'namespaces', namespace, 'runtime.json');
+  const runtimePath = join(toolsPackDir, 'runtime', 'win', 'launcher', 'channels', updateScenario.channel, 'namespaces', namespace, 'runtime.json');
   const content = await readFile(runtimePath, 'utf8').catch(() => null);
   console.error(`[launcher-runtime] ${runtimePath}`);
   console.error(content?.trim() ?? '(missing)');

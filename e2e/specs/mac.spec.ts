@@ -237,7 +237,7 @@ macDescribe('packaged mac runtime smoke', () => {
       let expectedPayloadUpdateVersion: string | null = updateVersion;
       if (!verifyCoreOnly) {
         if (updateMetadataUrl != null && updateMetadataUrl !== '') {
-          applyPackagedUpdateEnv(process.env, updateScenario, updateMetadataUrl);
+          applyPackagedUpdateEnv(process.env, updateScenario, updateMetadataUrl, { openDryRun: false });
         } else {
           const localPayload = await resolveLocalPayloadUpdateFixture();
           expectedPayloadUpdateVersion = localPayload.targetVersion;
@@ -247,7 +247,7 @@ macDescribe('packaged mac runtime smoke', () => {
             platform: 'mac',
             version: localPayload.targetVersion,
           });
-          applyPackagedUpdateEnv(process.env, updateScenario, payloadFixture.info.metadataUrl);
+          applyPackagedUpdateEnv(process.env, updateScenario, payloadFixture.info.metadataUrl, { openDryRun: false });
         }
       }
 
