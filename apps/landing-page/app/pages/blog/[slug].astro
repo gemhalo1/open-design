@@ -18,10 +18,7 @@ import SiteFooter from '../../_components/site-footer.astro';
 import Topbar from '../../_components/topbar.astro';
 import { getCatalogCounts } from '../../_lib/catalog';
 import { getGithubRepoMeta } from '../../_lib/github';
-import {
-  explicitLocalizedString,
-  localizeBlogPostText,
-} from '../../content-i18n';
+import { localizeBlogPostText } from '../../content-i18n';
 import {
   getLandingUiCopy,
   getLocaleDefinition,
@@ -55,16 +52,18 @@ const fallbackPost = localizeBlogPostText({
   category: post.data.category,
   locale,
 });
-const localizedPostField = (field: 'title' | 'summary' | 'category') => {
-  return explicitLocalizedString(
-    localizedPostI18n?.[field] as Parameters<typeof explicitLocalizedString>[0],
-    locale,
-  ) ?? fallbackPost[field];
+// `localizedPostI18n` is already `i18n[locale]`, so each field is the resolved
+// string for this locale rather than a locale→string map. It must not go through
+// explicitLocalizedString (which expects the map shape and returns undefined for a
+// bare string on non-default locales — the reason post translations never
+// rendered). Use the field directly and fall back to the English source text.
+const explicitField = (field: 'title' | 'summary' | 'category' | 'bodyHtml') => {
+  const value = localizedPostI18n?.[field];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 };
-const localizedBodyHtml = explicitLocalizedString(
-  localizedPostI18n?.bodyHtml as Parameters<typeof explicitLocalizedString>[0],
-  locale,
-) ?? fallbackPost.bodyHtml;
+const localizedPostField = (field: 'title' | 'summary' | 'category') =>
+  explicitField(field) ?? fallbackPost[field];
+const localizedBodyHtml = explicitField('bodyHtml') ?? fallbackPost.bodyHtml;
 const DISCORD = 'https://discord.gg/9ptkbbqRu';
 const sourceUrl = `https://github.com/nexu-io/open-design/blob/main/apps/landing-page/app/content/blog/${post.id}.md`;
 const category = post.data.category.toLowerCase();
