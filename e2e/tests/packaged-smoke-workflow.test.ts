@@ -46,6 +46,26 @@ function sectionBetween(content: string, start: string, end: string): string {
   return content.slice(startIndex, endIndex);
 }
 
+async function runReleaseStableForFailure(env: Record<string, string>): Promise<string> {
+  try {
+    await execFileAsync(process.execPath, ["--experimental-strip-types", releaseStableScriptPath], {
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        GITHUB_REPOSITORY: "nexu-io/open-design",
+        GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+        OPEN_DESIGN_RELEASE_CHANNEL: "stable",
+        ...env,
+      },
+    });
+  } catch (error) {
+    const failed = error as { stderr?: string; stdout?: string };
+    return `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+  }
+
+  throw new Error("release-stable script unexpectedly succeeded");
+}
+
 describe("packaged smoke workflow", () => {
   it("[P2] keeps packaged smoke outside the main CI gate", async () => {
     const workflow = await readFile(ciWorkflowPath, "utf8");
@@ -160,6 +180,76 @@ describe("packaged smoke workflow", () => {
     const betaBuildScript = await readFile(releaseBetaPosixBuildScriptPath, "utf8");
     expect(betaBuildScript).toContain("OD_PACKAGED_E2E_RELEASE_CHANNEL=beta");
     expect(betaBuildScript).toContain('OD_PACKAGED_E2E_RELEASE_VERSION="$RELEASE_VERSION"');
+  });
+
+  it("[P2] lets stable release dispatch use an explicit version when ref is not a release branch", async () => {
+    const [workflow, script] = await Promise.all([
+      readFile(releaseStableWorkflowPath, "utf8"),
+      readFile(releaseStableScriptPath, "utf8"),
+    ]);
+
+    expect(workflow).toContain("release_version:");
+    expect(workflow).toContain("Required when ref is not release/vX.Y.Z");
+    expect(workflow).toContain("OPEN_DESIGN_STABLE_VERSION: ${{ inputs.release_version }}");
+
+    expect(script).toContain("const stableReleaseBranchPattern = /^release\\/v(\\d+\\.\\d+\\.\\d+)$/;");
+    expect(script).toContain("function resolveStableBaseVersion");
+    expect(script).toContain("release-stable requires either a release/vX.Y.Z branch or OPEN_DESIGN_STABLE_VERSION");
+    expect(script).toContain("OPEN_DESIGN_STABLE_VERSION ${inputVersion.value} must match release branch version");
+    expect(script).toContain(
+      '${stableBaseVersion.source ?? "release base"} version ${stableBaseVersion.value} must match apps/packaged/package.json version',
+    );
+    expect(script).not.toContain("release-stable can only run from release/vX.Y.Z branches");
+  });
+
+  it("[P2] rejects stable release runs without a release branch or explicit version", async () => {
+    const output = await runReleaseStableForFailure({
+      GITHUB_REF_NAME: "main",
+      OPEN_DESIGN_STABLE_VERSION: "",
+    });
+
+    expect(output).toContain("release-stable requires either a release/vX.Y.Z branch or OPEN_DESIGN_STABLE_VERSION");
+  });
+
+  it("[P2] rejects conflicting stable release branch and explicit version inputs", async () => {
+    const output = await runReleaseStableForFailure({
+      GITHUB_REF_NAME: "release/v0.10.0",
+      OPEN_DESIGN_STABLE_VERSION: "0.10.1",
+    });
+
+    expect(output).toContain("OPEN_DESIGN_STABLE_VERSION 0.10.1 must match release branch version 0.10.0");
+  });
+
+  it("[P2] supports release dry-run preflight without build or publish side effects", async () => {
+    const [workflow, script] = await Promise.all([
+      readFile(releaseStableWorkflowPath, "utf8"),
+      readFile(releaseStableScriptPath, "utf8"),
+    ]);
+
+    expect(workflow).toContain("dry_run:");
+    expect(workflow).toContain("Validate release inputs and read-only remote gates without building or publishing.");
+    expect(workflow).toContain(
+      "group: open-design-release-stable-${{ inputs.channel }}-${{ inputs.dry_run && 'dry-run' || 'publish' }}",
+    );
+    expect(workflow).toContain("OPEN_DESIGN_RELEASE_DRY_RUN: ${{ inputs.dry_run }}");
+    expect(workflow).toContain("dry_run: ${{ steps.stable.outputs.dry_run }}");
+    expect(workflow).toContain("if: ${{ steps.stable.outputs.dry_run != 'true' }}");
+    expect(workflow).toContain("if: ${{ needs.metadata.outputs.dry_run != 'true' }}");
+    expect(workflow).toContain("needs.metadata.outputs.dry_run != 'true' &&");
+
+    expect(script).toContain("function parseBooleanInput");
+    expect(script).toContain('parseBooleanInput(process.env.OPEN_DESIGN_RELEASE_DRY_RUN, "OPEN_DESIGN_RELEASE_DRY_RUN")');
+    expect(script).toContain('setOutput("dry_run", dryRun ? "true" : "false");');
+  });
+
+  it("[P2] rejects invalid release dry-run values before remote checks", async () => {
+    const output = await runReleaseStableForFailure({
+      GITHUB_REF_NAME: "release/v0.10.0",
+      OPEN_DESIGN_RELEASE_DRY_RUN: "maybe",
+      OPEN_DESIGN_STABLE_VERSION: "",
+    });
+
+    expect(output).toContain("OPEN_DESIGN_RELEASE_DRY_RUN must be true or false; got maybe");
   });
 
   it("keeps both beta release lanes on the shared payload-aware metadata surface", async () => {
