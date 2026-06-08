@@ -925,6 +925,7 @@ export function HomeView({
         queryTemplate: hasAppendedQuery ? rawQueryTemplate : null,
         queryTemplateAllowsPrefix: hasAppendedQuery && currentDraft.length > 0,
       });
+      scrollHomeToTop();
       return;
     }
     await usePlugin(record, undefined, {
