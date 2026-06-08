@@ -5685,16 +5685,16 @@ export function ProjectView({
           conversationId={activeConversationId}
           headerActions={(
             <>
-              <EntrySettingsMenu
-                config={config}
-                onThemeChange={handleThemeChange}
-                onOpenSettings={onOpenSettings}
-              />
               <HandoffButton
                 projectId={project.id}
                 projectName={project.name}
                 projectDir={projectDetail.resolvedDir}
                 agents={agents}
+              />
+              <EntrySettingsMenu
+                config={config}
+                onThemeChange={handleThemeChange}
+                onOpenSettings={onOpenSettings}
               />
             </>
           )}

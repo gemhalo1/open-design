@@ -68,6 +68,7 @@ export function EntrySettingsMenu({
   const { locale, setLocale } = useI18n();
   const discordPresence = useDiscordPresence();
   const [open, setOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const [openDesignShare, setOpenDesignShare] = useState<SocialShareResponse | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -94,6 +95,10 @@ export function EntrySettingsMenu({
     () => buildSocialSharePayload(openDesignShareRequest),
     [openDesignShareRequest],
   );
+
+  useEffect(() => {
+    if (!open) setLangOpen(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -160,28 +165,68 @@ export function EntrySettingsMenu({
               <Icon name="languages" size={13} />
               <span>{t('settings.language')}</span>
             </div>
-            <div className="entry-settings-menu__language-grid">
-              {LOCALES.map((code) => {
-                const active = locale === code;
-                return (
-                  <button
-                    key={code}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={active}
-                    className={`entry-settings-menu__choice${
-                      active ? ' is-active' : ''
-                    }`}
-                    onClick={() => {
-                      setLocale(code as Locale);
-                      setOpen(false);
-                    }}
+            <div className="entry-settings-menu__select">
+              <button
+                type="button"
+                className="entry-settings-menu__select-trigger"
+                aria-haspopup="listbox"
+                aria-expanded={langOpen}
+                onClick={() => setLangOpen((value) => !value)}
+              >
+                <span className="entry-settings-menu__select-value">
+                  {LOCALE_LABEL[locale]}
+                </span>
+                <Icon
+                  name="chevron-down"
+                  size={14}
+                  className="entry-settings-menu__select-caret"
+                />
+              </button>
+              <div
+                className={`entry-settings-menu__select-list${
+                  langOpen ? ' is-open' : ''
+                }`}
+              >
+                <div className="entry-settings-menu__select-list-inner">
+                  <div
+                    className="entry-settings-menu__select-panel"
+                    role="listbox"
+                    aria-label={t('settings.language')}
                   >
-                    <span>{LOCALE_LABEL[code]}</span>
-                    {active ? <Icon name="check" size={12} /> : null}
-                  </button>
-                );
-              })}
+                    {LOCALES.map((code) => {
+                      const active = locale === code;
+                      return (
+                        <button
+                          key={code}
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          tabIndex={langOpen ? 0 : -1}
+                          className={`entry-settings-menu__option${
+                            active ? ' is-active' : ''
+                          }`}
+                          onClick={() => {
+                            setLocale(code as Locale);
+                            setLangOpen(false);
+                            setOpen(false);
+                          }}
+                        >
+                          <span className="entry-settings-menu__option-label">
+                            {LOCALE_LABEL[code]}
+                          </span>
+                          {active ? (
+                            <Icon
+                              name="check"
+                              size={12}
+                              className="entry-settings-menu__option-check"
+                            />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
