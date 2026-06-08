@@ -36,6 +36,9 @@ vi.mock('../../src/components/EntryView', () => ({
       <div data-testid="amr-model">
         {agents.find((agent) => agent.id === 'amr')?.models?.[0]?.id ?? 'none'}
       </div>
+      <div data-testid="config-amr-model">
+        {config.agentModels?.amr?.model ?? 'none'}
+      </div>
       <div data-testid="amr-profile">
         {config.agentCliEnv?.amr?.OPEN_DESIGN_AMR_PROFILE ?? 'none'}
       </div>
@@ -414,6 +417,7 @@ describe('App AMR polling', () => {
   it('refreshes renderer config and clears stale AMR models after a desktop app-config change event', async () => {
     mockedLoadConfig.mockReturnValue({
       ...baseConfig,
+      agentModels: { amr: { model: 'old-remote', reasoning: 'default' } },
       agentCliEnv: {
         amr: { OPEN_DESIGN_AMR_PROFILE: 'prod' },
       },
@@ -463,6 +467,9 @@ describe('App AMR polling', () => {
       expect(screen.getByTestId('amr-model').textContent).toBe('old-remote');
     });
     await waitFor(() => {
+      expect(screen.getByTestId('config-amr-model').textContent).toBe('old-remote');
+    });
+    await waitFor(() => {
       expect(screen.getByTestId('amr-profile').textContent).toBe('prod');
     });
 
@@ -470,6 +477,9 @@ describe('App AMR polling', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('amr-profile').textContent).toBe('local');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('config-amr-model').textContent).toBe('none');
     });
     await waitFor(() => {
       expect(screen.getByTestId('amr-model').textContent).toBe('local-probe');
