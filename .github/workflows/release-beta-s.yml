@@ -454,6 +454,7 @@ jobs:
         env:
           BASE_VERSION: ${{ steps.beta.outputs.base_version }}
           RELEASE_CHANNEL: beta
+          RELEASE_COMMIT: ${{ steps.checkout.outputs.commit }}
           RELEASE_LANE: release-beta-s
           RELEASE_METADATA_DIR: ${{ runner.temp }}/release-version-reservation
           RELEASE_PUBLIC_ORIGIN: ${{ inputs.release_public_origin }}
