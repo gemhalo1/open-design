@@ -22,6 +22,23 @@ const PLUS_MENU_FLYOUT_WIDTH = 360;
 const PLUS_MENU_PREFERRED_MIN_HEIGHT = 180;
 type PlusMenuFlyoutPlacement = 'right' | 'left' | 'contained';
 
+function getFlyoutBoundary(anchor: HTMLElement): Pick<DOMRect, 'left' | 'right'> {
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+  const viewportBounds = { left: PLUS_MENU_MARGIN, right: viewportWidth - PLUS_MENU_MARGIN };
+  const boundary = anchor.closest('.split-chat-slot, .pane');
+  if (!boundary) return viewportBounds;
+
+  const rect = boundary.getBoundingClientRect();
+  if (!Number.isFinite(rect.left) || !Number.isFinite(rect.right) || rect.right <= rect.left) {
+    return viewportBounds;
+  }
+
+  return {
+    left: Math.max(PLUS_MENU_MARGIN, rect.left),
+    right: Math.min(viewportWidth - PLUS_MENU_MARGIN, rect.right),
+  };
+}
+
 function getPlusMenuStyle(anchor: HTMLElement): CSSProperties {
   const rect = anchor.getBoundingClientRect();
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || PLUS_MENU_WIDTH;
@@ -56,14 +73,15 @@ function getPlusMenuStyle(anchor: HTMLElement): CSSProperties {
 function getFlyoutPlacement(anchor: HTMLElement): PlusMenuFlyoutPlacement {
   const rect = anchor.getBoundingClientRect();
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+  const boundary = getFlyoutBoundary(anchor);
   const menuWidth = Math.min(PLUS_MENU_WIDTH, Math.max(0, viewportWidth - PLUS_MENU_MARGIN * 2));
   const menuLeft = Math.min(
     Math.max(PLUS_MENU_MARGIN, rect.left),
     Math.max(PLUS_MENU_MARGIN, viewportWidth - PLUS_MENU_MARGIN - menuWidth),
   );
-  const hasRightSpace = menuLeft + menuWidth + PLUS_MENU_GAP + PLUS_MENU_FLYOUT_WIDTH <= viewportWidth - PLUS_MENU_MARGIN;
+  const hasRightSpace = menuLeft + menuWidth + PLUS_MENU_GAP + PLUS_MENU_FLYOUT_WIDTH <= boundary.right;
   if (hasRightSpace) return 'right';
-  const hasLeftSpace = menuLeft - PLUS_MENU_GAP - PLUS_MENU_FLYOUT_WIDTH >= PLUS_MENU_MARGIN;
+  const hasLeftSpace = menuLeft - PLUS_MENU_GAP - PLUS_MENU_FLYOUT_WIDTH >= boundary.left;
   if (hasLeftSpace) return 'left';
   return 'contained';
 }

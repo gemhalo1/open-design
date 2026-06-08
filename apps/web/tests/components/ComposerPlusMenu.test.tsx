@@ -20,7 +20,10 @@ const CONNECTOR = { id: 'c1', name: 'Notion', status: 'connected' } as never;
 const PLUGIN = { id: 'p1', title: 'Deck Maker', manifest: {} } as never;
 const MCP_SERVER = { id: 'm1', label: 'Linear', enabled: true } as never;
 
-function renderMenu(overrides: Partial<ComponentProps<typeof ComposerPlusMenu>> = {}) {
+function renderMenu(
+  overrides: Partial<ComponentProps<typeof ComposerPlusMenu>> = {},
+  options: { chatBoundary?: Pick<DOMRect, 'left' | 'right'> } = {},
+) {
   const props: ComponentProps<typeof ComposerPlusMenu> = {
     connectors: [CONNECTOR],
     onPickConnector: vi.fn(),
@@ -32,12 +35,29 @@ function renderMenu(overrides: Partial<ComponentProps<typeof ComposerPlusMenu>> 
     triggerTestId: 'plus-trigger',
     ...overrides,
   };
-  render(
+  const view = render(
     <I18nProvider initial={'en' as Locale}>
-      <ComposerPlusMenu {...props} />
+      <div className={options.chatBoundary ? 'split-chat-slot' : undefined} data-testid="menu-host">
+        <ComposerPlusMenu {...props} />
+      </div>
     </I18nProvider>,
   );
-  return props;
+  if (options.chatBoundary) {
+    const host = screen.getByTestId('menu-host');
+    host.getBoundingClientRect = () =>
+      ({
+        x: options.chatBoundary?.left ?? 0,
+        y: 0,
+        top: 0,
+        left: options.chatBoundary?.left ?? 0,
+        right: options.chatBoundary?.right ?? 0,
+        bottom: 420,
+        width: (options.chatBoundary?.right ?? 0) - (options.chatBoundary?.left ?? 0),
+        height: 420,
+        toJSON: () => ({}),
+      }) as DOMRect;
+  }
+  return { props, ...view };
 }
 
 // A pick row cancels mousedown so focus stays on the editor; assert the
@@ -171,6 +191,40 @@ describe('ComposerPlusMenu pick-row caret protection', () => {
           left: 220,
           right: 248,
           bottom: 404,
+          width: 28,
+          height: 28,
+          toJSON: () => ({}),
+        }) as DOMRect;
+
+      fireEvent.click(trigger);
+      const menu = screen.getByRole('menu');
+      expect(menu.className).toContain('plus-menu__popup--flyout-contained');
+
+      fireEvent.click(screen.getByRole('menuitem', { name: /Plugins/i }));
+      expect(screen.getByRole('menuitem', { name: /Deck Maker/i })).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight });
+    }
+  });
+
+  it('contains flyouts inside the menu when the chat pane clips the right side', () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 640 });
+
+    try {
+      renderMenu({}, { chatBoundary: { left: 0, right: 460 } });
+      const trigger = screen.getByTestId('plus-trigger') as HTMLButtonElement;
+      trigger.getBoundingClientRect = () =>
+        ({
+          x: 24,
+          y: 576,
+          top: 576,
+          left: 24,
+          right: 52,
+          bottom: 604,
           width: 28,
           height: 28,
           toJSON: () => ({}),
