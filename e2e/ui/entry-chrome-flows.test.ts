@@ -817,8 +817,10 @@ test('[P0] home starters direct Use routes the plugin as the active driver and k
   await expect(input).toHaveText('');
 
   const applyResponsePromise = page.waitForResponse('**/api/plugins/localized-plugin/apply');
-  await page.locator('article.plugins-home__card[data-plugin-id="localized-plugin"]').hover();
-  await page.getByTestId('plugins-home-use-localized-plugin').click({ force: true });
+  // Community is a gallery (no inline Use button): open the starter's detail
+  // modal and use it from there.
+  await page.getByTestId('plugins-home-details-localized-plugin').click({ force: true });
+  await page.getByTestId('plugin-details-use-localized-plugin').click();
   // Plain "Use" routes the starter as the active driver (active-plugin chip)
   // without seeding the prompt; the user can still type their own brief.
   await expect(page.getByTestId('home-hero-active-plugin')).toBeVisible();
