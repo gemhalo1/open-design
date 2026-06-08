@@ -1,6 +1,10 @@
 import { execAgentFile } from './invocation.js';
 import { AGENT_DEFS } from './registry.js';
-import { DEFAULT_MODEL_OPTION, rememberLiveModels } from './models.js';
+import {
+  DEFAULT_MODEL_OPTION,
+  getRememberedLiveModels,
+  rememberLiveModels,
+} from './models.js';
 import { applyAgentLaunchEnv, resolveAgentLaunch } from './launch.js';
 import { spawnEnvForAgent } from './env.js';
 import { probeAgentAuthStatus } from './auth.js';
@@ -26,6 +30,21 @@ type FetchedRuntimeModels = {
   models: RuntimeModelOption[];
   source: RuntimeModelSource;
 };
+
+function amrModelScopeFromEnv(env: NodeJS.ProcessEnv): string {
+  return resolveAmrProfile(env);
+}
+
+function withRememberedAmrModels(
+  def: RuntimeAgentDef,
+  env: NodeJS.ProcessEnv,
+  modelResult: FetchedRuntimeModels,
+): FetchedRuntimeModels {
+  if (def.id !== 'amr' || modelResult.models.length > 0) return modelResult;
+  const rememberedModels = getRememberedLiveModels(def.id, amrModelScopeFromEnv(env));
+  if (rememberedModels.length === 0) return modelResult;
+  return { models: rememberedModels, source: 'live' };
+}
 
 async function fetchModels(
   def: RuntimeAgentDef,
@@ -214,14 +233,15 @@ async function probe(
     fetchModels(def, launch.launchPath, probeEnv),
     probeAgentAuthStatus(def, launch.launchPath, probeEnv),
   ]);
+  const surfacedModelResult = withRememberedAmrModels(def, probeEnv, modelResult);
   if (caps) {
     agentCapabilities.set(def.id, caps);
   }
   const authDiagnostic = auth ? buildAuthDiagnostic(def, auth) : null;
   return {
     ...stripFns(def),
-    models: modelResult.models,
-    modelsSource: modelResult.source,
+    models: surfacedModelResult.models,
+    modelsSource: surfacedModelResult.source,
     available: true,
     path: launch.selectedPath,
     version: outcome.version,
@@ -287,7 +307,7 @@ function rememberDetectedLiveModels(
 ): void {
   if (def.id === 'amr' && agent.models.length === 0) return;
   const scope = def.id === 'amr'
-    ? resolveAmrProfile({
+    ? amrModelScopeFromEnv({
         ...process.env,
         ...(def.env || {}),
         ...configuredEnv,
