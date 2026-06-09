@@ -73,31 +73,32 @@ const jsonLd = [
     <span aria-current="page">{page.breadcrumb}</span>
   </nav>
 
-  <article class={`info-page${rich ? ' solution-page' : ''}`}>
+  <article class={`info-page${rich ? ' solution-page agent-rich' : ''}`}>
     {rich ? (
       <>
-        {/* Hero band — text + CTA left, illustration right (matches solutions/). */}
-        <div class="solution-hero-band">
-          <header class="catalog-head">
-            <span class="label">{page.label}</span>
-            <h1 class="display">{page.heading}</h1>
-            <p class="lead">{page.lead}</p>
-            <div class="solution-hero-cta">
-              {rich.heroCtaActions.map((a) => (
-                <a
-                  class={`btn ${a.variant === 'primary' ? 'btn-primary' : 'btn-ghost'}`}
-                  href={ctaHref(a)}
-                  {...(a.external ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
-                >{a.label}</a>
-              ))}
-            </div>
-          </header>
-          {rich.heroImage ? (
-            <figure class="solution-hero">
-              <img src={rich.heroImage.src} alt={rich.heroImage.alt} loading="eager" decoding="async" width={1280} height={853} />
-            </figure>
-          ) : null}
-        </div>
+        {/* Single-column article header: full-measure heading + lead + CTA,
+            then a full-width hero banner. One measure / one left edge so the
+            heading never wraps mid-word and the body never feels offset. */}
+        <header class="catalog-head agent-rich-head">
+          <span class="label">{page.label}</span>
+          <h1 class="display">{page.heading}</h1>
+          <p class="lead">{page.lead}</p>
+          <div class="solution-hero-cta">
+            {rich.heroCtaActions.map((a) => (
+              <a
+                class={`btn ${a.variant === 'primary' ? 'btn-primary' : 'btn-ghost'}`}
+                href={ctaHref(a)}
+                {...(a.external ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
+              >{a.label}</a>
+            ))}
+          </div>
+        </header>
+
+        {rich.heroImage ? (
+          <figure class="agent-hero-banner">
+            <img src={rich.heroImage.src} alt={rich.heroImage.alt} loading="eager" decoding="async" width={1280} height={720} />
+          </figure>
+        ) : null}
 
         <div class="agent-intro">
           <p class="agent-hero-lead">{rich.heroCtaLead}</p>
