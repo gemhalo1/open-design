@@ -486,13 +486,12 @@ function AssistantMessageImpl({
           }),
     [blocks, fileOps, message, produced, projectFiles, streaming],
   );
-  // The single artifact the "next step" affordance anchors to: prefer the
-  // first HTML produced by THIS turn, but fall back to a previewable HTML
-  // anywhere in the project so Share / Download stay available when the final
-  // turn (e.g. a summary, or a "continue") emitted no new HTML even though a
-  // deliverable page already exists.
+  // The single artifact the "next step" affordance anchors to: prefer the HTML
+  // produced by THIS turn; if the final turn emitted none (a summary / continue
+  // message) fall back to the most recently modified HTML in the project so
+  // Share / Download still target the deliverable the user just made.
   const nextStepArtifactName = useMemo(
-    () => pickPreviewableArtifact(displayedProduced) ?? pickPreviewableArtifact(projectFiles),
+    () => pickPreviewableArtifact(displayedProduced) ?? pickLatestPreviewableArtifact(projectFiles),
     [displayedProduced, projectFiles],
   );
   const pluginActionFolders = useMemo(
@@ -845,11 +844,26 @@ function AssistantMessageImpl({
 // files, or null if this turn produced no shareable/polishable preview. Only
 // HTML files drive the preview workspace's Share/Export menu and the
 // visual-polish loop, so the "next step" affordance keys off them.
+function isPreviewableHtml(f: ProjectFile): boolean {
+  return f.kind === "html" || /\.html?$/i.test(f.name);
+}
+
 function pickPreviewableArtifact(files: ProjectFile[]): string | null {
-  const html = files.find(
-    (f) => f.kind === "html" || /\.html?$/i.test(f.name),
-  );
+  const html = files.find(isPreviewableHtml);
   return html ? html.name : null;
+}
+
+// Fallback for when the card-bearing turn produced no HTML itself: pick the
+// most recently modified HTML in the project (the deliverable the user just
+// made / is looking at) rather than whichever HTML happens to be first, which
+// would attach Share/Download to an arbitrary file in a multi-artifact project.
+function pickLatestPreviewableArtifact(files: ProjectFile[]): string | null {
+  let latest: ProjectFile | null = null;
+  for (const f of files) {
+    if (!isPreviewableHtml(f)) continue;
+    if (!latest || (f.mtime ?? 0) > (latest.mtime ?? 0)) latest = f;
+  }
+  return latest ? latest.name : null;
 }
 
 function inferProducedFilesFromTurn({
