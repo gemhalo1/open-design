@@ -1907,7 +1907,7 @@ function ProseBlock({
   const t = useT();
   const cleaned = useMemo(() => {
     const stripped = stripArtifact(text);
-    return hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped) : stripped;
+    return hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
   }, [hideRecoveredHtmlFallback, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,
   // drop the partial `<question-form>{…` markup from the prose so the chat

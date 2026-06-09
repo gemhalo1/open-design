@@ -203,6 +203,18 @@ describe('stripRecoveredHtmlFallbackForDisplay', () => {
     expect(stripRecoveredHtmlFallbackForDisplay(input)).toBe('Done — saved as an artifact.');
   });
 
+  it('removes a recovered preceding HTML document using original artifact context', () => {
+    const original = [
+      'Done — saved as an artifact.',
+      '',
+      completeHtml,
+      '<artifact identifier="demo" type="text/html" title="Demo">summary only</artifact>',
+    ].join('\n');
+    const stripped = stripArtifact(original);
+
+    expect(stripRecoveredHtmlFallbackForDisplay(stripped, original)).toBe('Done — saved as an artifact.');
+  });
+
   it('leaves partial snippets unchanged', () => {
     const input = '```html\n<main><h1>Snippet</h1></main>\n```';
     expect(stripRecoveredHtmlFallbackForDisplay(input)).toBe(input);

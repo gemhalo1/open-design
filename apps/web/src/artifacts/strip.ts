@@ -1,5 +1,9 @@
 import { computeSkipRanges, isRealArtifactOpenAt, rangeContains, type Range } from './markdown-context';
-import { recoverHtmlDocumentFromMarkdownFence, recoverStandaloneHtmlDocument } from './recover';
+import {
+  recoverHtmlArtifactFromPrecedingDocument,
+  recoverHtmlDocumentFromMarkdownFence,
+  recoverStandaloneHtmlDocument,
+} from './recover';
 
 const OPEN = '<artifact';
 const CLOSE = '</artifact>';
@@ -88,6 +92,46 @@ function findSingleRecoverableHtmlFence(content: string): MarkdownFenceRange | n
   return count === 1 ? recovered : null;
 }
 
+function findRecoverablePrecedingHtmlArtifact(sourceText: string): string | null {
+  const { ranges: baseRanges, unclosedFenceStart } = computeSkipRanges(sourceText);
+  const ranges: Range[] =
+    unclosedFenceStart !== null ? [...baseRanges, [unclosedFenceStart, sourceText.length]] : baseRanges;
+
+  let from = 0;
+  while (from <= sourceText.length) {
+    const open = findRealOpen(sourceText, from, ranges);
+    if (open === -1) return null;
+
+    const closeTag = sourceText.indexOf('>', open);
+    if (closeTag === -1) return null;
+
+    const end = findUnskipped(sourceText, CLOSE, closeTag, ranges);
+    if (end === -1) return null;
+
+    const attrs = parseArtifactAttrs(sourceText.slice(open, closeTag));
+    const recovered = recoverHtmlArtifactFromPrecedingDocument({
+      artifactHtml: sourceText.slice(closeTag + 1, end),
+      identifier: attrs['identifier'],
+      sourceText,
+    });
+    if (recovered) return recovered;
+
+    from = end + CLOSE.length;
+  }
+
+  return null;
+}
+
+function stripRecoverablePrecedingHtml(content: string, sourceText: string): string | null {
+  const recovered = findRecoverablePrecedingHtmlArtifact(sourceText);
+  if (!recovered) return null;
+
+  const start = content.lastIndexOf(recovered);
+  if (start === -1) return null;
+
+  return `${content.slice(0, start)}${content.slice(start + recovered.length)}`.trim();
+}
+
 /**
  * Display-only cleanup for Grok Build's fallback artifact shape.
  *
@@ -98,7 +142,10 @@ function findSingleRecoverableHtmlFence(content: string): MarkdownFenceRange | n
  * It must never be used to rewrite `message.content`, because that content is
  * the canonical transcript for future agent turns and forked conversations.
  */
-export function stripRecoveredHtmlFallbackForDisplay(content: string): string {
+export function stripRecoveredHtmlFallbackForDisplay(content: string, sourceText = content): string {
+  const withoutPrecedingDocument = stripRecoverablePrecedingHtml(content, sourceText);
+  if (withoutPrecedingDocument !== null) return withoutPrecedingDocument;
+
   if (recoverStandaloneHtmlDocument(content)) return '';
 
   const fence = findSingleRecoverableHtmlFence(content);
