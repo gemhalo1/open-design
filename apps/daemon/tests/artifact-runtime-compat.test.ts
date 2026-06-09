@@ -127,4 +127,38 @@ describe('artifact runtime compatibility normalizer', () => {
     expect(normalized).not.toContain('/dist/motion.js');
     expect(normalized).toContain('window.FramerMotion = window.FramerMotion || window.Motion;');
   });
+
+  it('repairs the right package name but wrong file (framer-motion@.../dist/motion.js)', () => {
+    const html = brokenReactMotionHtml.replace(
+      'https://unpkg.com/motion@11.11.13/dist/motion.js',
+      'https://unpkg.com/framer-motion@11.11.13/dist/motion.js',
+    );
+
+    const normalized = normalizeArtifactRuntimeImports('landing.html', html) as string;
+
+    expect(normalized).toContain('https://unpkg.com/framer-motion@11.11.13/dist/framer-motion.js');
+    expect(normalized).not.toContain('/dist/motion.js');
+  });
+
+  it('repairs the vanilla bundle served from jsdelivr and preserves the host', () => {
+    const html = brokenReactMotionHtml.replace(
+      'https://unpkg.com/motion@11.11.13/dist/motion.js',
+      'https://cdn.jsdelivr.net/npm/motion@11.11.13/dist/motion.js',
+    );
+
+    const normalized = normalizeArtifactRuntimeImports('landing.html', html) as string;
+
+    expect(normalized).toContain('https://cdn.jsdelivr.net/npm/framer-motion@11.11.13/dist/framer-motion.js');
+    expect(normalized).not.toContain('/dist/motion.js');
+  });
+
+  it('leaves the correct framer-motion.js bundle untouched (no false rewrite)', () => {
+    const html = brokenReactMotionHtml.replace(
+      'https://unpkg.com/motion@11.11.13/dist/motion.js',
+      'https://unpkg.com/framer-motion@11.11.13/dist/framer-motion.js',
+    );
+
+    // Already correct → returned verbatim (idempotent), the vanilla-file matcher must not touch it.
+    expect(normalizeArtifactRuntimeImports('landing.html', html)).toBe(html);
+  });
 });
