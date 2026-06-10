@@ -211,6 +211,12 @@ export function countNewHtmlArtifacts(events: readonly RunEventLike[]): number {
 // and the `awaiting_input` detection in `apps/daemon/src/db.ts`). Assistant
 // text arrives as `text_delta` chunks, so the marker can straddle a chunk
 // boundary — concatenate the run's text before testing for it.
+//
+// `<ask-question>` is an accepted alias for `<question-form>` (whitelisted by
+// the UI parser in `apps/web/src/artifacts/question-form.ts` and the daemon
+// open-tag matcher in `apps/daemon/src/server.ts`). Match both tag names here
+// so a model that drifts to the alias still records the
+// `run_finished.asked_user_question` signal instead of misclassifying the run.
 export function runAskedUserQuestion(
   events: readonly RunEventLike[],
 ): boolean {
@@ -226,5 +232,5 @@ export function runAskedUserQuestion(
     if (data.type !== 'text_delta' && data.type !== 'text') continue;
     if (typeof data.text === 'string') text += data.text;
   }
-  return /<question-form\b/i.test(text);
+  return /<(question-form|ask-question)\b/i.test(text);
 }

@@ -324,6 +324,18 @@ describe('runAskedUserQuestion', () => {
     ).toBe(true);
   });
 
+  // `<ask-question>` is an accepted alias for `<question-form>` (whitelisted by
+  // the UI parser and the daemon open-tag matcher). A model that drifts to the
+  // alias still renders the clarification banner, so the analytics signal must
+  // recognize it too — otherwise the run gets misclassified in the funnel.
+  it('returns true for the <ask-question> alias of <question-form>', () => {
+    expect(
+      runAskedUserQuestion([
+        { event: 'agent', data: { type: 'text_delta', text: 'one quick check <ask-question id="q">…</ask-question>' } },
+      ]),
+    ).toBe(true);
+  });
+
   it('returns false for a run that only wrote artifacts', () => {
     expect(
       runAskedUserQuestion([
