@@ -305,6 +305,77 @@ test('attachAcpSession keeps incremental ACP message chunks unchanged', () => {
   assert.deepEqual(textDeltas, ['Agent Haven', ' — managed AI agents']);
 });
 
+test('attachAcpSession stops after duplicate DSML artifact text starts', () => {
+  const child = new FakeAcpChild();
+  const events: Array<{ event: string; payload: unknown }> = [];
+
+  attachAcpSession({
+    child: child as never,
+    prompt: 'build landing page',
+    cwd: '/tmp/od-project',
+    model: null,
+    mcpServers: [],
+    send: (event, payload) => events.push({ event, payload }),
+  });
+
+  writeAcpResult(child, 1, {});
+  writeAcpResult(child, 2, { sessionId: 'session-1' });
+  writeAcpUpdate(child, {
+    sessionUpdate: 'agent_message_chunk',
+    content: { text: 'Build passes. No AI slop detected.\n\n< | DSML artifact identifier="page" type="text/html">' },
+  });
+  assert.equal(child.stdin.writableEnded, true);
+  writeAcpUpdate(child, {
+    sessionUpdate: 'agent_message_chunk',
+    content: { text: '\n<!doctype html><html><body>raw html</body></html>\n</artifact>Tail' },
+  });
+  writeAcpResult(child, 3, { usage: { inputTokens: 1, outputTokens: 2 } });
+
+  const textDeltas = events
+    .filter((entry) => entry.event === 'agent' && (entry.payload as { type?: unknown }).type === 'text_delta')
+    .map((entry) => (entry.payload as { delta?: unknown }).delta);
+
+  assert.deepEqual(textDeltas, ['Build passes. No AI slop detected.\n\n']);
+  assert.equal(
+    events.some((entry) => entry.event === 'agent' && (entry.payload as { type?: unknown }).type === 'usage'),
+    false,
+  );
+});
+
+test('attachAcpSession stops after duplicate legacy artifact text starts', () => {
+  const child = new FakeAcpChild();
+  const events: Array<{ event: string; payload: unknown }> = [];
+
+  attachAcpSession({
+    child: child as never,
+    prompt: 'build landing page',
+    cwd: '/tmp/od-project',
+    model: null,
+    mcpServers: [],
+    send: (event, payload) => events.push({ event, payload }),
+  });
+
+  writeAcpResult(child, 1, {});
+  writeAcpResult(child, 2, { sessionId: 'session-1' });
+  writeAcpUpdate(child, {
+    sessionUpdate: 'agent_message_chunk',
+    content: { text: 'Ready to output.\n\n<art' },
+  });
+  assert.equal(child.stdin.writableEnded, false);
+  writeAcpUpdate(child, {
+    sessionUpdate: 'agent_message_chunk',
+    content: { text: 'ifact identifier="page" type="text/html">\n<!doctype html><html></html>' },
+  });
+  assert.equal(child.stdin.writableEnded, true);
+  writeAcpResult(child, 3, { usage: { inputTokens: 1, outputTokens: 2 } });
+
+  const textDeltas = events
+    .filter((entry) => entry.event === 'agent' && (entry.payload as { type?: unknown }).type === 'text_delta')
+    .map((entry) => (entry.payload as { delta?: unknown }).delta);
+
+  assert.deepEqual(textDeltas, ['Ready to output.\n\n']);
+});
+
 test('attachAcpSession exposes abort and sends session cancel after session creation', () => {
   const child = new FakeAcpChild();
   const writes: string[] = [];
