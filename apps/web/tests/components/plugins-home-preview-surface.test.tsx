@@ -21,11 +21,15 @@ vi.mock('../../src/components/plugins-home/cards/MediaSurface', () => ({
 }));
 
 vi.mock('../../src/components/plugins-home/cards/HtmlSurface', () => ({
-  HtmlSurface: () => <div data-testid="html-surface" />,
+  HtmlSurface: ({ inView }: { inView: boolean }) => (
+    <div data-testid="html-surface" data-in-view={String(inView)} />
+  ),
 }));
 
 vi.mock('../../src/components/plugins-home/cards/DesignSystemSurface', () => ({
-  DesignSystemSurface: () => <div data-testid="design-surface" />,
+  DesignSystemSurface: ({ inView }: { inView: boolean }) => (
+    <div data-testid="design-surface" data-in-view={String(inView)} />
+  ),
 }));
 
 vi.mock('../../src/components/plugins-home/cards/TextSurface', () => ({
@@ -55,10 +59,10 @@ const BAKED_CLIP_PREVIEW: MediaPreviewSpec = {
 };
 
 function renderWithVisibility(preview: MediaPreviewSpec) {
-  // PreviewSurface calls useInView in this order: near, keep, visible. Make the
+  // PreviewSurface calls useInView in this order: near, media, keep, visible. Make the
   // values intentionally disagree so the gate passed to MediaSurface proves
   // which zone each media subtype uses.
-  visibilityQueue.splice(0, visibilityQueue.length, true, false, true);
+  visibilityQueue.splice(0, visibilityQueue.length, false, true, false, true);
   render(
     <PreviewSurface pluginId="sample" pluginTitle="Sample" preview={preview} />,
   );
@@ -75,15 +79,38 @@ describe('PreviewSurface media visibility gates', () => {
     visibilityQueue.splice(0, visibilityQueue.length);
   });
 
-  it('keeps image media on the tight near margin', () => {
+  it('warms image media on the medium media margin', () => {
     expect(renderWithVisibility(IMAGE_PREVIEW).dataset.inView).toBe('true');
   });
 
-  it('keeps plain video media on the tight near margin', () => {
+  it('warms plain video media on the medium media margin', () => {
     expect(renderWithVisibility(PLAIN_VIDEO_PREVIEW).dataset.inView).toBe('true');
   });
 
   it('uses the wide keepalive margin only for baked hover-pan clips', () => {
     expect(renderWithVisibility(BAKED_CLIP_PREVIEW).dataset.inView).toBe('false');
+  });
+
+  it('keeps html and design surfaces on the tight near margin', () => {
+    visibilityQueue.splice(0, visibilityQueue.length, false, true, true, true);
+    render(
+      <PreviewSurface
+        pluginId="sample"
+        pluginTitle="Sample"
+        preview={{ kind: 'html', src: '/preview', label: 'preview', source: 'preview' }}
+      />,
+    );
+    expect(screen.getByTestId('html-surface').dataset.inView).toBe('false');
+    cleanup();
+
+    visibilityQueue.splice(0, visibilityQueue.length, false, true, true, true);
+    render(
+      <PreviewSurface
+        pluginId="sample"
+        pluginTitle="Sample"
+        preview={{ kind: 'design', brand: 'Sample', designSystemId: null, swatches: [] }}
+      />,
+    );
+    expect(screen.getByTestId('design-surface').dataset.inView).toBe('false');
   });
 });

@@ -26,9 +26,11 @@ interface Props {
 export function PreviewSurface({ pluginId, pluginTitle, preview, eager = false }: Props) {
   const usesBakedClipKeepalive =
     preview.kind === 'media' && preview.mediaType === 'video' && preview.loopHoldMs != null;
-  // Three nested visibility zones for a baked clip:
+  // Visibility zones:
   //  - `inView` (tight): mount cheap-but-live content — iframes, design surfaces.
   //    Kept tight so a 350-plugin gallery never spins up dozens of live iframes.
+  //  - `mediaReady` (medium): fetch cheap media posters a little earlier than
+  //    live content, without widening iframe/design-system work.
   //  - `keep` (wide): keep the <video> + poster MOUNTED across a few screens, so
   //    scrolling away and back doesn't remount + reload the clip. The bytes are
   //    HTTP-cached (immutable), but a fresh <video> still re-fetches metadata and
@@ -38,6 +40,10 @@ export function PreviewSurface({ pluginId, pluginTitle, preview, eager = false }
   //    running simultaneous decodes.
   const { ref: nearRef, inView } = useInView<HTMLDivElement>({
     rootMargin: eager ? '480px' : '120px',
+    once: false,
+  });
+  const { ref: mediaRef, inView: mediaReady } = useInView<HTMLDivElement>({
+    rootMargin: eager ? '720px' : '360px',
     once: false,
   });
   const { ref: keepRef, inView: keep } = useInView<HTMLDivElement>({
@@ -54,10 +60,11 @@ export function PreviewSurface({ pluginId, pluginTitle, preview, eager = false }
   const setRef = useCallback(
     (node: HTMLDivElement | null) => {
       nearRef.current = node;
+      mediaRef.current = node;
       keepRef.current = node;
       visibleRef.current = node;
     },
-    [nearRef, keepRef, visibleRef],
+    [nearRef, mediaRef, keepRef, visibleRef],
   );
 
   return (
@@ -70,7 +77,7 @@ export function PreviewSurface({ pluginId, pluginTitle, preview, eager = false }
         <MediaSurface
           preview={preview}
           pluginTitle={pluginTitle}
-          inView={usesBakedClipKeepalive ? keep : inView}
+          inView={usesBakedClipKeepalive ? keep : mediaReady}
           visible={visible}
         />
       ) : preview.kind === 'html' ? (
