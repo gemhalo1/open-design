@@ -124,33 +124,36 @@ describe('MediaSurface broken-poster fallback (#2955)', () => {
 });
 
 describe('MediaSurface tiered clip preload (scroll-in prefetch)', () => {
-  it('preloads only metadata while mounted in the wide margin but not yet approaching', () => {
-    const { container } = render(
-      <MediaSurface
-        preview={BAKED_CLIP}
-        pluginTitle="Clip"
-        inView={true}
-        approaching={false}
-        visible={false}
-      />,
-    );
-    const video = container.querySelector('video');
-    expect(video).not.toBeNull();
-    expect(video!.getAttribute('preload')).toBe('metadata');
+  it('keeps preload at metadata while mounted but before the prefetch zone is reached', () => {
+    // A non-firing IntersectionObserver models the tile being mounted in the
+    // wide margin but not yet in the prefetch zone: useInView never reports
+    // in-view, so the internal `approaching` signal stays false.
+    const orig = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver;
+    try {
+      const { container } = render(
+        <MediaSurface preview={BAKED_CLIP} pluginTitle="Clip" inView={true} visible={false} />,
+      );
+      const video = container.querySelector('video');
+      expect(video).not.toBeNull();
+      expect(video!.getAttribute('preload')).toBe('metadata');
+    } finally {
+      globalThis.IntersectionObserver = orig;
+    }
   });
 
-  it('warms the full clip (preload=auto) once approaching, before it becomes visible', () => {
-    // The whole point of the prefetch tier: the bytes are in the HTTP cache a
-    // row or two ahead, so playback starts instantly on scroll-in instead of
-    // buffering from the +faststart header at the moment the tile appears.
+  it('warms the full clip (preload=auto) once the prefetch zone is reached', () => {
+    // jsdom ships no IntersectionObserver, so useInView reports in-view
+    // immediately — i.e. the prefetch zone is reached. The whole point of the
+    // tier: the bytes are warmed into the HTTP cache a row or two ahead, so
+    // playback starts instantly on scroll-in instead of buffering from the
+    // +faststart header at the moment the tile appears.
     const { container } = render(
-      <MediaSurface
-        preview={BAKED_CLIP}
-        pluginTitle="Clip"
-        inView={true}
-        approaching={true}
-        visible={false}
-      />,
+      <MediaSurface preview={BAKED_CLIP} pluginTitle="Clip" inView={true} visible={false} />,
     );
     const video = container.querySelector('video');
     expect(video!.getAttribute('preload')).toBe('auto');
