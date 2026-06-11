@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -164,7 +164,7 @@ describe("packaged smoke workflow", () => {
       readFile(releaseBetaWorkflowPath, "utf8"),
     ]);
 
-    expect(releaseStableScript).toContain('const mac = channel === "nightly" ? "release-nightly" : "release-stable";');
+    expect(releaseStableScript).toContain('mac: releaseNamespace(channel, "mac"),');
     expect(releaseStableScript).toContain('setOutput("namespace", namespaces.mac);');
     expect(releaseStableScript).toContain('setOutput("mac_intel_namespace", namespaces.macIntel);');
     expect(releaseStableScript).toContain('setOutput("win_namespace", namespaces.win);');
@@ -258,12 +258,12 @@ describe("packaged smoke workflow", () => {
     expect(script).toContain('setOutput("dry_run", dryRun ? "true" : "false");');
   });
 
-  it("[P2] validates stable dry-run nightly metadata from a non-release ref", async () => {
+  it("[P2] validates stable dry-run prerelease metadata from a non-release ref", async () => {
     const objects: Record<string, unknown> = {};
-    const fixture = await startStableNightlyMetadataServer(objects);
-    objects["nightly/versions/0.10.0.nightly.12/metadata.json"] = stableNightlyMetadataFixture(
+    const fixture = await startStablePrereleaseMetadataServer(objects);
+    objects["prerelease/versions/0.10.0-prerelease.12/metadata.json"] = stablePrereleaseMetadataFixture(
       "0.10.0",
-      "0.10.0.nightly.12",
+      "0.10.0-prerelease.12",
       fixture.origin,
     );
     const runnerTemp = await mkdtemp(join(tmpdir(), "od-release-stable-dry-run-"));
@@ -283,13 +283,13 @@ describe("packaged smoke workflow", () => {
           OPEN_DESIGN_RELEASE_CHANNEL: "stable",
           OPEN_DESIGN_RELEASE_DRY_RUN: "true",
           OPEN_DESIGN_RELEASES_PUBLIC_ORIGIN: fixture.origin,
-          OPEN_DESIGN_STABLE_NIGHTLY_VERSION: "0.10.0.nightly.12",
+          OPEN_DESIGN_STABLE_PRERELEASE_VERSION: "0.10.0-prerelease.12",
           OPEN_DESIGN_STABLE_VERSION: "0.10.0",
-          PATH: `${join(runnerTemp, "bin")}:${process.env.PATH ?? ""}`,
+          PATH: `${join(runnerTemp, "bin")}${delimiter}${process.env.PATH ?? ""}`,
         },
       });
 
-      expect(result.stdout).toContain("[release-stable] validated nightly: 0.10.0.nightly.12");
+      expect(result.stdout).toContain("[release-stable] validated prerelease: 0.10.0-prerelease.12");
       expect(result.stdout).toContain("[release-stable] channel: stable");
       expect(result.stdout).toContain("[release-stable] dry run: true");
       expect(result.stdout).toContain("[release-stable] version tag: open-design-v0.10.0");
@@ -1019,14 +1019,14 @@ function expectReleaseLinuxSmokePreservesEvidenceBeforeApt(workflow: string, ste
   expect(reportDirIndex).toBeLessThan(aptIndex);
 }
 
-async function startStableNightlyMetadataServer(objects: Record<string, unknown>): Promise<{
+async function startStablePrereleaseMetadataServer(objects: Record<string, unknown>): Promise<{
   close: () => Promise<void>;
   origin: string;
 }> {
   const server = createHttpsServer(
     {
-      cert: stableNightlyMetadataCert,
-      key: stableNightlyMetadataKey,
+      cert: stablePrereleaseMetadataCert,
+      key: stablePrereleaseMetadataKey,
     },
     (request, response) => {
       const objectKey = decodeURIComponent(new URL(request.url ?? "/", "https://127.0.0.1").pathname.replace(/^\/+/, ""));
@@ -1051,7 +1051,7 @@ async function startStableNightlyMetadataServer(objects: Record<string, unknown>
 
   const address = server.address();
   if (address == null || typeof address === "string") {
-    throw new Error("stable nightly metadata server did not bind to a TCP port");
+    throw new Error("stable prerelease metadata server did not bind to a TCP port");
   }
 
   return {
@@ -1063,8 +1063,8 @@ async function startStableNightlyMetadataServer(objects: Record<string, unknown>
   };
 }
 
-function stableNightlyMetadataFixture(baseVersion: string, nightlyVersion: string, publicOrigin: string): Record<string, unknown> {
-  const versionPrefix = `nightly/versions/${nightlyVersion}`;
+function stablePrereleaseMetadataFixture(baseVersion: string, prereleaseVersion: string, publicOrigin: string): Record<string, unknown> {
+  const versionPrefix = `prerelease/versions/${prereleaseVersion}`;
   const versionUrl = `${publicOrigin}/${versionPrefix}`;
   const artifact = (name: string) => ({
     sha256Url: `${versionUrl}/${name}.sha256`,
@@ -1073,15 +1073,15 @@ function stableNightlyMetadataFixture(baseVersion: string, nightlyVersion: strin
 
   return {
     baseVersion,
-    channel: "nightly",
+    channel: "prerelease",
     github: {
       branch: `release/v${baseVersion}`,
       commit: "0123456789abcdef0123456789abcdef01234567",
       repository: "nexu-io/open-design",
       workflow: "release-stable",
     },
-    nightlyNumber: 12,
-    nightlyVersion,
+    prereleaseNumber: 12,
+    prereleaseVersion,
     platforms: {
       mac: {
         arch: "arm64",
@@ -1118,9 +1118,8 @@ function stableNightlyMetadataFixture(baseVersion: string, nightlyVersion: strin
       versionMetadataUrl: `${versionUrl}/metadata.json`,
       versionPrefix,
     },
-    releaseVersion: nightlyVersion,
+    releaseVersion: prereleaseVersion,
     signed: true,
-    stableVersion: baseVersion,
   };
 }
 
@@ -1202,7 +1201,7 @@ async function handleReleaseMetadataObjectStoreRequest(
   response.end("method not allowed");
 }
 
-const stableNightlyMetadataKey = `-----BEGIN PRIVATE KEY-----
+const stablePrereleaseMetadataKey = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC1hoV1GwxqTYdO
 Zs0pY5hnp8BtTwdF6dWsXoFWYw9IPpBTmyNeleRcLtrht/oc5oRS05tC97qmb5eL
 RigyXUmwrpt/VjJ7ursDa3qGnljkqVxqBkRAUdXBMCVPkMogKWvJy/S61Vthvf7K
@@ -1231,7 +1230,7 @@ F/Pa3L5wCxuRKKWx0ip0PFhDPrpWfVCm2CLlUlZLEjpmF2iUZgmkaScjYqG8R16a
 C8cywTs1ku5aYIaN8YcAigI=
 -----END PRIVATE KEY-----`;
 
-const stableNightlyMetadataCert = `-----BEGIN CERTIFICATE-----
+const stablePrereleaseMetadataCert = `-----BEGIN CERTIFICATE-----
 MIIDCTCCAfGgAwIBAgIUbNGmwcWmZP5tw6gm8s2RXzWJv+IwDQYJKoZIhvcNAQEL
 BQAwFDESMBAGA1UEAwwJMTI3LjAuMC4xMB4XDTI2MDYwODA0MDczNVoXDTI2MDYw
 OTA0MDczNVowFDESMBAGA1UEAwwJMTI3LjAuMC4xMIIBIjANBgkqhkiG9w0BAQEF

@@ -4,15 +4,20 @@ import { readFile } from "node:fs/promises";
 import { get as httpsGet } from "node:https";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import {
+  compareReleaseBaseVersions,
+  formatReleaseVersion,
+  parseCountedReleaseVersion,
+  parseReleaseBaseVersion,
+  type ReleaseBaseVersionTuple,
+} from "@open-design/release";
 
 const execFile = promisify(execFileCallback);
 
-const stableVersionPattern = /^(\d+)\.(\d+)\.(\d+)$/;
 const stableTagPattern = /^open-design-v(\d+\.\d+\.\d+)$/;
-const betaVersionPattern = /^(\d+\.\d+\.\d+)-beta\.(\d+)$/;
 
 type ParsedStableVersion = {
-  parsed: [number, number, number];
+  parsed: ReleaseBaseVersionTuple;
   value: string;
 };
 
@@ -31,35 +36,11 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function parseStableVersion(value: string): [number, number, number] | null {
-  const match = stableVersionPattern.exec(value);
-  if (match == null) return null;
-
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function compareVersions(left: [number, number, number], right: [number, number, number]): number {
-  const [leftMajor, leftMinor, leftPatch] = left;
-  const [rightMajor, rightMinor, rightPatch] = right;
-  const pairs = [
-    [leftMajor, rightMajor],
-    [leftMinor, rightMinor],
-    [leftPatch, rightPatch],
-  ] as const;
-
-  for (const [leftPart, rightPart] of pairs) {
-    if (leftPart > rightPart) return 1;
-    if (leftPart < rightPart) return -1;
-  }
-
-  return 0;
-}
-
 function extractStableVersionFromTag(tag: string): ParsedStableVersion | null {
   const match = stableTagPattern.exec(tag);
   if (match?.[1] == null) return null;
 
-  const parsed = parseStableVersion(match[1]);
+  const parsed = parseReleaseBaseVersion(match[1]);
   return parsed == null ? null : { parsed, value: match[1] };
 }
 
@@ -72,7 +53,7 @@ function parseBetaParts(baseVersion: string, betaNumber: string): ParsedBetaVers
   return {
     baseVersion,
     betaNumber: parsedBetaNumber,
-    betaVersion: `${baseVersion}-beta.${betaNumber}`,
+    betaVersion: formatReleaseVersion("beta", baseVersion, parsedBetaNumber),
   };
 }
 
@@ -87,11 +68,15 @@ function readNumberField(record: Record<string, unknown>, field: string): number
 }
 
 function parseBetaVersion(value: string, sourceName: string): ParsedBetaVersion {
-  const match = betaVersionPattern.exec(value);
-  if (match?.[1] == null || match[2] == null) {
+  const parsed = parseCountedReleaseVersion(value, "beta");
+  if (parsed == null) {
     fail(`${sourceName} betaVersion must be x.y.z-beta.N; got ${value}`);
   }
-  return parseBetaParts(match[1], match[2]);
+  return {
+    baseVersion: parsed.baseVersion,
+    betaNumber: parsed.number,
+    betaVersion: parsed.releaseVersion,
+  };
 }
 
 function parseBetaMetadataJson(value: string): ParsedBetaMetadata {
@@ -126,7 +111,7 @@ function parseBetaMetadataJson(value: string): ParsedBetaMetadata {
     fail("beta metadata.json must include betaVersion or baseVersion+betaNumber");
   }
 
-  const parsedBase = parseStableVersion(baseVersion);
+  const parsedBase = parseReleaseBaseVersion(baseVersion);
   if (parsedBase == null) {
     fail(`beta metadata.json baseVersion must be x.y.z; got ${baseVersion}`);
   }
@@ -152,7 +137,7 @@ function parseStableMetadataJson(value: string): ParsedStableVersion {
     fail("stable metadata.json must include stableVersion or releaseVersion");
   }
 
-  const parsedStable = parseStableVersion(stableVersion);
+  const parsedStable = parseReleaseBaseVersion(stableVersion);
   if (parsedStable == null) {
     fail(`stable metadata.json stableVersion must be x.y.z; got ${stableVersion}`);
   }
@@ -167,7 +152,7 @@ async function readPackagedVersion(): Promise<string> {
     fail(`missing version in ${packageJsonPath}`);
   }
 
-  if (!stableVersionPattern.test(packageJson.version)) {
+  if (parseReleaseBaseVersion(packageJson.version) == null) {
     fail(`apps/packaged/package.json version must be a stable x.y.z base version; got ${packageJson.version}`);
   }
 
@@ -281,7 +266,7 @@ function setOutput(name: string, value: string): void {
 }
 
 const packagedVersion = await readPackagedVersion();
-const packagedParsed = parseStableVersion(packagedVersion) ?? fail(`invalid packaged version: ${packagedVersion}`);
+const packagedParsed = parseReleaseBaseVersion(packagedVersion) ?? fail(`invalid packaged version: ${packagedVersion}`);
 
 let latestStable: ParsedStableVersion | null = null;
 const stableMetadataUrl = process.env.OPEN_DESIGN_STABLE_METADATA_URL;
@@ -299,13 +284,13 @@ if (stableMetadataUrl != null && stableMetadataUrl.length > 0) {
     const stableVersion = extractStableVersionFromTag(tag);
     if (stableVersion == null) continue;
 
-    if (latestStable == null || compareVersions(stableVersion.parsed, latestStable.parsed) > 0) {
+    if (latestStable == null || compareReleaseBaseVersions(stableVersion.parsed, latestStable.parsed) > 0) {
       latestStable = stableVersion;
     }
   }
 }
 
-if (latestStable != null && compareVersions(packagedParsed, latestStable.parsed) <= 0) {
+if (latestStable != null && compareReleaseBaseVersions(packagedParsed, latestStable.parsed) <= 0) {
   fail(`packaged base version ${packagedVersion} must be strictly greater than latest stable ${latestStable.value}`);
 }
 
@@ -337,12 +322,12 @@ if (latestMetadataJson == null) {
 
 if (latestBeta != null) {
   const beta = latestBeta;
-  const existingBase = parseStableVersion(beta.baseVersion);
+  const existingBase = parseReleaseBaseVersion(beta.baseVersion);
   if (existingBase == null) {
     fail(`invalid beta base version in ${stateSource}: ${beta.baseVersion}`);
   }
 
-  const ordering = compareVersions(packagedParsed, existingBase);
+  const ordering = compareReleaseBaseVersions(packagedParsed, existingBase);
   if (ordering < 0) {
     fail(`packaged base version ${packagedVersion} regressed below current beta base version ${beta.baseVersion}`);
   }

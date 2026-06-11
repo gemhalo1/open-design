@@ -8,6 +8,7 @@ import { hashPackageSourcePath } from "./package-source-hash.js";
 import { readRuntimeAppVersion, versionFamilyForAppVersion } from "./versions.js";
 
 const WORKSPACE_BUILD_PACKAGES = [
+  { directory: "packages/release", name: "@open-design/release" },
   { directory: "packages/components", name: "@open-design/components" },
   { directory: "packages/contracts", name: "@open-design/contracts" },
   { directory: "packages/registry-protocol", name: "@open-design/registry-protocol" },
@@ -27,6 +28,7 @@ const WORKSPACE_BUILD_PACKAGES = [
 ] as const;
 
 const BUILD_COMMANDS = [
+  { args: ["--filter", "@open-design/release", "build"] },
   { args: ["--filter", "@open-design/components", "build"] },
   { args: ["--filter", "@open-design/contracts", "build"] },
   { args: ["--filter", "@open-design/registry-protocol", "build"] },
@@ -98,7 +100,7 @@ async function createWorkspaceBuildCacheKey(config: ToolPackConfig): Promise<str
     packageManager: await readPackageManager(config.workspaceRoot),
     platform: config.platform,
     pnpmLock: await hashPath(join(config.workspaceRoot, "pnpm-lock.yaml")),
-    schemaVersion: 7,
+    schemaVersion: 8,
     webOutputMode: config.webOutputMode,
   });
 }
@@ -111,6 +113,8 @@ function workspaceBuildOutputFiles(config: ToolPackConfig): string[] {
   return [
     "packages/components/dist/index.mjs",
     "packages/components/dist/index.d.ts",
+    "packages/release/dist/index.mjs",
+    "packages/release/dist/index.d.ts",
     "packages/contracts/dist/index.mjs",
     "packages/contracts/dist/index.d.ts",
     "packages/registry-protocol/dist/index.mjs",
@@ -149,6 +153,7 @@ function workspaceBuildOutputFiles(config: ToolPackConfig): string[] {
 function workspaceBuildArtifacts(config: ToolPackConfig): WorkspaceBuildArtifact[] {
   const artifacts = [
     "packages/components/dist",
+    "packages/release/dist",
     "packages/contracts/dist",
     "packages/registry-protocol/dist",
     "packages/sidecar-proto/dist",

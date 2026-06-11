@@ -1,17 +1,11 @@
 import { optional, required } from "./common.ts";
+import { releaseChannelDescriptor } from "@open-design/release";
 
-const releaseChannel = required("RELEASE_CHANNEL");
+const releaseDescriptor = releaseChannelDescriptor(required("RELEASE_CHANNEL"));
+const releaseChannel = releaseDescriptor.channel;
 const metadataUrl = required("RELEASE_METADATA_URL");
 const releaseVersion = required("RELEASE_VERSION");
 const cacheBuster = optional("RELEASE_CACHE_BUSTER", "local");
-
-function expectedVersionField(channel: string): string {
-  if (channel === "beta") return "betaVersion";
-  if (channel === "preview") return "previewVersion";
-  if (channel === "nightly") return "nightlyVersion";
-  if (channel === "stable") return "releaseVersion";
-  throw new Error(`unsupported RELEASE_CHANNEL: ${channel}`);
-}
 
 const response = await fetch(`${metadataUrl}${metadataUrl.includes("?") ? "&" : "?"}run=${cacheBuster}`, {
   headers: { "Cache-Control": "no-cache" },
@@ -31,7 +25,7 @@ if (metadata.channel !== releaseChannel) {
   throw new Error(`metadata channel mismatch: expected ${releaseChannel}, got ${String(metadata.channel)}`);
 }
 
-const versionField = expectedVersionField(releaseChannel);
+const versionField = releaseDescriptor.releaseVersionField;
 if (metadata[versionField] !== releaseVersion) {
   throw new Error(`metadata ${versionField} mismatch: expected ${releaseVersion}, got ${String(metadata[versionField])}`);
 }

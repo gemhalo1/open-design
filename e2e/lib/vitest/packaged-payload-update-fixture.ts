@@ -4,6 +4,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { basename } from 'node:path';
 
+import { releaseMetadataVersionFields, type ReleaseChannel } from '@open-design/release';
+
 export type PackagedPayloadUpdateFixture = {
   close: () => Promise<void>;
   info: {
@@ -16,7 +18,7 @@ export type PackagedPayloadUpdateFixture = {
 };
 
 export async function startPackagedPayloadUpdateFixture(options: {
-  channel: 'beta' | 'nightly' | 'preview' | 'stable';
+  channel: ReleaseChannel;
   payloadPath: string;
   platform: 'mac' | 'win';
   version: string;
@@ -37,10 +39,9 @@ export async function startPackagedPayloadUpdateFixture(options: {
     if (path === `/${options.channel}/latest/metadata.json`) {
       response.setHeader('content-type', 'application/json; charset=utf-8');
       response.end(JSON.stringify({
-        betaNumber: betaNumber(options.version),
-        betaVersion: options.version,
         channel: options.channel,
         generatedAt: new Date().toISOString(),
+        ...releaseMetadataVersionFields(options.channel, options.version),
         platforms: {
           [platformKey]: {
             arch,
@@ -121,9 +122,4 @@ async function sha256File(path: string): Promise<string> {
   const hash = createHash('sha256');
   hash.update(await readFile(path));
   return hash.digest('hex');
-}
-
-function betaNumber(version: string): number | null {
-  const match = /-beta\.(\d+)$/.exec(version);
-  return match?.[1] == null ? null : Number(match[1]);
 }

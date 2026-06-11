@@ -63,8 +63,8 @@ type CacCommand = ReturnType<CAC["command"]>;
 
 function addSharedOptions(command: CacCommand) {
   return command
-    .option("--cache-dir <path>", "tools-pack cache directory")
-    .option("--dir <path>", "tools-pack root directory")
+    .option("--cache-dir <path>", "advanced escape hatch for relocating tools-pack cache")
+    .option("--dir <path>", "tools-pack output/runtime root directory")
     .option("--diagnose-attempts <count>", "diagnose-ipc: start/poll/stop attempts")
     .option("--json", "print JSON")
     .option("--namespace <name>", "runtime namespace")

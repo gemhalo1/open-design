@@ -5,14 +5,21 @@ import { get as httpsGet } from "node:https";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+import {
+  compareReleaseBaseVersions,
+  formatReleaseVersion,
+  parseReleaseBaseVersion,
+  parseReleaseVersion,
+  releaseChannelDescriptor,
+  releaseNamespace,
+  type ReleaseBaseVersionTuple,
+  type ReleaseChannel,
+} from "@open-design/release";
+
 const execFile = promisify(execFileCallback);
 
-const stableVersionPattern = /^(\d+)\.(\d+)\.(\d+)$/;
 const stableReleaseBranchPattern = /^release\/v(\d+\.\d+\.\d+)$/;
 const stableTagPattern = /^open-design-v(\d+\.\d+\.\d+)$/;
-const nightlyVersionPattern = /^(\d+\.\d+\.\d+)\.nightly\.(\d+)$/;
-
-type ReleaseChannel = "nightly" | "stable";
 
 type GitHubRelease = {
   draft?: boolean;
@@ -22,24 +29,24 @@ type GitHubRelease = {
 };
 
 type ParsedStableVersion = {
-  parsed: [number, number, number];
+  parsed: ReleaseBaseVersionTuple;
   source?: string;
   value: string;
 };
 
-type ParsedNightlyVersion = {
+type ParsedPrereleaseVersion = {
   baseVersion: string;
-  nightlyNumber: number;
-  nightlyVersion: string;
+  prereleaseNumber: number;
+  prereleaseVersion: string;
 };
 
-type ParsedNightlyMetadata = ParsedNightlyVersion & {
+type ParsedPrereleaseMetadata = ParsedPrereleaseVersion & {
   source: "metadata-json";
 };
 
-type StableNightlyValidation = {
+type StablePrereleaseValidation = {
   metadataUrl: string;
-  nightlyVersion: string;
+  prereleaseVersion: string;
 };
 
 type ReleaseNamespaces = {
@@ -55,9 +62,12 @@ function fail(message: string): never {
 }
 
 function parseChannel(value: string | undefined): ReleaseChannel {
-  if (value == null || value.length === 0 || value === "stable") return "stable";
-  if (value === "nightly") return "nightly";
-  fail(`OPEN_DESIGN_RELEASE_CHANNEL must be stable or nightly; got ${value}`);
+  const channel = value == null || value.length === 0 ? "stable" : value;
+  const descriptor = releaseChannelDescriptor(channel);
+  if (descriptor.channel !== "stable" && descriptor.channel !== "prerelease") {
+    fail(`OPEN_DESIGN_RELEASE_CHANNEL must be stable or prerelease; got ${channel}`);
+  }
+  return descriptor.channel;
 }
 
 function parseBooleanInput(value: string | undefined, name: string): boolean {
@@ -66,18 +76,11 @@ function parseBooleanInput(value: string | undefined, name: string): boolean {
   fail(`${name} must be true or false; got ${value}`);
 }
 
-function parseStableVersion(value: string): [number, number, number] | null {
-  const match = stableVersionPattern.exec(value);
-  if (match == null) return null;
-
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
 function parseStableVersionInput(value: string | undefined, sourceName: string): ParsedStableVersion | null {
   const trimmed = value?.trim() ?? "";
   if (trimmed.length === 0) return null;
 
-  const parsed = parseStableVersion(trimmed);
+  const parsed = parseReleaseBaseVersion(trimmed);
   if (parsed == null) {
     fail(`${sourceName} must be a stable x.y.z version; got ${trimmed}`);
   }
@@ -91,7 +94,7 @@ function resolveStableBaseVersion(branch: string, inputValue: string | undefined
     branchMatch?.[1] == null
       ? null
       : ({
-          parsed: parseStableVersion(branchMatch[1]) ?? fail(`invalid release branch version: ${branchMatch[1]}`),
+          parsed: parseReleaseBaseVersion(branchMatch[1]) ?? fail(`invalid release branch version: ${branchMatch[1]}`),
           source: "GITHUB_REF_NAME",
           value: branchMatch[1],
         } satisfies ParsedStableVersion);
@@ -111,31 +114,12 @@ function resolveStableBaseVersion(branch: string, inputValue: string | undefined
   fail("release-stable requires either a release/vX.Y.Z branch or OPEN_DESIGN_STABLE_VERSION");
 }
 
-function compareVersions(left: [number, number, number], right: [number, number, number]): number {
-  const [leftMajor, leftMinor, leftPatch] = left;
-  const [rightMajor, rightMinor, rightPatch] = right;
-  const pairs = [
-    [leftMajor, rightMajor],
-    [leftMinor, rightMinor],
-    [leftPatch, rightPatch],
-  ] as const;
-
-  for (const [leftPart, rightPart] of pairs) {
-    if (leftPart > rightPart) return 1;
-    if (leftPart < rightPart) return -1;
-  }
-
-  return 0;
-}
-
 function releaseNamespaces(channel: ReleaseChannel): ReleaseNamespaces {
-  const mac = channel === "nightly" ? "release-nightly" : "release-stable";
-
   return {
-    linux: `${mac}-linux`,
-    mac,
-    macIntel: `${mac}-intel`,
-    win: `${mac}-win`,
+    linux: releaseNamespace(channel, "linux"),
+    mac: releaseNamespace(channel, "mac"),
+    macIntel: releaseNamespace(channel, "macIntel"),
+    win: releaseNamespace(channel, "win"),
   };
 }
 
@@ -147,23 +131,23 @@ function extractStableVersion(release: GitHubRelease): ParsedStableVersion | nul
     const value = tagMatch?.[1] ?? candidate.match(/\b(\d+\.\d+\.\d+)\b/)?.[1];
     if (value == null) continue;
 
-    const parsed = parseStableVersion(value);
+    const parsed = parseReleaseBaseVersion(value);
     if (parsed != null) return { parsed, value };
   }
 
   return null;
 }
 
-function parseNightlyParts(baseVersion: string, nightlyNumber: string): ParsedNightlyVersion {
-  const parsedNightlyNumber = Number(nightlyNumber);
-  if (!Number.isSafeInteger(parsedNightlyNumber) || parsedNightlyNumber < 1) {
-    fail(`invalid nightly number in latest nightly metadata: ${nightlyNumber}`);
+function parsePrereleaseParts(baseVersion: string, prereleaseNumber: string): ParsedPrereleaseVersion {
+  const parsedPrereleaseNumber = Number(prereleaseNumber);
+  if (!Number.isSafeInteger(parsedPrereleaseNumber) || parsedPrereleaseNumber < 1) {
+    fail(`invalid prerelease number in latest prerelease metadata: ${prereleaseNumber}`);
   }
 
   return {
     baseVersion,
-    nightlyNumber: parsedNightlyNumber,
-    nightlyVersion: `${baseVersion}.nightly.${nightlyNumber}`,
+    prereleaseNumber: parsedPrereleaseNumber,
+    prereleaseVersion: formatReleaseVersion("prerelease", baseVersion, parsedPrereleaseNumber),
   };
 }
 
@@ -202,41 +186,54 @@ function parseJsonRecord(value: string, sourceName: string): Record<string, unkn
   return parsed as Record<string, unknown>;
 }
 
-function parseNightlyVersion(value: string, sourceName: string): ParsedNightlyVersion {
-  const match = nightlyVersionPattern.exec(value);
-  if (match?.[1] == null || match[2] == null) {
-    fail(`${sourceName} nightlyVersion must be x.y.z.nightly.N; got ${value}`);
+function parsePrereleaseVersion(value: string, sourceName: string): ParsedPrereleaseVersion {
+  let parsed: ReturnType<typeof parseReleaseVersion>;
+  try {
+    parsed = parseReleaseVersion(value, "prerelease");
+  } catch {
+    fail(`${sourceName} prereleaseVersion must be x.y.z-prerelease.N; got ${value}`);
   }
-  return parseNightlyParts(match[1], match[2]);
+  if (parsed.channel !== "prerelease") {
+    fail(`${sourceName} prereleaseVersion must be x.y.z-prerelease.N; got ${value}`);
+  }
+  return {
+    baseVersion: parsed.baseVersion,
+    prereleaseNumber: parsed.number,
+    prereleaseVersion: parsed.releaseVersion,
+  };
 }
 
-function parseNightlyMetadataJson(value: string): ParsedNightlyMetadata {
-  const record = parseJsonRecord(value, "R2 nightly metadata.json");
-  const nightlyVersion = readStringField(record, "nightlyVersion");
-  const nightlyNumber = readNumberField(record, "nightlyNumber");
+function parsePrereleaseMetadataJson(value: string): ParsedPrereleaseMetadata {
+  const record = parseJsonRecord(value, "R2 prerelease metadata.json");
+  const prereleaseVersion = readStringField(record, "prereleaseVersion");
+  const prereleaseNumber = readNumberField(record, "prereleaseNumber");
   const baseVersion = readStringField(record, "baseVersion");
 
-  if (nightlyVersion != null) {
-    const nightly = parseNightlyVersion(nightlyVersion, "R2 nightly metadata.json");
-    if (baseVersion != null && baseVersion !== nightly.baseVersion) {
-      fail(`R2 nightly metadata.json baseVersion ${baseVersion} does not match nightlyVersion ${nightly.nightlyVersion}`);
+  if (prereleaseVersion != null) {
+    const prerelease = parsePrereleaseVersion(prereleaseVersion, "R2 prerelease metadata.json");
+    if (baseVersion != null && baseVersion !== prerelease.baseVersion) {
+      fail(
+        `R2 prerelease metadata.json baseVersion ${baseVersion} does not match prereleaseVersion ${prerelease.prereleaseVersion}`,
+      );
     }
-    if (nightlyNumber != null && nightlyNumber !== nightly.nightlyNumber) {
-      fail(`R2 nightly metadata.json nightlyNumber ${nightlyNumber} does not match nightlyVersion ${nightly.nightlyVersion}`);
+    if (prereleaseNumber != null && prereleaseNumber !== prerelease.prereleaseNumber) {
+      fail(
+        `R2 prerelease metadata.json prereleaseNumber ${prereleaseNumber} does not match prereleaseVersion ${prerelease.prereleaseVersion}`,
+      );
     }
-    return { ...nightly, source: "metadata-json" };
+    return { ...prerelease, source: "metadata-json" };
   }
 
-  if (baseVersion == null || nightlyNumber == null) {
-    fail("R2 nightly metadata.json must include nightlyVersion or baseVersion+nightlyNumber");
+  if (baseVersion == null || prereleaseNumber == null) {
+    fail("R2 prerelease metadata.json must include prereleaseVersion or baseVersion+prereleaseNumber");
   }
 
-  const parsedBase = parseStableVersion(baseVersion);
+  const parsedBase = parseReleaseBaseVersion(baseVersion);
   if (parsedBase == null) {
-    fail(`R2 nightly metadata.json baseVersion must be x.y.z; got ${baseVersion}`);
+    fail(`R2 prerelease metadata.json baseVersion must be x.y.z; got ${baseVersion}`);
   }
 
-  return { ...parseNightlyParts(baseVersion, String(nightlyNumber)), source: "metadata-json" };
+  return { ...parsePrereleaseParts(baseVersion, String(prereleaseNumber)), source: "metadata-json" };
 }
 
 function requireObjectField(record: Record<string, unknown>, field: string, sourceName: string): Record<string, unknown> {
@@ -286,27 +283,27 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-async function validateStableNightlyMetadata(options: {
+async function validateStablePrereleaseMetadata(options: {
   branch: string;
   commit: string;
-  nightlyVersionInput: string | undefined;
   packagedVersion: string;
+  prereleaseVersionInput: string | undefined;
   publicOrigin: string | undefined;
   repository: string;
-}): Promise<StableNightlyValidation> {
+}): Promise<StablePrereleaseValidation> {
   if (options.commit.length === 0) {
-    fail("GITHUB_SHA is required to validate the stable channel nightly gate");
+    fail("GITHUB_SHA is required to validate the stable channel prerelease gate");
   }
 
-  const nightlyVersionInput = options.nightlyVersionInput?.trim() ?? "";
-  if (nightlyVersionInput.length === 0) {
-    fail("OPEN_DESIGN_STABLE_NIGHTLY_VERSION is required when channel=stable; pass the exact validated nightly version");
+  const prereleaseVersionInput = options.prereleaseVersionInput?.trim() ?? "";
+  if (prereleaseVersionInput.length === 0) {
+    fail("OPEN_DESIGN_STABLE_PRERELEASE_VERSION is required when channel=stable; pass the exact validated prerelease version");
   }
 
-  const nightly = parseNightlyVersion(nightlyVersionInput, "OPEN_DESIGN_STABLE_NIGHTLY_VERSION");
-  if (nightly.baseVersion !== options.packagedVersion) {
+  const prerelease = parsePrereleaseVersion(prereleaseVersionInput, "OPEN_DESIGN_STABLE_PRERELEASE_VERSION");
+  if (prerelease.baseVersion !== options.packagedVersion) {
     fail(
-      `stable channel nightly gate requires base version ${options.packagedVersion}; got ${nightly.nightlyVersion}`,
+      `stable channel prerelease gate requires base version ${options.packagedVersion}; got ${prerelease.prereleaseVersion}`,
     );
   }
 
@@ -315,26 +312,27 @@ async function validateStableNightlyMetadata(options: {
   );
   validateHttpsUrl(publicOrigin, "OPEN_DESIGN_RELEASES_PUBLIC_ORIGIN");
 
-  const expectedVersionPrefix = `nightly/versions/${nightly.nightlyVersion}`;
+  const expectedVersionPrefix = `prerelease/versions/${prerelease.prereleaseVersion}`;
   const expectedVersionUrl = `${publicOrigin}/${expectedVersionPrefix}`;
   const metadataUrl = `${expectedVersionUrl}/metadata.json`;
   const metadataJson = await fetchOptionalHttpsText(metadataUrl);
   if (metadataJson == null) {
-    fail(`required nightly metadata was not found: ${metadataUrl}`);
+    fail(`required prerelease metadata was not found: ${metadataUrl}`);
   }
 
-  const sourceName = "R2 stable-channel nightly metadata";
+  const sourceName = "R2 stable-channel prerelease metadata";
   const metadata = parseJsonRecord(metadataJson, sourceName);
-  const parsedNightly = parseNightlyMetadataJson(metadataJson);
-  if (parsedNightly.nightlyVersion !== nightly.nightlyVersion) {
-    fail(`${sourceName}.nightlyVersion must be ${nightly.nightlyVersion}; got ${parsedNightly.nightlyVersion}`);
+  const parsedPrerelease = parsePrereleaseMetadataJson(metadataJson);
+  if (parsedPrerelease.prereleaseVersion !== prerelease.prereleaseVersion) {
+    fail(
+      `${sourceName}.prereleaseVersion must be ${prerelease.prereleaseVersion}; got ${parsedPrerelease.prereleaseVersion}`,
+    );
   }
 
-  expectStringField(metadata, "channel", "nightly", sourceName);
-  expectStringField(metadata, "releaseVersion", nightly.nightlyVersion, sourceName);
-  expectStringField(metadata, "nightlyVersion", nightly.nightlyVersion, sourceName);
+  expectStringField(metadata, "channel", "prerelease", sourceName);
+  expectStringField(metadata, "releaseVersion", prerelease.prereleaseVersion, sourceName);
+  expectStringField(metadata, "prereleaseVersion", prerelease.prereleaseVersion, sourceName);
   expectStringField(metadata, "baseVersion", options.packagedVersion, sourceName);
-  expectStringField(metadata, "stableVersion", options.packagedVersion, sourceName);
   expectBooleanField(metadata, "signed", true, sourceName);
 
   const github = requireObjectField(metadata, "github", sourceName);
@@ -386,7 +384,7 @@ async function validateStableNightlyMetadata(options: {
 
   return {
     metadataUrl,
-    nightlyVersion: nightly.nightlyVersion,
+    prereleaseVersion: prerelease.prereleaseVersion,
   };
 }
 
@@ -398,7 +396,7 @@ async function readPackagedVersion(): Promise<string> {
     fail(`missing version in ${packageJsonPath}`);
   }
 
-  if (!stableVersionPattern.test(packageJson.version)) {
+  if (parseReleaseBaseVersion(packageJson.version) == null) {
     fail(`apps/packaged/package.json version must be a stable x.y.z base version; got ${packageJson.version}`);
   }
 
@@ -420,7 +418,7 @@ function fetchOptionalHttpsText(url: string, redirectCount = 0): Promise<string 
   return new Promise((resolvePromise, reject) => {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") {
-      reject(new Error(`expected HTTPS URL for nightly feed lookup: ${parsed.protocol}`));
+      reject(new Error(`expected HTTPS URL for prerelease feed lookup: ${parsed.protocol}`));
       return;
     }
 
@@ -443,7 +441,7 @@ function fetchOptionalHttpsText(url: string, redirectCount = 0): Promise<string 
         if (statusCode >= 300 && statusCode < 400 && typeof location === "string") {
           response.resume();
           if (redirectCount >= 3) {
-            reject(new Error("too many redirects while reading nightly feed"));
+            reject(new Error("too many redirects while reading prerelease feed"));
             return;
           }
           const nextUrl = new URL(location, parsed).toString();
@@ -453,7 +451,7 @@ function fetchOptionalHttpsText(url: string, redirectCount = 0): Promise<string 
 
         if (statusCode < 200 || statusCode >= 300) {
           response.resume();
-          reject(new Error(`nightly feed request failed with HTTP ${statusCode}`));
+          reject(new Error(`prerelease feed request failed with HTTP ${statusCode}`));
           return;
         }
 
@@ -468,7 +466,7 @@ function fetchOptionalHttpsText(url: string, redirectCount = 0): Promise<string 
     );
 
     request.setTimeout(10_000, () => {
-      request.destroy(new Error("timed out while reading nightly feed"));
+      request.destroy(new Error("timed out while reading prerelease feed"));
     });
     request.on("error", reject);
   });
@@ -522,73 +520,72 @@ for (const release of releases) {
     fail(`stable release ${versionTag} already exists; bump apps/packaged/package.json before publishing`);
   }
 
-  if (latestStable == null || compareVersions(parsedRelease.parsed, latestStable.parsed) > 0) {
+  if (latestStable == null || compareReleaseBaseVersions(parsedRelease.parsed, latestStable.parsed) > 0) {
     latestStable = parsedRelease;
   }
 }
 
-if (latestStable != null && compareVersions(packagedParsed, latestStable.parsed) <= 0) {
+if (latestStable != null && compareReleaseBaseVersions(packagedParsed, latestStable.parsed) <= 0) {
   fail(`packaged stable version ${packagedVersion} must be strictly greater than latest stable ${latestStable.value}`);
 }
 
 let releaseVersion = packagedVersion;
 let releaseName = `Open Design ${packagedVersion}`;
-let nightlyNumber = "";
-let stateSource = channel === "nightly" ? "R2 metadata.json" : "GitHub Releases";
+let prereleaseNumber = "";
+let stateSource = channel === "prerelease" ? "R2 metadata.json" : "GitHub Releases";
 
-if (channel === "nightly") {
-  const metadataUrl = process.env.OPEN_DESIGN_NIGHTLY_METADATA_URL;
+if (channel === "prerelease") {
+  const metadataUrl = process.env.OPEN_DESIGN_PRERELEASE_METADATA_URL;
   if (metadataUrl == null || metadataUrl.length === 0) {
-    fail("OPEN_DESIGN_NIGHTLY_METADATA_URL is required for nightly channel");
+    fail("OPEN_DESIGN_PRERELEASE_METADATA_URL is required for prerelease channel");
   }
-  validateHttpsUrl(metadataUrl, "OPEN_DESIGN_NIGHTLY_METADATA_URL");
+  validateHttpsUrl(metadataUrl, "OPEN_DESIGN_PRERELEASE_METADATA_URL");
 
-  let nextNightlyNumber = 1;
-  let latestNightly: ParsedNightlyVersion | null = null;
+  let nextPrereleaseNumber = 1;
+  let latestPrerelease: ParsedPrereleaseVersion | null = null;
   const latestMetadataJson = await fetchOptionalHttpsText(metadataUrl);
   if (latestMetadataJson == null) {
-    latestNightly = {
+    latestPrerelease = {
       baseVersion: packagedVersion,
-      nightlyNumber: 0,
-      nightlyVersion: `${packagedVersion}.nightly.0`,
+      prereleaseNumber: 0,
+      prereleaseVersion: `${packagedVersion}-prerelease.0`,
     };
-    stateSource = "missing R2 metadata.json fallback nightly.0";
-    console.log("[release-stable] R2 nightly metadata.json: not found; using nightly.0 fallback");
+    stateSource = "missing R2 metadata.json fallback prerelease.0";
+    console.log("[release-stable] R2 prerelease metadata.json: not found; using prerelease.0 fallback");
   } else {
-    latestNightly = parseNightlyMetadataJson(latestMetadataJson);
-    console.log(`[release-stable] R2 nightly metadata.json version: ${latestNightly.nightlyVersion}`);
+    latestPrerelease = parsePrereleaseMetadataJson(latestMetadataJson);
+    console.log(`[release-stable] R2 prerelease metadata.json version: ${latestPrerelease.prereleaseVersion}`);
   }
 
-  const existingBase = parseStableVersion(latestNightly.baseVersion);
+  const existingBase = parseReleaseBaseVersion(latestPrerelease.baseVersion);
   if (existingBase == null) {
-    fail(`invalid nightly base version in ${stateSource}: ${latestNightly.baseVersion}`);
+    fail(`invalid prerelease base version in ${stateSource}: ${latestPrerelease.baseVersion}`);
   }
 
-  const ordering = compareVersions(packagedParsed, existingBase);
+  const ordering = compareReleaseBaseVersions(packagedParsed, existingBase);
   if (ordering < 0) {
-    fail(`packaged base version ${packagedVersion} regressed below current nightly base version ${latestNightly.baseVersion}`);
+    fail(`packaged base version ${packagedVersion} regressed below current prerelease base version ${latestPrerelease.baseVersion}`);
   }
   if (ordering === 0) {
-    nextNightlyNumber = latestNightly.nightlyNumber + 1;
+    nextPrereleaseNumber = latestPrerelease.prereleaseNumber + 1;
   }
 
-  nightlyNumber = String(nextNightlyNumber);
-  releaseVersion = `${packagedVersion}.nightly.${nightlyNumber}`;
-  releaseName = `Open Design Nightly ${releaseVersion}`;
-  console.log(`[release-stable] latest nightly: ${latestNightly.nightlyVersion}`);
+  prereleaseNumber = String(nextPrereleaseNumber);
+  releaseVersion = formatReleaseVersion("prerelease", packagedVersion, nextPrereleaseNumber);
+  releaseName = `Open Design Prerelease ${releaseVersion}`;
+  console.log(`[release-stable] latest prerelease: ${latestPrerelease.prereleaseVersion}`);
 } else {
-  const stableReleaseBranch = `release/v${stableBaseVersion.value}`;
-  const stableNightly = await validateStableNightlyMetadata({
-    branch: stableReleaseBranch,
+  const stablePrerelease = await validateStablePrereleaseMetadata({
+    branch: `release/v${stableBaseVersion.value}`,
     commit,
-    nightlyVersionInput: process.env.OPEN_DESIGN_STABLE_NIGHTLY_VERSION,
     packagedVersion,
+    prereleaseVersionInput: process.env.OPEN_DESIGN_STABLE_PRERELEASE_VERSION,
     publicOrigin: process.env.OPEN_DESIGN_RELEASES_PUBLIC_ORIGIN,
     repository,
   });
-  stateSource = `R2 nightly metadata ${stableNightly.nightlyVersion}`;
-  console.log(`[release-stable] validated nightly: ${stableNightly.nightlyVersion}`);
-  console.log(`[release-stable] validated nightly metadata: ${stableNightly.metadataUrl}`);
+  stateSource = `R2 prerelease metadata ${stablePrerelease.prereleaseVersion}`;
+  console.log(`[release-stable] validated prerelease: ${stablePrerelease.prereleaseVersion}`);
+  console.log(`[release-stable] validated prerelease metadata: ${stablePrerelease.metadataUrl}`);
 }
 
 console.log(`[release-stable] channel: ${channel}`);
@@ -609,7 +606,7 @@ setOutput("github_release_enabled", channel === "stable" ? "true" : "false");
 setOutput("linux_namespace", namespaces.linux);
 setOutput("mac_intel_namespace", namespaces.macIntel);
 setOutput("namespace", namespaces.mac);
-setOutput("nightly_number", nightlyNumber);
+setOutput("prerelease_number", prereleaseNumber);
 setOutput("previous_stable", latestStable?.value ?? "");
 setOutput("release_name", releaseName);
 setOutput("release_version", releaseVersion);

@@ -11,6 +11,11 @@ import {
 } from "./common.ts";
 import { assertCurrentVersionReservation, versionLockObjectKey } from "./beta-version-reservation.ts";
 import { getStorageObject, putStorageObject, putStorageObjectWithStatus } from "./s3-upload.ts";
+import {
+  parseCountedReleaseVersion,
+  releaseChannelDescriptor,
+  releaseMetadataVersionFields,
+} from "@open-design/release";
 
 type PlatformManifest = {
   artifacts?: Record<string, { url?: string }>;
@@ -44,10 +49,7 @@ type TargetDef = {
 };
 
 const storage = storageConfigFromEnv();
-const releaseChannel = required("RELEASE_CHANNEL");
-if (releaseChannel !== "beta" && releaseChannel !== "preview" && releaseChannel !== "nightly" && releaseChannel !== "stable") {
-  throw new Error(`RELEASE_CHANNEL must be beta, preview, nightly, or stable; got ${releaseChannel}`);
-}
+const releaseChannel = releaseChannelDescriptor(required("RELEASE_CHANNEL")).channel;
 const releaseVersion = required("RELEASE_VERSION");
 const publicOrigin = required("RELEASE_PUBLIC_ORIGIN").replace(/\/+$/, "");
 const metadataDir = required("RELEASE_METADATA_DIR");
@@ -73,73 +75,27 @@ const targetDefs: TargetDef[] = [
   { enableEnv: "ENABLE_LINUX_X64", label: "Linux x64", legacyKey: "linux", resultEnv: "LINUX_X64_RESULT", target: "linux_x64" },
 ];
 
-function parseCountedReleaseVersion(value: string, label: "beta" | "preview"): { baseVersion: string; number: number } | null {
-  const match = new RegExp(`^(\\d+\\.\\d+\\.\\d+)-${label}\\.(\\d+)$`).exec(value);
-  if (match?.[1] == null || match[2] == null) return null;
-  const number = Number(match[2]);
-  if (!Number.isSafeInteger(number) || number < 1) return null;
-  return { baseVersion: match[1], number };
-}
-
-function parseNightlyReleaseVersion(value: string): { baseVersion: string; number: number } | null {
-  const match = /^(\d+\.\d+\.\d+)\.nightly\.(\d+)$/.exec(value);
-  if (match?.[1] == null || match[2] == null) return null;
-  const number = Number(match[2]);
-  if (!Number.isSafeInteger(number) || number < 1) return null;
-  return { baseVersion: match[1], number };
-}
-
-function parseStableReleaseVersion(value: string): { baseVersion: string } | null {
-  return /^\d+\.\d+\.\d+$/.test(value) ? { baseVersion: value } : null;
-}
-
 function releaseMetadataFields(): Record<string, unknown> {
-  if (releaseChannel === "beta") {
-    const parsed = parseCountedReleaseVersion(releaseVersion, "beta");
-    if (parsed == null) throw new Error(`beta release version must be x.y.z-beta.N; got ${releaseVersion}`);
-    return {
-      assetVersionSuffix,
-      baseVersion: optional("BASE_VERSION", parsed.baseVersion),
-      betaNumber: parsed.number,
-      betaVersion: releaseVersion,
-    };
-  }
-  if (releaseChannel === "preview") {
-    const parsed = parseCountedReleaseVersion(releaseVersion, "preview");
-    if (parsed == null) throw new Error(`preview release version must be x.y.z-preview.N; got ${releaseVersion}`);
-    return {
-      assetVersionSuffix,
-      baseVersion: optional("BASE_VERSION", parsed.baseVersion),
-      previewNumber: parsed.number,
-      previewVersion: releaseVersion,
-      releaseVersion,
-    };
-  }
-  if (releaseChannel === "nightly") {
-    const parsed = parseNightlyReleaseVersion(releaseVersion);
-    if (parsed == null) throw new Error(`nightly release version must be x.y.z.nightly.N; got ${releaseVersion}`);
-    return {
-      baseVersion: optional("BASE_VERSION", parsed.baseVersion),
-      nightlyNumber: parsed.number,
-      nightlyVersion: releaseVersion,
-      releaseVersion,
-    };
-  }
-  const parsed = parseStableReleaseVersion(releaseVersion);
-  if (parsed == null) throw new Error(`stable release version must be x.y.z; got ${releaseVersion}`);
+  const fields = releaseMetadataVersionFields(releaseChannel, releaseVersion);
+  const baseVersion = typeof fields.baseVersion === "string" ? fields.baseVersion : "";
   return {
-    baseVersion: optional("BASE_VERSION", parsed.baseVersion),
-    releaseVersion,
-    stableVersion: optional("STABLE_VERSION", parsed.baseVersion),
-    versionTag: optional("VERSION_TAG"),
+    ...fields,
+    baseVersion: optional("BASE_VERSION", baseVersion),
+    ...(releaseChannel === "beta" || releaseChannel === "preview" ? { assetVersionSuffix } : {}),
+    ...(releaseChannel === "stable" ? {
+      stableVersion: optional("STABLE_VERSION", baseVersion),
+      versionTag: optional("VERSION_TAG"),
+    } : {}),
   };
 }
 
 function parseBetaReleaseVersion(value: string): { base: [number, number, number]; betaNumber: number } | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/.exec(value);
-  if (match?.[1] == null || match[2] == null || match[3] == null || match[4] == null) return null;
+  const parsed = parseCountedReleaseVersion(value, "beta");
+  if (parsed == null) return null;
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(parsed.baseVersion);
+  if (match?.[1] == null || match[2] == null || match[3] == null) return null;
   const base: [number, number, number] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const betaNumber = Number(match[4]);
+  const betaNumber = parsed.number;
   if (base.some((part) => !Number.isSafeInteger(part)) || !Number.isSafeInteger(betaNumber) || betaNumber < 1) return null;
   return { base, betaNumber };
 }

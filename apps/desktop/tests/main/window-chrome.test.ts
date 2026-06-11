@@ -6,7 +6,7 @@ const runtimeSource = readFileSync(new URL("../../src/main/runtime.ts", import.m
 
 describe("desktop BrowserWindow chrome options", () => {
   test("hides Electron's native menu bar in the Windows/Linux app window", () => {
-    const browserWindowBlock = /new BrowserWindow\(\{([\s\S]*?)title: "Open Design",([\s\S]*?)webPreferences:/.exec(runtimeSource)?.[0] ?? "";
+    const browserWindowBlock = /new BrowserWindow\(\{([\s\S]*?)title: windowTitle,([\s\S]*?)webPreferences:/.exec(runtimeSource)?.[0] ?? "";
 
     expect(browserWindowBlock).toContain("autoHideMenuBar: true");
   });
@@ -19,8 +19,14 @@ describe("desktop BrowserWindow chrome options", () => {
   });
 
   test("keeps the visible renderer responsive when Chromium misclassifies visibility", () => {
-    const browserWindowBlock = /new BrowserWindow\(\{([\s\S]*?)title: "Open Design",([\s\S]*?)width: 1280,/.exec(runtimeSource)?.[0] ?? "";
+    const browserWindowBlock = /new BrowserWindow\(\{([\s\S]*?)title: windowTitle,([\s\S]*?)width: 1280,/.exec(runtimeSource)?.[0] ?? "";
 
     expect(browserWindowBlock).toContain("backgroundThrottling: false");
+  });
+
+  test("keeps channel-specific window titles from being overwritten by the renderer page title", () => {
+    expect(runtimeSource).toContain('window.on("page-title-updated", (event) => {');
+    expect(runtimeSource).toContain("event.preventDefault();");
+    expect(runtimeSource).toContain("window.setTitle(windowTitle);");
   });
 });

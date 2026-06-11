@@ -1,17 +1,14 @@
 import { optional, required, writeText } from "./common.ts";
+import { releaseChannelDescriptor } from "@open-design/release";
 
-const releaseChannel = required("RELEASE_CHANNEL");
+const releaseDescriptor = releaseChannelDescriptor(required("RELEASE_CHANNEL"));
+const releaseChannel = releaseDescriptor.channel;
 const metadataUrl = required("RELEASE_METADATA_URL");
 const summaryPath = required("RELEASE_SUMMARY_PATH");
 const cacheBuster = optional("RELEASE_CACHE_BUSTER", "local");
 
 function versionFromMetadata(metadata: Record<string, unknown>): string {
-  const field =
-    releaseChannel === "beta" ? "betaVersion" :
-    releaseChannel === "preview" ? "previewVersion" :
-    releaseChannel === "nightly" ? "nightlyVersion" :
-    "releaseVersion";
-  const value = metadata[field];
+  const value = metadata[releaseDescriptor.releaseVersionField];
   return typeof value === "string" ? value : "";
 }
 

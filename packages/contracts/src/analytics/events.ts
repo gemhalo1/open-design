@@ -11,6 +11,7 @@ import type {
   TrackingConfigureAvailability,
   TrackingConfigureType,
 } from './public-params.js';
+import type { ReleaseChannel } from '@open-design/release';
 
 // ---- Event names ---------------------------------------------------------
 
@@ -2712,7 +2713,7 @@ export type TrackingUpdateApplyElapsedBucket =
 
 export interface UpdateApplyObservedProps {
   flow_id: string;
-  channel: 'stable' | 'beta' | 'nightly' | 'preview';
+  channel: ReleaseChannel;
   namespace: string;
   platform: string;
   arch: string;

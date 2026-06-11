@@ -11,7 +11,7 @@ describe("updater fixture server", () => {
     const server = await startUpdaterFixtureServer({
       artifactBody: "fixture artifact",
       channel: "beta",
-      version: "2.0.0-beta-nightly.1",
+      version: "2.0.0-beta.1",
     });
     try {
       const metadataResponse = await fetch(server.info.metadataUrl);
@@ -30,8 +30,8 @@ describe("updater fixture server", () => {
       expect(metadata.channel).toBe("beta");
       expect(metadata.baseVersion).toBe("2.0.0");
       expect(metadata.betaNumber).toBe(1);
-      expect(metadata.betaVersion).toBe("2.0.0-beta-nightly.1");
-      expect(metadata.releaseVersion).toBeUndefined();
+      expect(metadata.betaVersion).toBe("2.0.0-beta.1");
+      expect(metadata.releaseVersion).toBe("2.0.0-beta.1");
       expect(metadata.platforms?.mac?.artifacts?.dmg?.url).toBe(server.info.artifactUrl);
       expect(metadata.platforms?.mac?.artifacts?.dmg?.sha256Url).toBe(server.info.checksumUrl);
 
@@ -50,7 +50,7 @@ describe("updater fixture server", () => {
       artifactBody: "fixture installer",
       channel: "beta",
       platform: "win",
-      version: "2.0.0-beta-nightly.1",
+      version: "2.0.0-beta.1",
     });
     try {
       const metadataResponse = await fetch(server.info.metadataUrl);
@@ -110,7 +110,7 @@ describe("updater fixture server", () => {
       includePayload: true,
       payloadBody: "fixture payload",
       platform: "win",
-      version: "2.0.0-beta-nightly.1",
+      version: "2.0.0-beta.1",
     });
     try {
       const metadataResponse = await fetch(server.info.metadataUrl);
@@ -228,7 +228,7 @@ describe("updater fixture server", () => {
     const server = await startUpdaterFixtureServer({
       artifactBody: "fixture artifact",
       channel: "beta",
-      version: "2.0.0-beta-nightly.1",
+      version: "2.0.0-beta.1",
     });
     try {
       const rangedArtifact = await fetch(server.info.artifactUrl, {
@@ -254,7 +254,7 @@ describe("updater fixture server", () => {
     const server = await startUpdaterFixtureServer({
       artifactBody: "fixture artifact",
       channel: "beta",
-      version: "2.0.0-beta-nightly.1",
+      version: "2.0.0-beta.1",
     });
     try {
       const artifact = await fetch(server.info.artifactUrl, {
@@ -268,28 +268,26 @@ describe("updater fixture server", () => {
     }
   });
 
-  it("serves nightly and preview channel-specific release versions", async () => {
-    const nightly = await startUpdaterFixtureServer({
-      channel: "nightly",
-      version: "2.0.0.nightly.3",
+  it("serves prerelease and preview channel-specific release versions", async () => {
+    const prerelease = await startUpdaterFixtureServer({
+      channel: "prerelease",
+      version: "2.0.0-prerelease.3",
     });
     const preview = await startUpdaterFixtureServer({
       channel: "preview",
       version: "2.0.0-preview.4",
     });
     try {
-      const nightlyMetadata = await (await fetch(nightly.info.metadataUrl)).json() as {
+      const prereleaseMetadata = await (await fetch(prerelease.info.metadataUrl)).json() as {
         channel?: string;
-        nightlyNumber?: number;
-        nightlyVersion?: string;
+        prereleaseNumber?: number;
+        prereleaseVersion?: string;
         releaseVersion?: string;
-        stableVersion?: string;
       };
-      expect(nightlyMetadata.channel).toBe("nightly");
-      expect(nightlyMetadata.nightlyNumber).toBe(3);
-      expect(nightlyMetadata.nightlyVersion).toBe("2.0.0.nightly.3");
-      expect(nightlyMetadata.releaseVersion).toBe("2.0.0.nightly.3");
-      expect(nightlyMetadata.stableVersion).toBe("2.0.0");
+      expect(prereleaseMetadata.channel).toBe("prerelease");
+      expect(prereleaseMetadata.prereleaseNumber).toBe(3);
+      expect(prereleaseMetadata.prereleaseVersion).toBe("2.0.0-prerelease.3");
+      expect(prereleaseMetadata.releaseVersion).toBe("2.0.0-prerelease.3");
 
       const previewMetadata = await (await fetch(preview.info.metadataUrl)).json() as {
         channel?: string;
@@ -302,7 +300,7 @@ describe("updater fixture server", () => {
       expect(previewMetadata.previewVersion).toBe("2.0.0-preview.4");
       expect(previewMetadata.releaseVersion).toBe("2.0.0-preview.4");
     } finally {
-      await nightly.close();
+      await prerelease.close();
       await preview.close();
     }
   });

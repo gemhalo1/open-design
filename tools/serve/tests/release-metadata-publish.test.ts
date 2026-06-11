@@ -30,15 +30,15 @@ function runNode(args: string[], options: { cwd: string; env: NodeJS.ProcessEnv 
 }
 
 describe("shared release metadata publisher", () => {
-  it("publishes complete beta, preview, nightly, and stable metadata through the release storage fixture", async () => {
+  it("publishes complete beta, prerelease, preview, and stable metadata through the release storage fixture", async () => {
     const repoRoot = resolve(import.meta.dirname, "../../..");
     const root = await mkdtemp(join(tmpdir(), "od-release-metadata-publish-"));
     const server = await startReleaseStorageFixtureServer();
     try {
       for (const [channel, version] of [
         ["beta", "1.2.3-beta.4"],
+        ["prerelease", "1.2.3-prerelease.4"],
         ["preview", "1.2.3-preview.4"],
-        ["nightly", "1.2.3.nightly.4"],
         ["stable", "1.2.3"],
       ] as const) {
         const manifestDir = join(root, channel, "manifests");

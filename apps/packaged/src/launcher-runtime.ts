@@ -16,6 +16,7 @@ import {
   type LauncherAttemptDescriptor,
   type LauncherTargetSelection,
 } from "@open-design/launcher-proto";
+import { releaseChannelFromNamespace, releaseChannelFromVersion } from "@open-design/release";
 
 import type { PackagedConfig, PackagedWebOutputMode, RawPackagedConfig } from "./config.js";
 import type { PackagedNamespacePaths } from "./paths.js";
@@ -62,16 +63,9 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 function inferLauncherChannel(config: Pick<PackagedConfig, "appVersion" | "namespace">): LauncherChannel {
-  const version = config.appVersion;
-  if (version != null) {
-    if (/-preview\./.test(version)) return "preview";
-    if (/-beta\.|beta-nightly\./.test(version)) return "beta";
-    if (/-nightly\.|\.nightly\./.test(version)) return "nightly";
-  }
-  if (config.namespace.includes("preview")) return "preview";
-  if (config.namespace.includes("nightly")) return "nightly";
-  if (config.namespace.includes("beta")) return "beta";
-  return "stable";
+  return releaseChannelFromVersion(config.appVersion)
+    ?? releaseChannelFromNamespace(config.namespace, "default")
+    ?? "stable";
 }
 
 function parsePayloadManifest(raw: unknown, expected: {

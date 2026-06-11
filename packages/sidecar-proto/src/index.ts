@@ -1,3 +1,5 @@
+import { RELEASE_CHANNELS, type ReleaseChannel } from "@open-design/release";
+
 export const APP_KEYS = Object.freeze({
   DAEMON: "daemon",
   DESKTOP: "desktop",
@@ -109,13 +111,13 @@ export const DESKTOP_UPDATE_MODES = Object.freeze({
 export type DesktopUpdateMode = (typeof DESKTOP_UPDATE_MODES)[keyof typeof DESKTOP_UPDATE_MODES];
 
 export const DESKTOP_UPDATE_CHANNELS = Object.freeze({
-  BETA: "beta",
-  NIGHTLY: "nightly",
-  PREVIEW: "preview",
-  STABLE: "stable",
+  BETA: RELEASE_CHANNELS.BETA,
+  PRERELEASE: RELEASE_CHANNELS.PRERELEASE,
+  PREVIEW: RELEASE_CHANNELS.PREVIEW,
+  STABLE: RELEASE_CHANNELS.STABLE,
 } as const);
 
-export type DesktopUpdateChannel = (typeof DESKTOP_UPDATE_CHANNELS)[keyof typeof DESKTOP_UPDATE_CHANNELS];
+export type DesktopUpdateChannel = ReleaseChannel;
 
 export const DESKTOP_UPDATE_STATES = Object.freeze({
   AVAILABLE: "available",

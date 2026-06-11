@@ -51,6 +51,7 @@ import {
   type DesktopUpdateState,
   type SidecarSource,
 } from "@open-design/sidecar-proto";
+import { releaseChannelFromVersion } from "@open-design/release";
 
 import {
   markInstallerObservationOpenFailed,
@@ -794,14 +795,6 @@ function numberPart(value: string | undefined): number {
 
 function parseComparableVersion(value: string): ParsedComparableVersion {
   const cleaned = value.trim().replace(/^v/i, "").split("+", 1)[0] ?? "";
-  const nightlyMatch = /^(\d+)\.(\d+)\.(\d+)\.nightly\.(\d+)$/i.exec(cleaned);
-  if (nightlyMatch?.[1] != null && nightlyMatch[2] != null && nightlyMatch[3] != null && nightlyMatch[4] != null) {
-    return {
-      nums: [Number(nightlyMatch[1]), Number(nightlyMatch[2]), Number(nightlyMatch[3])],
-      pre: ["nightly", nightlyMatch[4]],
-    };
-  }
-
   const prereleaseSeparator = cleaned.indexOf("-");
   const core = prereleaseSeparator === -1 ? cleaned : cleaned.slice(0, prereleaseSeparator);
   const prerelease = prereleaseSeparator === -1 ? "" : cleaned.slice(prereleaseSeparator + 1);
@@ -819,9 +812,8 @@ function hasCountedPrerelease(version: string): boolean {
 }
 
 function defaultChannelForVersion(version: string): DesktopUpdateChannel {
-  if (/(?:^|[-.])beta(?:[-.]|$)/i.test(version)) return DESKTOP_UPDATE_CHANNELS.BETA;
-  if (/(?:^|[-.])preview(?:[-.]|$)/i.test(version)) return DESKTOP_UPDATE_CHANNELS.PREVIEW;
-  if (/(?:^|[-.])nightly(?:[-.]|$)/i.test(version)) return DESKTOP_UPDATE_CHANNELS.NIGHTLY;
+  const channel = releaseChannelFromVersion(version);
+  if (channel != null) return channel;
   return hasCountedPrerelease(version) ? DESKTOP_UPDATE_CHANNELS.BETA : DESKTOP_UPDATE_CHANNELS.STABLE;
 }
 
@@ -863,7 +855,7 @@ function metadataChannel(metadata: Record<string, unknown>): DesktopUpdateChanne
 
 function releaseVersionForChannel(metadata: Record<string, unknown>, channel: DesktopUpdateChannel): string | null {
   if (channel === DESKTOP_UPDATE_CHANNELS.BETA) return stringField(metadata, "betaVersion");
-  if (channel === DESKTOP_UPDATE_CHANNELS.NIGHTLY) return stringField(metadata, "nightlyVersion") ?? stringField(metadata, "releaseVersion");
+  if (channel === DESKTOP_UPDATE_CHANNELS.PRERELEASE) return stringField(metadata, "prereleaseVersion") ?? stringField(metadata, "releaseVersion");
   if (channel === DESKTOP_UPDATE_CHANNELS.PREVIEW) return stringField(metadata, "previewVersion") ?? stringField(metadata, "releaseVersion");
   return stringField(metadata, "releaseVersion") ?? stringField(metadata, "stableVersion");
 }

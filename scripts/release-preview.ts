@@ -4,16 +4,21 @@ import { readFile } from "node:fs/promises";
 import { get as httpsGet } from "node:https";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import {
+  compareReleaseBaseVersions,
+  formatReleaseVersion,
+  parseCountedReleaseVersion,
+  parseReleaseBaseVersion,
+  type ReleaseBaseVersionTuple,
+} from "@open-design/release";
 
 const execFile = promisify(execFileCallback);
 
-const stableVersionPattern = /^(\d+)\.(\d+)\.(\d+)$/;
 const stableTagPattern = /^open-design-v(\d+\.\d+\.\d+)$/;
 const previewReleaseBranchPattern = /^preview\/v(\d+\.\d+\.\d+)$/;
-const previewVersionPattern = /^(\d+\.\d+\.\d+)-preview\.(\d+)$/;
 
 type ParsedStableVersion = {
-  parsed: [number, number, number];
+  parsed: ReleaseBaseVersionTuple;
   value: string;
 };
 
@@ -32,35 +37,11 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function parseStableVersion(value: string): [number, number, number] | null {
-  const match = stableVersionPattern.exec(value);
-  if (match == null) return null;
-
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function compareVersions(left: [number, number, number], right: [number, number, number]): number {
-  const [leftMajor, leftMinor, leftPatch] = left;
-  const [rightMajor, rightMinor, rightPatch] = right;
-  const pairs = [
-    [leftMajor, rightMajor],
-    [leftMinor, rightMinor],
-    [leftPatch, rightPatch],
-  ] as const;
-
-  for (const [leftPart, rightPart] of pairs) {
-    if (leftPart > rightPart) return 1;
-    if (leftPart < rightPart) return -1;
-  }
-
-  return 0;
-}
-
 function extractStableVersionFromTag(tag: string): ParsedStableVersion | null {
   const match = stableTagPattern.exec(tag);
   if (match?.[1] == null) return null;
 
-  const parsed = parseStableVersion(match[1]);
+  const parsed = parseReleaseBaseVersion(match[1]);
   return parsed == null ? null : { parsed, value: match[1] };
 }
 
@@ -73,7 +54,7 @@ function parsePreviewParts(baseVersion: string, previewNumber: string): ParsedPr
   return {
     baseVersion,
     previewNumber: parsedPreviewNumber,
-    previewVersion: `${baseVersion}-preview.${previewNumber}`,
+    previewVersion: formatReleaseVersion("preview", baseVersion, parsedPreviewNumber),
   };
 }
 
@@ -88,11 +69,15 @@ function readNumberField(record: Record<string, unknown>, field: string): number
 }
 
 function parsePreviewVersion(value: string, sourceName: string): ParsedPreviewVersion {
-  const match = previewVersionPattern.exec(value);
-  if (match?.[1] == null || match[2] == null) {
+  const parsed = parseCountedReleaseVersion(value, "preview");
+  if (parsed == null) {
     fail(`${sourceName} previewVersion must be x.y.z-preview.N; got ${value}`);
   }
-  return parsePreviewParts(match[1], match[2]);
+  return {
+    baseVersion: parsed.baseVersion,
+    previewNumber: parsed.number,
+    previewVersion: parsed.releaseVersion,
+  };
 }
 
 function parsePreviewMetadataJson(value: string): ParsedPreviewMetadata {
@@ -127,7 +112,7 @@ function parsePreviewMetadataJson(value: string): ParsedPreviewMetadata {
     fail("R2 preview metadata.json must include previewVersion or baseVersion+previewNumber");
   }
 
-  const parsedBase = parseStableVersion(baseVersion);
+  const parsedBase = parseReleaseBaseVersion(baseVersion);
   if (parsedBase == null) {
     fail(`R2 preview metadata.json baseVersion must be x.y.z; got ${baseVersion}`);
   }
@@ -143,7 +128,7 @@ async function readPackagedVersion(): Promise<string> {
     fail(`missing version in ${packageJsonPath}`);
   }
 
-  if (!stableVersionPattern.test(packageJson.version)) {
+  if (parseReleaseBaseVersion(packageJson.version) == null) {
     fail(`apps/packaged/package.json version must be a stable x.y.z base version; got ${packageJson.version}`);
   }
 
@@ -236,7 +221,7 @@ function setOutput(name: string, value: string): void {
 }
 
 const packagedVersion = await readPackagedVersion();
-const packagedParsed = parseStableVersion(packagedVersion) ?? fail(`invalid packaged version: ${packagedVersion}`);
+const packagedParsed = parseReleaseBaseVersion(packagedVersion) ?? fail(`invalid packaged version: ${packagedVersion}`);
 const branch = process.env.GITHUB_REF_NAME ?? "";
 const branchMatch = previewReleaseBranchPattern.exec(branch);
 if (branchMatch?.[1] == null) {
@@ -253,12 +238,12 @@ for (const tag of tags) {
   const stableVersion = extractStableVersionFromTag(tag);
   if (stableVersion == null) continue;
 
-  if (latestStable == null || compareVersions(stableVersion.parsed, latestStable.parsed) > 0) {
+  if (latestStable == null || compareReleaseBaseVersions(stableVersion.parsed, latestStable.parsed) > 0) {
     latestStable = stableVersion;
   }
 }
 
-if (latestStable != null && compareVersions(packagedParsed, latestStable.parsed) <= 0) {
+if (latestStable != null && compareReleaseBaseVersions(packagedParsed, latestStable.parsed) <= 0) {
   fail(`packaged base version ${packagedVersion} must be strictly greater than latest stable ${latestStable.value}`);
 }
 
@@ -287,12 +272,12 @@ if (latestMetadataJson == null) {
 
 if (latestPreview != null) {
   const preview = latestPreview;
-  const existingBase = parseStableVersion(preview.baseVersion);
+  const existingBase = parseReleaseBaseVersion(preview.baseVersion);
   if (existingBase == null) {
     fail(`invalid preview base version in ${stateSource}: ${preview.baseVersion}`);
   }
 
-  const ordering = compareVersions(packagedParsed, existingBase);
+  const ordering = compareReleaseBaseVersions(packagedParsed, existingBase);
   if (ordering < 0) {
     fail(`packaged base version ${packagedVersion} regressed below current preview base version ${preview.baseVersion}`);
   }

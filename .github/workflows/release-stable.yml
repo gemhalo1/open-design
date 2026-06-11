@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       channel:
-        description: "Release channel. nightly publishes to R2 only; stable also creates a GitHub Release and tag."
+        description: "Release channel. prerelease publishes to R2 only; stable also creates a GitHub Release and tag."
         required: true
         type: choice
         options:
           - stable
-          - nightly
+          - prerelease
         default: stable
-      nightly_version:
-        description: "Required when channel=stable: exact validated nightly version to promote, for example 0.5.1.nightly.3."
+      prerelease_version:
+        description: "Required when channel=stable: exact validated prerelease version to promote, for example 0.5.1-prerelease.3."
         required: false
         type: string
       release_version:
@@ -32,12 +32,12 @@ on:
   workflow_call:
     inputs:
       channel:
-        description: "Release channel (nightly or stable)."
+        description: "Release channel (prerelease or stable)."
         required: false
         type: string
-        default: nightly
-      nightly_version:
-        description: "Required when channel=stable: exact validated nightly version to promote."
+        default: prerelease
+      prerelease_version:
+        description: "Required when channel=stable: exact validated prerelease version to promote."
         required: false
         type: string
         default: ""
@@ -58,7 +58,7 @@ on:
         default: ""
     outputs:
       release_version:
-        description: "The version that was built (x.y.z.nightly.N for nightly)."
+        description: "The version that was built (x.y.z-prerelease.N for prerelease)."
         value: ${{ jobs.metadata.outputs.release_version }}
       channel:
         description: "The channel that was built."
@@ -73,7 +73,7 @@ on:
         description: "Whether this run stopped after metadata/preflight validation."
         value: ${{ jobs.metadata.outputs.dry_run }}
       previous_commit:
-        description: "Commit SHA of the previously published nightly (changelog baseline); empty on cold start."
+        description: "Commit SHA of the previously published prerelease (changelog baseline); empty on cold start."
         value: ${{ jobs.metadata.outputs.previous_commit }}
       version_metadata_url:
         description: "Public R2 URL of this build's version metadata.json."
@@ -123,11 +123,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_REPOSITORY: ${{ github.repository }}
-      OPEN_DESIGN_NIGHTLY_METADATA_URL: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}/nightly/latest/metadata.json
+      OPEN_DESIGN_PRERELEASE_METADATA_URL: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}/prerelease/latest/metadata.json
       OPEN_DESIGN_RELEASE_DRY_RUN: ${{ inputs.dry_run }}
       OPEN_DESIGN_RELEASE_CHANNEL: ${{ inputs.channel }}
       OPEN_DESIGN_RELEASES_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
-      OPEN_DESIGN_STABLE_NIGHTLY_VERSION: ${{ inputs.nightly_version }}
+      OPEN_DESIGN_STABLE_PRERELEASE_VERSION: ${{ inputs.prerelease_version }}
       OPEN_DESIGN_STABLE_VERSION: ${{ inputs.release_version }}
     outputs:
       base_version: ${{ steps.stable.outputs.base_version }}
@@ -139,7 +139,7 @@ jobs:
       linux_namespace: ${{ steps.stable.outputs.linux_namespace }}
       mac_intel_namespace: ${{ steps.stable.outputs.mac_intel_namespace }}
       namespace: ${{ steps.stable.outputs.namespace }}
-      nightly_number: ${{ steps.stable.outputs.nightly_number }}
+      prerelease_number: ${{ steps.stable.outputs.prerelease_number }}
       previous_stable: ${{ steps.stable.outputs.previous_stable }}
       previous_commit: ${{ steps.prev.outputs.previous_commit }}
       release_name: ${{ steps.stable.outputs.release_name }}
@@ -167,15 +167,15 @@ jobs:
       - name: Resolve built commit
         run: echo "BUILT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      # Capture the previously published nightly commit BEFORE this run overwrites
-      # nightly/latest/metadata.json, so the notification can diff the changelog
+      # Capture the previously published prerelease commit BEFORE this run overwrites
+      # prerelease/latest/metadata.json, so the notification can diff the changelog
       # against the last package. Empty on cold start (HTTP 404).
-      - name: Capture previous nightly commit
+      - name: Capture previous prerelease commit
         id: prev
         run: |
           set -euo pipefail
-          prev="$(curl -fsSL "$OPEN_DESIGN_NIGHTLY_METADATA_URL" | jq -r '.github.commit // ""' 2>/dev/null || true)"
-          echo "previous nightly commit: ${prev:-<none>}"
+          prev="$(curl -fsSL "$OPEN_DESIGN_PRERELEASE_METADATA_URL" | jq -r '.github.commit // ""' 2>/dev/null || true)"
+          echo "previous prerelease commit: ${prev:-<none>}"
           echo "previous_commit=$prev" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release metadata
@@ -358,8 +358,8 @@ jobs:
           source_resolve_log="$RUNNER_TEMP/mac-framework-source-resolve.err"
           source_framework="$(node -e 'const path = require("node:path"); const { createRequire } = require("node:module"); const requireFromDesktop = createRequire(path.join(process.cwd(), "apps/desktop/package.json")); const electron = requireFromDesktop.resolve("electron"); process.stdout.write(path.join(path.dirname(electron), "dist", "Electron.app", "Contents", "Frameworks", "Electron Framework.framework"));' 2>"$source_resolve_log" || true)"
           app_name="Open Design.app"
-          if [ "${{ needs.metadata.outputs.channel }}" = "nightly" ]; then
-            app_name="Open Design Nightly.app"
+          if [ "${{ needs.metadata.outputs.channel }}" = "prerelease" ]; then
+            app_name="Open Design Prerelease.app"
           fi
           built_framework="$RUNNER_TEMP/tools-pack/out/mac/namespaces/${{ needs.metadata.outputs.namespace }}/builder/mac-arm64/$app_name/Contents/Frameworks/Electron Framework.framework"
 
@@ -1026,7 +1026,7 @@ jobs:
       ENABLE_WIN: "true"
       GITHUB_RELEASE_ENABLED: ${{ needs.metadata.outputs.github_release_enabled }}
       MAC_INTEL_SIGNED: "true"
-      NIGHTLY_NUMBER: ${{ needs.metadata.outputs.nightly_number }}
+      PRERELEASE_NUMBER: ${{ needs.metadata.outputs.prerelease_number }}
       RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
       RELEASE_NAME: ${{ needs.metadata.outputs.release_name }}
       RELEASE_SIGNED: "true"

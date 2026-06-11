@@ -128,6 +128,7 @@ export type DesktopMainOptions = {
    */
   discoverDaemonUrl?: () => Promise<string | null>;
   preloadPath?: string;
+  windowTitle?: string;
   onDesktopReady?: (controls: { show(): void }) => void;
   /**
    * Optional pre-created splash window. The packaged entry creates it before
@@ -485,7 +486,7 @@ function installDesktopMenu(
       });
   });
   if (!registered) {
-    showDevelopMenuError("Develop menu shortcut unavailable", new Error(`Failed to register ${accelerator}`));
+    console.warn("[open-design desktop] develop menu shortcut unavailable", { accelerator });
   }
   return () => {
     globalShortcut.unregister(accelerator);
@@ -786,6 +787,7 @@ export async function runDesktopMain(
     splashWindow: options.splashWindow,
     splashStartedAt: options.splashStartedAt,
     updater,
+    windowTitle: options.windowTitle,
   });
   console.info("[open-design desktop] desktop runtime created");
   options.onDesktopReady?.({ show: () => desktop?.show() });

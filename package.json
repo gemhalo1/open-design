@@ -28,6 +28,7 @@
   "devDependencies": {
     "@open-design/components": "workspace:*",
     "@open-design/daemon": "workspace:*",
+    "@open-design/release": "workspace:*",
     "@open-design/tools-dev": "workspace:*",
     "@open-design/tools-pack": "workspace:*",
     "@open-design/tools-serve": "workspace:*",

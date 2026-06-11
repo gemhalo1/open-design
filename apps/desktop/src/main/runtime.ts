@@ -354,6 +354,12 @@ export type DesktopRuntimeOptions = {
   osLocale?: string;
   preloadPath?: string;
   /**
+   * User-visible app/window name. Packaged release channels pass their
+   * channel-specific product name here so concurrent installs remain
+   * distinguishable in the OS window switcher.
+   */
+  windowTitle?: string;
+  /**
    * Round-5 (lefarcen P1, mrcfps): lazy re-handshake hook. The runtime
    * calls this when the daemon answers `503 DESKTOP_AUTH_PENDING` so a
    * daemon-restart-mid-session, or a missed startup-window race, no
@@ -1500,6 +1506,7 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
 
   const consoleEntries: DesktopConsoleEntry[] = [];
   const petWindow = createDesktopPetWindow(preloadPath, options.osLocale);
+  const windowTitle = options.windowTitle ?? "Open Design";
   const window = new BrowserWindow({
     height: 900,
     icon: resolveDesktopIconPath(),
@@ -1514,7 +1521,7 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
     // mounted (see `revealWhenReady` below), so there is never a flash of the
     // web's own "Loading Open Design…" shell.
     show: false,
-    title: "Open Design",
+    title: windowTitle,
     autoHideMenuBar: true,
     ...MAC_WINDOW_CHROME,
     webPreferences: {
@@ -1531,6 +1538,10 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
   installWindowChromeCssHook(window);
   showWindowButtons(window);
   attachDownloadSaveAsDialog(window);
+  window.on("page-title-updated", (event) => {
+    event.preventDefault();
+    window.setTitle(windowTitle);
+  });
   window.webContents.on("did-start-loading", () => {
     console.info("[open-design desktop] main window did-start-loading", {
       pendingUrl,
