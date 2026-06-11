@@ -18,6 +18,7 @@ import {
   DEFAULT_FAILURE_SOUND_ID,
   DEFAULT_SUCCESS_SOUND_ID,
 } from '../utils/notifications';
+import { randomUUID } from '../utils/uuid';
 
 const STORAGE_KEY = 'open-design:config';
 const CONFIG_MIGRATION_VERSION = 1;
@@ -732,6 +733,27 @@ export function mergeDaemonConfig(
     // existed. If the daemon already has an id or telemetry prefs, the user
     // has resolved the first-run prompt and should not see it again.
     next.privacyDecisionAt = Date.now();
+  }
+  // Default-on reporting. Unless the user has explicitly opted out
+  // (Settings → "Don't share", which persists telemetry.metrics === false
+  // together with installationId: null), an install reports anonymous
+  // metrics and carries a stable installationId. This is the single source
+  // of the "Opted out" state: previously an upgraded or never-prompted
+  // install could sit at metrics-on-but-no-id (or no telemetry record at
+  // all), which the Settings → Privacy field rendered as "Opted out" even
+  // though the user never declined. We mint the id and turn metrics on so
+  // the displayed state matches the product default. The more sensitive
+  // content / artifactManifest channels are NOT silently enabled here —
+  // they stay at whatever the user last chose (default off), so only the
+  // anonymous-metrics channel follows the default-on policy.
+  const explicitlyOptedOut = next.telemetry?.metrics === false;
+  if (!explicitlyOptedOut && !next.installationId) {
+    next.installationId = randomUUID();
+    next.telemetry = {
+      metrics: true,
+      content: next.telemetry?.content ?? false,
+      artifactManifest: next.telemetry?.artifactManifest ?? false,
+    };
   }
   if (daemonConfig.customInstructions !== undefined) {
     next.customInstructions = daemonConfig.customInstructions ?? undefined;
