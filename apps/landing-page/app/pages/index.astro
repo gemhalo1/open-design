@@ -843,7 +843,12 @@ const matterRuntime = readFileSync(
         // Falls back to the server-rendered releases-page href when detection or
         // the API fails.
         const enhanceDownloadCta = () => {
-          const buttons = Array.from(document.querySelectorAll('[data-download-cta]'));
+          // `[data-download-page]` CTAs (e.g. the nav "Download" button) must
+          // keep their server-rendered href to the /download/ page — only the
+          // direct-download CTAs (hero) are rewritten to the release asset.
+          const buttons = Array.from(
+            document.querySelectorAll('[data-download-cta]:not([data-download-page])'),
+          );
           if (buttons.length === 0) return;
           const ua = navigator.userAgent || '';
           const isWin = /Windows|Win32|Win64|WOW64/i.test(ua);
@@ -1266,6 +1271,32 @@ const matterRuntime = readFileSync(
 
         const elements = document.querySelectorAll('[data-reveal]:not([data-revealed])');
         enhanceHeader();
+        // Mobile hamburger toggle. `header-enhancer.astro` binds this on every
+        // sub-page (via sub-page-layout), but the homepage doesn't include it,
+        // so the toggle was inert here — wire the same behaviour inline.
+        (function enhanceMobileNav() {
+          const navToggle = document.querySelector('[data-nav-toggle]');
+          const primaryNav = document.querySelector('[data-nav-primary]');
+          const navHost = navToggle ? navToggle.closest('header.nav') : null;
+          if (!navToggle || !primaryNav || !navHost) return;
+          const setNavOpen = (open) => {
+            navHost.classList.toggle('is-open', open);
+            navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+          };
+          navToggle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            setNavOpen(!navHost.classList.contains('is-open'));
+          });
+          primaryNav.querySelectorAll('a').forEach((link) => {
+            link.addEventListener('click', () => setNavOpen(false));
+          });
+          document.addEventListener('click', (ev) => {
+            if (!navHost.contains(ev.target)) setNavOpen(false);
+          });
+          document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') setNavOpen(false);
+          });
+        })();
         enhanceDragIcon();
         enhanceWire();
         enhanceStatementReveal();

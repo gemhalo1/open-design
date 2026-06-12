@@ -427,9 +427,12 @@ export default function Page({
               <div className='hero-actions' data-reveal>
                 {/* Platform-aware download: `enhanceDownloadCta` in the inline
                     script of pages/index.astro rewrites href to the matching
-                    release asset (Apple Silicon / Intel Mac / Windows) and
-                    appends the detected chip label. Falls back to releases. */}
-                <a className='btn btn-primary' href={REPO_RELEASES} data-download-cta data-download-chip-target {...ext}>
+                    release asset (Apple Silicon / Intel Mac / Windows) for a
+                    direct download and appends the detected chip label. When
+                    the platform can't be named (Linux / undetermined / API
+                    rate-limited) it falls back to the /download/ page (the
+                    per-platform picker) rather than the GitHub releases list. */}
+                <a className='btn btn-primary' href={href('/download/')} data-download-cta data-download-chip-target>
                   <span className='arrow'>{iconDownload}</span>
                   {home.hero.download}
                 </a>
