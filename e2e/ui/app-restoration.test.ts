@@ -2527,6 +2527,305 @@ test('[P1] composer design toolbox motion action seeds its specific prompt into 
   expect(runBodies[0]?.message).not.toContain('Creative Director orchestrator');
 });
 
+test('[P1] composer design toolbox anti-AI polish action seeds its specific prompt into the next run request', async ({ page }) => {
+  await routeMockAgents(page);
+
+  const runBodies: Array<Record<string, unknown>> = [];
+  await page.route('**/api/runs', async (route) => {
+    const raw = route.request().postData();
+    if (raw) runBodies.push(JSON.parse(raw) as Record<string, unknown>);
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: '{"runId":"toolbox-anti-ai-run"}',
+    });
+  });
+  await page.route('**/api/runs/*/events', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body: [
+        'event: start',
+        'data: {"bin":"mock-agent"}',
+        '',
+        'event: end',
+        'data: {"code":0,"status":"succeeded"}',
+        '',
+        '',
+      ].join('\n'),
+    });
+  });
+
+  await createEmptyProject(page, 'Composer toolbox anti AI polish context');
+  await expectWorkspaceReady(page);
+
+  await page.getByTestId('chat-composer-input').fill('Make this SaaS landing page feel less generic.');
+  await page.getByTestId('chat-plus-trigger').click();
+  await page.getByRole('menuitem', { name: 'Design toolbox' }).click();
+  await page.getByRole('menuitem', { name: 'Remove AI feel' }).click();
+
+  const input = page.getByTestId('chat-composer-input');
+  await expect(input).toContainText('Do one anti-AI-feel polish pass');
+  await expect(input).toContainText('Preserve the intent already in the composer: Make this SaaS landing page feel less generic.');
+
+  await page.getByTestId('chat-send').click();
+  expect(runBodies[0]?.message).toContain('Do one anti-AI-feel polish pass');
+  expect(runBodies[0]?.message).toContain('cheap gradients/glows');
+  expect(runBodies[0]?.message).toContain('Make this SaaS landing page feel less generic.');
+  expect(runBodies[0]?.message).not.toContain('prefers-reduced-motion fallbacks');
+});
+
+test('[P1] Browser Inspiration page_info action seeds Browser tab context into the next run request', async ({ page }) => {
+  await routeMockAgents(page);
+
+  const runBodies: Array<Record<string, unknown>> = [];
+  await page.route('**/api/runs', async (route) => {
+    const raw = route.request().postData();
+    if (raw) runBodies.push(JSON.parse(raw) as Record<string, unknown>);
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: '{"runId":"browser-inspiration-run"}',
+    });
+  });
+  await page.route('**/api/runs/*/events', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body: [
+        'event: start',
+        'data: {"bin":"mock-agent"}',
+        '',
+        'event: end',
+        'data: {"code":0,"status":"succeeded"}',
+        '',
+        '',
+      ].join('\n'),
+    });
+  });
+
+  await createEmptyProject(page, 'Browser Inspiration run context');
+  await expectWorkspaceReady(page);
+
+  await page.getByTestId('workspace-add-tab').click();
+  await page.getByRole('button', { name: 'New Browser' }).click();
+  await expect(
+    page.getByTestId('file-workspace').getByRole('tab', { name: /Browser/ }),
+  ).toBeVisible();
+
+  await page.getByTestId('file-workspace').getByRole('button', { name: 'Inspiration' }).click();
+  await page.locator('.db-browser-use-action').filter({ hasText: /^page_info/ }).click();
+
+  const input = page.getByTestId('chat-composer-input');
+  await expect(input).toContainText('@agent-browser');
+  await expect(input).toContainText('Use the selected Open Design Browser tab as the bound target.');
+  await expect(input).toContainText('Operation: page_info');
+  await expect(input).toContainText('- tab: Browser');
+  await expect(input).toContainText('- url: about:blank');
+
+  await page.getByTestId('chat-send').click();
+  expect(runBodies[0]?.message).toContain('@agent-browser');
+  expect(runBodies[0]?.message).toContain('Operation: page_info');
+  expect(runBodies[0]?.message).toContain('Browser tab context:');
+  expect(runBodies[0]?.message).toContain('- url: about:blank');
+});
+
+test('[P1] Browser Inspiration navigate action carries Browser operation contract into the next run request', async ({ page }) => {
+  await routeMockAgents(page);
+
+  const runBodies: Array<Record<string, unknown>> = [];
+  await page.route('**/api/runs', async (route) => {
+    const raw = route.request().postData();
+    if (raw) runBodies.push(JSON.parse(raw) as Record<string, unknown>);
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: '{"runId":"browser-navigate-inspiration-run"}',
+    });
+  });
+  await page.route('**/api/runs/*/events', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body: [
+        'event: start',
+        'data: {"bin":"mock-agent"}',
+        '',
+        'event: end',
+        'data: {"code":0,"status":"succeeded"}',
+        '',
+        '',
+      ].join('\n'),
+    });
+  });
+
+  await createEmptyProject(page, 'Browser navigate Inspiration run context');
+  await expectWorkspaceReady(page);
+
+  await page.getByTestId('workspace-add-tab').click();
+  await page.getByRole('button', { name: 'New Browser' }).click();
+  await expect(
+    page.getByTestId('file-workspace').getByRole('tab', { name: /Browser/ }),
+  ).toBeVisible();
+
+  await page.getByTestId('file-workspace').getByRole('button', { name: 'Inspiration' }).click();
+  await page.locator('.db-browser-use-action').filter({ hasText: /^navigate/ }).click();
+
+  const input = page.getByTestId('chat-composer-input');
+  await expect(input).toContainText('@agent-browser');
+  await expect(input).toContainText('Operation: navigate');
+  await expect(input).toContainText('Input contract: url / domain / search terms');
+  await expect(input).toContainText('Navigate the bound Browser tab to the requested URL');
+
+  await page.getByTestId('chat-send').click();
+  expect(runBodies[0]?.message).toContain('Operation: navigate');
+  expect(runBodies[0]?.message).toContain('Input contract: url / domain / search terms');
+  expect(runBodies[0]?.message).toContain('First confirm the bound tab URL/title');
+});
+
+test('[P1] Browser Inspiration page_info carries the active Browser URL context into the next run request', async ({ page }) => {
+  await routeMockAgents(page);
+
+  const runBodies: Array<Record<string, unknown>> = [];
+  await page.route('**/api/runs', async (route) => {
+    const raw = route.request().postData();
+    if (raw) runBodies.push(JSON.parse(raw) as Record<string, unknown>);
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: '{"runId":"browser-active-url-context-run"}',
+    });
+  });
+  await page.route('**/api/runs/*/events', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body: [
+        'event: start',
+        'data: {"bin":"mock-agent"}',
+        '',
+        'event: end',
+        'data: {"code":0,"status":"succeeded"}',
+        '',
+        '',
+      ].join('\n'),
+    });
+  });
+
+  await createEmptyProject(page, 'Browser active URL Inspiration context');
+  await expectWorkspaceReady(page);
+
+  await page.getByTestId('workspace-add-tab').click();
+  await page.getByRole('button', { name: 'New Browser' }).click();
+  await expect(
+    page.getByTestId('file-workspace').getByRole('tab', { name: /Browser/ }),
+  ).toBeVisible();
+
+  const expectedUrl = `${new URL(page.url()).origin}/api/health`;
+  const address = page.getByTestId('file-workspace').getByLabel('Browser address');
+  await address.fill('/api/health');
+  await address.press('Enter');
+  await expect(page.locator('.db-address-display')).toContainText('/api/health');
+
+  await page.getByTestId('file-workspace').getByRole('button', { name: 'Inspiration' }).click();
+  await page.locator('.db-browser-use-action').filter({ hasText: /^page_info/ }).click();
+
+  const input = page.getByTestId('chat-composer-input');
+  await expect(input).toContainText('Operation: page_info');
+  await expect(input).toContainText(`- url: ${expectedUrl}`);
+
+  await page.getByTestId('chat-send').click();
+  expect(runBodies[0]?.message).toContain('Operation: page_info');
+  expect(runBodies[0]?.message).toContain(`- url: ${expectedUrl}`);
+});
+
+test('[P1] Browser Inspiration page_info carries a loaded page title into the next run request', async ({ page }) => {
+  await routeMockAgents(page);
+
+  const runBodies: Array<Record<string, unknown>> = [];
+  await page.route('**/browser-title-fixture.html', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: [
+        '<!doctype html>',
+        '<html>',
+        '<head><title>Browser Fixture Title</title></head>',
+        '<body><main><h1>Browser fixture page</h1></main></body>',
+        '</html>',
+      ].join(''),
+    });
+  });
+  await page.route('**/api/runs', async (route) => {
+    const raw = route.request().postData();
+    if (raw) runBodies.push(JSON.parse(raw) as Record<string, unknown>);
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: '{"runId":"browser-title-context-run"}',
+    });
+  });
+  await page.route('**/api/runs/*/events', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body: [
+        'event: start',
+        'data: {"bin":"mock-agent"}',
+        '',
+        'event: end',
+        'data: {"code":0,"status":"succeeded"}',
+        '',
+        '',
+      ].join('\n'),
+    });
+  });
+
+  await createEmptyProject(page, 'Browser loaded title Inspiration context');
+  await expectWorkspaceReady(page);
+
+  await page.getByTestId('workspace-add-tab').click();
+  await page.getByRole('button', { name: 'New Browser' }).click();
+  await expect(
+    page.getByTestId('file-workspace').getByRole('tab', { name: /Browser/ }),
+  ).toBeVisible();
+
+  const expectedUrl = `${new URL(page.url()).origin}/browser-title-fixture.html`;
+  const address = page.getByTestId('file-workspace').getByLabel('Browser address');
+  await address.fill(expectedUrl);
+  await address.press('Enter');
+  await expect(page.locator('.db-address-display')).toContainText('/browser-title-fixture.html');
+  await expect(page.locator('.db-address-display')).toContainText('Browser Fixture Title');
+
+  await page.getByTestId('file-workspace').getByRole('button', { name: 'Inspiration' }).click();
+  await page.locator('.db-browser-use-action').filter({ hasText: /^page_info/ }).click();
+
+  const input = page.getByTestId('chat-composer-input');
+  await expect(input).toContainText('Operation: page_info');
+  await expect(input).toContainText(`- url: ${expectedUrl}`);
+  await expect(input).toContainText('- title: Browser Fixture Title');
+
+  await page.getByTestId('chat-send').click();
+  expect(runBodies[0]?.message).toContain('Operation: page_info');
+  expect(runBodies[0]?.message).toContain(`- url: ${expectedUrl}`);
+  expect(runBodies[0]?.message).toContain('- title: Browser Fixture Title');
+});
+
 test('[P0] composer session mode switch is carried into the next daemon run request', async ({ page }) => {
   await routeMockAgents(page);
 
@@ -2824,6 +3123,63 @@ test('[P1] project composer working directory replace and clear update linked di
   await expect
     .poll(() => patchBodies.at(-1)?.metadata)
     .toMatchObject({ linkedDirs: [] });
+});
+
+test('[P1] project composer working directory rejects stale folder without promoting it to recents', async ({ page }) => {
+  const staleDir = '/Users/mac/open-design/open-design/missing-linked-dir';
+  const patchBodies: Array<Record<string, unknown>> = [];
+  const recentDirPutBodies: Array<Record<string, unknown>> = [];
+
+  await page.route('**/api/recent-dirs', async (route) => {
+    await route.fulfill({ json: { dirs: [] } });
+  });
+  await page.route('**/api/dialog/open-folder', async (route) => {
+    await route.fulfill({ json: { path: staleDir } });
+  });
+  await page.route('**/api/dir-exists', async (route) => {
+    await route.fulfill({ json: { exists: false } });
+  });
+  await page.route('**/api/app-config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      if (JSON.stringify(payload).includes(staleDir)) {
+        recentDirPutBodies.push(payload);
+      }
+      await route.fulfill({ json: { config: { recentLinkedDirs: [staleDir] } } });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route('**/api/projects/*', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      patchBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            code: 'INVALID_LINKED_DIR',
+            message: 'The linked directory no longer exists.',
+          },
+        }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await createEmptyProject(page, 'Project composer stale working directory');
+  await expectWorkspaceReady(page);
+
+  await page.getByTestId('working-dir-trigger').click();
+  await page.getByTestId('working-dir-pick').click();
+
+  await expect(page.getByTestId('working-dir-trigger')).toContainText('Select working directory');
+  await expect(page.getByText("Couldn't set the working directory")).toBeVisible();
+  await expect
+    .poll(() => patchBodies.at(-1)?.metadata)
+    .toMatchObject({ linkedDirs: [staleDir] });
+  expect(recentDirPutBodies).toHaveLength(0);
 });
 
 async function routeMockAgents(page: Page) {

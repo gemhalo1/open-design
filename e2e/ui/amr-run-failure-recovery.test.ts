@@ -83,7 +83,11 @@ test('[P0] @critical AMR insufficient-balance failures surface Top up AMR and ke
         () => (window as Window & { __openedUrls?: string[] }).__openedUrls ?? [],
       ),
     )
-    .toContainEqual(expect.stringMatching(/^https:\/\/open-design\.ai\/amr\/wallet(?:\?|$)/));
+    .toContainEqual(
+      expect.stringMatching(
+        /^https:\/\/open-design\.ai\/amr\/wallet\?.*source=open_design.*od_origin=open_design.*od_entry_source=chat_error_recharge/,
+      ),
+    );
 });
 
 test('[P0] @critical AMR auth failures offer Authorize & retry and open AMR authorization controls', async ({ page }) => {

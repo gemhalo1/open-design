@@ -478,6 +478,29 @@ test('[P2] captures the avatar menu surface', async ({ page }) => {
   await captureVisual(page, 'visual-avatar-menu');
 });
 
+test('[P1] Avatar menu exposes the AMR account wallet entry for the active AMR agent', async ({ page }) => {
+  await configureVisualPage(page, {
+    agents: [VISUAL_AMR_AGENT, ...VISUAL_CLI_AGENTS],
+    config: {
+      mode: 'daemon',
+      agentId: 'amr',
+      agentModels: { amr: { model: 'deepseek-v4-flash', reasoning: 'default' } },
+      agentCliEnv: { amr: { OPEN_DESIGN_AMR_PROFILE: 'test' } },
+    },
+  });
+  await gotoVisualHome(page);
+  await gotoVisualWorkspace(page);
+
+  const menu = await openAvatarMenu(page);
+  const amrAccount = menu.locator('.avatar-amr-account-link');
+  await expect(amrAccount).toContainText('AMR account');
+  await expect(amrAccount).toContainText('Balance & recharge');
+  await expect(amrAccount).toHaveAttribute(
+    'href',
+    'https://vela.powerformer.net/wallet?source=open_design',
+  );
+});
+
 test('[P2] captures the avatar local agent list surface', async ({ page }) => {
   await configureVisualPage(page, {
     agents: VISUAL_CLI_AGENTS,
