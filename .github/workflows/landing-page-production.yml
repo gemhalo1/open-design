@@ -152,6 +152,20 @@ jobs:
           }
           NODE
 
+      - name: Verify deploy file count under Cloudflare Pages cap
+        run: |
+          # Cloudflare Pages rejects deployments over 20,000 files. Localized
+          # routes (especially per-locale catalog detail pages) can silently
+          # multiply the output, so fail well before the hard cap — a regression
+          # is caught here instead of at the wrangler deploy step. `out/`
+          # already includes the generated previews at this point.
+          count=$(find apps/landing-page/out -type f | wc -l | tr -d '[:space:]')
+          echo "landing-page deploy file count: $count"
+          if [ "$count" -ge 19000 ]; then
+            echo "::error::landing-page build emitted $count files; Cloudflare Pages caps deployments at 20,000. Reduce per-locale page fan-out (see PR #4158)."
+            exit 1
+          fi
+
       # `--branch=main` IS the Cloudflare Pages production branch, so this
       # publishes to the production domain (open-design.ai).
       - name: Deploy to Cloudflare Pages (production)

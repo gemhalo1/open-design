@@ -239,3 +239,27 @@
 /:locale/agents/cursor/       /:locale/agents/cursor-design/       301
 /:locale/agents/claude-code/  /:locale/agents/claude-code-design/  301
 /:locale/agents/opencode/     /:locale/agents/opencode-design/     301
+
+# Localized plugin DETAIL pages are not generated (they multiplied the full
+# catalog across every locale and pushed the build toward Cloudflare Pages'
+# 20k-file deploy cap). Plugin detail is canonical (English); 301 any locale-
+# prefixed plugin URL with no static page to its canonical path. Kept localized
+# hub pages (/<loc>/plugins/, /<loc>/plugins/{skills,systems,templates}/) have
+# static files and are served directly (static assets win over _redirects).
+/zh/plugins/*  /plugins/:splat  301
+/zh-tw/plugins/*  /plugins/:splat  301
+/ja/plugins/*  /plugins/:splat  301
+/ko/plugins/*  /plugins/:splat  301
+/de/plugins/*  /plugins/:splat  301
+/fr/plugins/*  /plugins/:splat  301
+/ru/plugins/*  /plugins/:splat  301
+/es/plugins/*  /plugins/:splat  301
+/pt-br/plugins/*  /plugins/:splat  301
+/it/plugins/*  /plugins/:splat  301
+/vi/plugins/*  /plugins/:splat  301
+/pl/plugins/*  /plugins/:splat  301
+/id/plugins/*  /plugins/:splat  301
+/nl/plugins/*  /plugins/:splat  301
+/ar/plugins/*  /plugins/:splat  301
+/tr/plugins/*  /plugins/:splat  301
+/uk/plugins/*  /plugins/:splat  301
