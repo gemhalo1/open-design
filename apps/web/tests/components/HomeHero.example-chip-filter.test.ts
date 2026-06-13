@@ -83,6 +83,36 @@ const mediaGeneration = make({
   tags: ['scenario', 'first-party', 'media-generation', 'image', 'video', 'audio'],
 });
 
+// Mirrors plugins/_official/examples/guizang-social-card.
+const guizangSocialCard = make({
+  id: 'example-guizang-social-card',
+  title: 'Guizang Social Card',
+  tags: ['example', 'third-party', 'social-card', 'xiaohongshu', 'rednote', 'wechat-cover', 'image'],
+  mode: 'image',
+  surface: 'web',
+  scenario: 'marketing',
+});
+
+// Mirrors plugins/_official/examples/card-xiaohongshu.
+const xiaohongshuPrototypeCard = make({
+  id: 'example-card-xiaohongshu',
+  title: 'Xiaohongshu Card',
+  tags: ['example', 'first-party', 'prototype', 'marketing', 'web', 'desktop', 'xhs', 'untitled', 'carousel'],
+  mode: 'prototype',
+  surface: 'web',
+  scenario: 'marketing',
+});
+
+// Mirrors plugins/_official/examples/html-ppt-xhs-post.
+const xhsDeckPost = make({
+  id: 'example-html-ppt-xhs-post',
+  title: 'Html Ppt Xhs Post',
+  tags: ['example', 'first-party', 'deck', 'marketing', 'web', 'untitled', 'xhs', 'xhs-post', 'xiaohongshu'],
+  mode: 'deck',
+  surface: 'web',
+  scenario: 'marketing',
+});
+
 describe('pluginMatchesExampleChip — audio chip', () => {
   it('keeps a genuine audio template under the audio chip', () => {
     expect(pluginMatchesExampleChip(audioJingle, 'audio')).toBe(true);
@@ -97,6 +127,17 @@ describe('pluginMatchesExampleChip — audio chip', () => {
   });
 });
 
+describe('pluginMatchesExampleChip — social-card chip', () => {
+  it('keeps social-card image workflows under the social-card chip', () => {
+    expect(pluginMatchesExampleChip(guizangSocialCard, 'social-card')).toBe(true);
+  });
+
+  it('rejects non-image Xiaohongshu examples from the social-card chip', () => {
+    expect(pluginMatchesExampleChip(xiaohongshuPrototypeCard, 'social-card')).toBe(false);
+    expect(pluginMatchesExampleChip(xhsDeckPost, 'social-card')).toBe(false);
+  });
+});
+
 describe('homeHeroExamplePluginsForChip — audio chip', () => {
   const installed = [audioJingle, brandSizzleReel, mediaGeneration];
 
@@ -105,5 +146,16 @@ describe('homeHeroExamplePluginsForChip — audio chip', () => {
     expect(ids).toContain('example-audio-jingle');
     expect(ids).not.toContain('video-template-hyperframes-brand-sizzle-reel');
     expect(ids).not.toContain('od-media-generation');
+  });
+});
+
+describe('homeHeroExamplePluginsForChip — social-card chip', () => {
+  const installed = [guizangSocialCard, xiaohongshuPrototypeCard, xhsDeckPost];
+
+  it('shows social-card image workflows but not prototype or deck Xiaohongshu examples', () => {
+    const ids = homeHeroExamplePluginsForChip('social-card', installed, 'en').map((p) => p.id);
+    expect(ids).toContain('example-guizang-social-card');
+    expect(ids).not.toContain('example-card-xiaohongshu');
+    expect(ids).not.toContain('example-html-ppt-xhs-post');
   });
 });

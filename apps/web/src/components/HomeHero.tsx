@@ -2886,7 +2886,10 @@ export function pluginMatchesExampleChip(record: InstalledPluginRecord, chipId: 
     case 'video':
       return (has('video') || hasPart('video-template')) && !hasPart('hyperframes', 'audio');
     case 'social-card':
-      return has('social-card') || hasPart('social-card', 'xiaohongshu', 'rednote', 'wechat-cover');
+      return (
+        fieldString(record.manifest?.od ?? {}, 'mode') === 'image' &&
+        (has('social-card') || hasPart('social-card', 'xiaohongshu', 'rednote', 'wechat-cover'))
+      );
     case 'audio':
       // Exclude video / HyperFrames templates that merely carry an
       // `audio-reactive` tag (substring-matched by hasPart('audio')): their
