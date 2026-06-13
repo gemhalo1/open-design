@@ -5,6 +5,10 @@ import { useT } from '../i18n';
 import { navigate, useRoute } from '../router';
 import { projectRawUrl } from '../providers/registry';
 import { requestHomeChip } from '../runtime/home-intent';
+import {
+  NEW_BRAND_KIT_INTENT_EVENT,
+  consumePendingNewBrandKit,
+} from '../runtime/brand-intent';
 import { NewBrandModal } from './NewBrandModal';
 import styles from './BrandsTab.module.css';
 
@@ -61,6 +65,17 @@ export function BrandsTab({ onApplyDesignSystem }: BrandsTabProps = {}) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // The "Create Brand Kit" home chip routes here and asks the tab to open its
+  // New Brand Kit modal. BrandsTab stays mounted across view switches, so we
+  // react to the intent event; a pending latch left before mount is drained
+  // once on first render as a fallback.
+  useEffect(() => {
+    const openModal = () => setModalOpen(true);
+    if (consumePendingNewBrandKit()) openModal();
+    window.addEventListener(NEW_BRAND_KIT_INTENT_EVENT, openModal);
+    return () => window.removeEventListener(NEW_BRAND_KIT_INTENT_EVENT, openModal);
+  }, []);
 
   const filtered = useMemo(() => {
     const list = brands ?? [];

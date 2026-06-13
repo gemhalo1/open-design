@@ -943,12 +943,14 @@ export interface Dict {
   'homeHero.chip.video': string;
   'homeHero.chip.hyperframes': string;
   'homeHero.chip.audio': string;
+  'homeHero.chip.createBrandKit': string;
   'homeHero.chip.createPlugin': string;
   'homeHero.chip.figma': string;
   'homeHero.chip.folder': string;
   'homeHero.chip.template': string;
   'homeHero.chip.liveArtifactHint': string;
   'homeHero.chip.hyperframesHint': string;
+  'homeHero.chip.createBrandKitHint': string;
   'homeHero.chip.createPluginHint': string;
   'homeHero.chip.figmaHint': string;
   'homeHero.chip.folderHint': string;

@@ -60,6 +60,7 @@ export type IconName =
   | 'plus-filled'
   | 'puzzle'
   | 'star'
+  | 'swatchbook'
   | 'play'
   | 'present'
   | 'refresh'
@@ -640,6 +641,19 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
       return (
         <svg {...common}>
           <rect x="6" y="6" width="12" height="12" rx="1.5" />
+        </svg>
+      );
+    case 'swatchbook':
+      // Lucide-style swatchbook — a folded swatch card peeling off a stacked
+      // base. Reads as "brand kit / palette card" rather than the generic
+      // `blocks` glyph, matching the Brand Kit nav destination and the
+      // "Create Brand Kit" home chip.
+      return (
+        <svg {...common}>
+          <path d="M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z" />
+          <path d="M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7" />
+          <path d="M7 17h.01" />
+          <path d="m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8" />
         </svg>
       );
     case 'sun':

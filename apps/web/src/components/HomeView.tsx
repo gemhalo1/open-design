@@ -66,6 +66,8 @@ import { missingRequiredInputs, pluginInputsAreValid } from '../utils/pluginRequ
 import { HomeHero, type ExamplePromptInfo, type HomeHeroHandle } from './HomeHero';
 import { findChip, HOME_HERO_CHIPS, type HomeHeroChip } from './home-hero/chips';
 import { consumePendingHomeChip, HOME_CHIP_INTENT_EVENT } from '../runtime/home-intent';
+import { requestNewBrandKit } from '../runtime/brand-intent';
+import { navigate } from '../router';
 import {
   buildHomeMediaComposer,
   homeMediaSurfaceForChipId,
@@ -1408,6 +1410,14 @@ export function HomeView({
         queuePluginAuthoring(chip.id);
         return;
       }
+      case 'create-brand-kit': {
+        // Reuse the Brand Kit tab's own extraction flow: route to the tab and
+        // ask it to open its New Brand Kit modal (the same modal its "New Brand
+        // Kit" button opens), rather than reimplementing the extraction here.
+        requestNewBrandKit();
+        navigate({ kind: 'home', view: 'brands' });
+        return;
+      }
       case 'open-template-picker': {
         if (!onOpenNewProject) {
           setError('Template picker is not available in this shell.');
@@ -1896,6 +1906,7 @@ function homeHeroChipLabelForId(chipId: string, t: ReturnType<typeof useI18n>['t
     case 'video': return t('homeHero.chip.video');
     case 'hyperframes': return t('homeHero.chip.hyperframes');
     case 'audio': return t('homeHero.chip.audio');
+    case 'create-brand-kit': return t('homeHero.chip.createBrandKit');
     case 'create-plugin': return t('homeHero.chip.createPlugin');
     case 'figma': return t('homeHero.chip.figma');
     case 'template': return t('homeHero.chip.template');
