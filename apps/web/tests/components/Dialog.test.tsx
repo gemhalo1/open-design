@@ -52,7 +52,10 @@ describe('Dialog', () => {
       </Dialog>,
     );
 
-    expect(container.querySelector('.plugin-details-modal')).toBeTruthy();
-    expect(container.querySelector('.plugin-details-modal')?.classList.contains('modal')).toBe(false);
+    const panel = container.querySelector('.plugin-details-modal');
+
+    expect(panel).toBeTruthy();
+    expect(panel?.className).toBe('plugin-details-modal');
+    expect(panel?.classList.contains('modal')).toBe(false);
   });
 });

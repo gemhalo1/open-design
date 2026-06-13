@@ -55,7 +55,11 @@ export function Dialog({
 
   const sharedProps = {
     id,
-    className: joinClassNames(styles.dialog, includeChromeClassName ? 'modal' : undefined, className),
+    className: joinClassNames(
+      includeChromeClassName ? styles.dialog : undefined,
+      includeChromeClassName ? 'modal' : undefined,
+      className,
+    ),
     onClick: (event: MouseEvent<HTMLElement>) => event.stopPropagation(),
     role,
     'aria-modal': 'true' as const,
