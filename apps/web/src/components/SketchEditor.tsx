@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button, Input } from '@open-design/components';
 import { useT } from '../i18n';
 import { Icon } from './Icon';
+import { SimpleDialogShell } from './SimpleDialogShell';
 import { readDefaultSketchToolColor } from './sketch-colors';
 import type { SketchItem } from './sketch-model';
 
@@ -36,6 +37,7 @@ export function SketchEditor({
   fileName,
 }: Props) {
   const t = useT();
+  const textModalTitleId = useId();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [tool, setTool] = useState<Tool>('pen');
@@ -282,43 +284,42 @@ export function SketchEditor({
         />
       </div>
       {textModalOpen ? (
-        <div className="modal-backdrop" role="presentation">
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-head">
-              <h2>{t('sketch.textModalTitle')}</h2>
-            </div>
-            <label>
-              <span>{t('sketch.textPrompt')}</span>
-              <Input
-                type="text"
-                value={textModalValue}
-                autoFocus
-                onChange={(e) => setTextModalValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && textModalValue.trim()) {
-                    e.preventDefault();
-                    submitTextModal();
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    cancelTextModal();
-                  }
-                }}
-              />
-            </label>
-            <div className="modal-foot">
-              <Button variant="ghost" onClick={cancelTextModal}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                disabled={!textModalValue.trim()}
-                onClick={submitTextModal}
-              >
-                {t('common.save')}
-              </Button>
-            </div>
+        <SimpleDialogShell
+          onClose={cancelTextModal}
+          closeOnEscape
+          ariaLabelledBy={textModalTitleId}
+        >
+          <div className="modal-head">
+            <h2 id={textModalTitleId}>{t('sketch.textModalTitle')}</h2>
           </div>
-        </div>
+          <label>
+            <span>{t('sketch.textPrompt')}</span>
+            <Input
+              type="text"
+              value={textModalValue}
+              autoFocus
+              onChange={(e) => setTextModalValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && textModalValue.trim()) {
+                  e.preventDefault();
+                  submitTextModal();
+                }
+              }}
+            />
+          </label>
+          <div className="modal-foot">
+            <Button variant="ghost" onClick={cancelTextModal}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!textModalValue.trim()}
+              onClick={submitTextModal}
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        </SimpleDialogShell>
       ) : null}
     </div>
   );

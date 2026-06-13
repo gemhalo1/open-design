@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { projectKindToTracking } from "@open-design/contracts/analytics";
 import { useAnalytics } from "../analytics/provider";
 import {
@@ -22,6 +22,7 @@ import { AnimatePresence } from "motion/react";
 import { Icon } from "./Icon";
 import { isDesignSystemProject, isPublishedDesignSystemProject } from "./design-system-project";
 import { LiveArtifactBadges } from "./LiveArtifactBadges";
+import { SimpleDialogShell } from "./SimpleDialogShell";
 import { Toast } from "./Toast";
 
 type SubTab = "recent" | "yours";
@@ -82,6 +83,8 @@ export function DesignsTab({
 	onRename,
 	onNewProject,
 }: Props) {
+	const renameTitleId = useId();
+	const confirmTitleId = useId();
 	const t = useT();
 	const analytics = useAnalytics();
 	// P0 page_view page_name=projects — fire once when the tab mounts so
@@ -927,78 +930,71 @@ export function DesignsTab({
 				</div>
 			)}
 			{renameTarget ? (
-				<div className="modal-backdrop" onClick={cancelRename}>
-					<form
-						className="modal modal-rename"
-						onClick={(e) => e.stopPropagation()}
-						onSubmit={(e) => {
-							e.preventDefault();
-							commitRename();
-						}}
-					>
-						<h2>{t("designs.renameTitle")}</h2>
-						<label>
-							{t("designs.renamePrompt", { name: renameTarget.original })}
-							<input
-								type="text"
-								value={renameInput}
-								autoFocus
-								onChange={(e) => setRenameInput(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Escape") {
-										e.preventDefault();
-										cancelRename();
-									}
-								}}
-							/>
-						</label>
-						<div className="row">
-							<button type="button" onClick={cancelRename}>
-								{t("designs.renameCancel")}
-							</button>
-							<button
-								type="submit"
-								className="primary"
-								disabled={
-									!renameInput.trim() ||
-									renameInput.trim() === renameTarget.original
-								}
-							>
-								{t("designs.renameSave")}
-							</button>
-						</div>
-					</form>
-				</div>
+				<SimpleDialogShell
+					as="form"
+					className="modal-rename"
+					onClose={cancelRename}
+					closeOnEscape
+					ariaLabelledBy={renameTitleId}
+					onSubmit={(e) => {
+						e.preventDefault();
+						commitRename();
+					}}
+				>
+					<h2 id={renameTitleId}>{t("designs.renameTitle")}</h2>
+					<label>
+						{t("designs.renamePrompt", { name: renameTarget.original })}
+						<input
+							type="text"
+							value={renameInput}
+							autoFocus
+							onChange={(e) => setRenameInput(e.target.value)}
+						/>
+					</label>
+					<div className="row">
+						<button type="button" onClick={cancelRename}>
+							{t("designs.renameCancel")}
+						</button>
+						<button
+							type="submit"
+							className="primary"
+							disabled={
+								!renameInput.trim() ||
+								renameInput.trim() === renameTarget.original
+							}
+						>
+							{t("designs.renameSave")}
+						</button>
+					</div>
+				</SimpleDialogShell>
 			) : null}
 			{confirmTarget ? (
-				<div className="modal-backdrop" onClick={() => setConfirmTarget(null)}>
-					<div
-						className="modal modal-confirm"
-						onClick={(e) => e.stopPropagation()}
-						role="alertdialog"
-						aria-modal="true"
-					>
-						<h2>{confirmTarget.title}</h2>
-						<p className="modal-confirm-message">{confirmTarget.message}</p>
-						<div className="row">
-							<button type="button" onClick={() => setConfirmTarget(null)}>
-								{t("designs.renameCancel")}
-							</button>
-							<button
-								type="button"
-								className="primary danger"
-								autoFocus
-								onClick={() => {
-									const run = confirmTarget.onConfirm;
-									setConfirmTarget(null);
-									run();
-								}}
-							>
-								{confirmTarget.confirmLabel}
-							</button>
-						</div>
+				<SimpleDialogShell
+					className="modal-confirm"
+					role="alertdialog"
+					onClose={() => setConfirmTarget(null)}
+					ariaLabelledBy={confirmTitleId}
+				>
+					<h2 id={confirmTitleId}>{confirmTarget.title}</h2>
+					<p className="modal-confirm-message">{confirmTarget.message}</p>
+					<div className="row">
+						<button type="button" onClick={() => setConfirmTarget(null)}>
+							{t("designs.renameCancel")}
+						</button>
+						<button
+							type="button"
+							className="primary danger"
+							autoFocus
+							onClick={() => {
+								const run = confirmTarget.onConfirm;
+								setConfirmTarget(null);
+								run();
+							}}
+						>
+							{confirmTarget.confirmLabel}
+						</button>
 					</div>
-				</div>
+				</SimpleDialogShell>
 			) : null}
 			<AnimatePresence>
 				{deleteToast ? (

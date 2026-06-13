@@ -55,6 +55,7 @@ import {
 import { formatPickAndImportFailure } from '../utils/pickAndImportError';
 import { Icon } from './Icon';
 import { Skeleton } from './Loading';
+import { SimpleDialogShell } from './SimpleDialogShell';
 import { Toast } from './Toast';
 import { useOpenFolderImport } from './useOpenFolderImport';
 
@@ -1532,6 +1533,7 @@ function TemplatePicker({
   onDelete?: (id: string) => Promise<boolean>;
 }) {
   const t = useT();
+  const deleteTemplateTitleId = useId();
   const [confirmDelete, setConfirmDelete] = useState<
     { id: string; name: string } | null
   >(null);
@@ -1597,41 +1599,36 @@ function TemplatePicker({
         </div>
       )}
       {confirmDelete ? (
-        <div
-          className="modal-backdrop"
-          onClick={deleting ? undefined : closeConfirm}
+        <SimpleDialogShell
+          className="modal-confirm"
+          role="alertdialog"
+          onClose={deleting ? undefined : closeConfirm}
+          ariaLabelledBy={deleteTemplateTitleId}
         >
-          <div
-            className="modal modal-confirm"
-            onClick={(e) => e.stopPropagation()}
-            role="alertdialog"
-            aria-modal="true"
-          >
-            <h2>{t('newproj.deleteTemplateTitle')}</h2>
-            <p className="modal-confirm-message">
-              {t('newproj.deleteTemplateConfirm', { name: confirmDelete.name })}
+          <h2 id={deleteTemplateTitleId}>{t('newproj.deleteTemplateTitle')}</h2>
+          <p className="modal-confirm-message">
+            {t('newproj.deleteTemplateConfirm', { name: confirmDelete.name })}
+          </p>
+          {deleteError ? (
+            <p className="modal-confirm-error" role="alert">
+              {t('newproj.deleteTemplateError')}
             </p>
-            {deleteError ? (
-              <p className="modal-confirm-error" role="alert">
-                {t('newproj.deleteTemplateError')}
-              </p>
-            ) : null}
-            <div className="row">
-              <button type="button" onClick={closeConfirm} disabled={deleting}>
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                className="primary danger"
-                autoFocus
-                disabled={deleting}
-                onClick={runDelete}
-              >
-                {t('newproj.deleteTemplateConfirmCta')}
-              </button>
-            </div>
+          ) : null}
+          <div className="row">
+            <button type="button" onClick={closeConfirm} disabled={deleting}>
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              className="primary danger"
+              autoFocus
+              disabled={deleting}
+              onClick={runDelete}
+            >
+              {t('newproj.deleteTemplateConfirmCta')}
+            </button>
           </div>
-        </div>
+        </SimpleDialogShell>
       ) : null}
     </div>
   );
