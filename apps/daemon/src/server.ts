@@ -188,7 +188,12 @@ import {
   respondSurface as respondSurfaceRow,
   revokeProjectSurface,
 } from './genui/index.js';
-import { composeMemoryBody, extractFromMessage, readMemoryConfig } from './memory.js';
+import {
+  composeMemoryBody,
+  extractFromMessage,
+  listActiveRuleEntries,
+  readMemoryConfig,
+} from './memory.js';
 import { attachAcpSession } from './acp.js';
 import { attachPiRpcSession } from './pi-rpc.js';
 import { stageAmrImagePaths } from './amr-image-staging.js';
@@ -254,6 +259,7 @@ import {
   countDesignSystemPreviewModules,
   countNewHtmlArtifacts,
   didRunCreateDesignSystemFile,
+  reconstructAssistantText,
   runAskedUserQuestion,
 } from './run-artifacts.js';
 import {
@@ -14850,6 +14856,44 @@ export async function startServer({
         const artifactCount = countNewHtmlArtifacts(run.events);
         const designSystemCreated = didRunCreateDesignSystemFile(run.events);
         const previewModuleCount = countDesignSystemPreviewModules(run.events);
+
+        // POST self-verify enforcement (THREAD 2). When `verifyEnabled` is on,
+        // the daemon programmatically evaluates whether this turn honoured the
+        // self-verify contract instead of trusting the model's self-discipline:
+        // a turn that produced an artifact against active `rule` memories MUST
+        // emit a passing `verify-scorecard` covering every rule. `missing` /
+        // `fail` outcomes are recorded and fanned out on the `verify` SSE
+        // channel so the user sees enforcement, never an honour-system pass.
+        // Fire-and-forget so analytics/finalization never block on it; the
+        // master `enabled` switch + per-hook `verifyEnabled` gate it inside
+        // `listActiveRuleEntries` / `enforceVerify`.
+        void (async () => {
+          try {
+            const memCfg = await readMemoryConfig(RUNTIME_DATA_DIR);
+            const verifyEnabled = memCfg.verifyEnabled !== false;
+            const activeRules = verifyEnabled
+              ? await listActiveRuleEntries(RUNTIME_DATA_DIR)
+              : [];
+            const { parseRuleBody } = await import('./memory-rules.js');
+            const { enforceVerify, recordVerify } = await import('./memory-verify.js');
+            const result = enforceVerify({
+              assistantOutput: reconstructAssistantText(run.events),
+              activeRules: activeRules.map((rule) => ({
+                name: rule.name,
+                check: parseRuleBody(rule.body).check,
+              })),
+              hadArtifact: artifactCount > 0,
+              verifyEnabled,
+            });
+            recordVerify(result, {
+              runId: run.id,
+              projectId:
+                typeof run.projectId === 'string' ? run.projectId : null,
+            });
+          } catch (err) {
+            console.warn('[memory-verify] enforcement failed', err);
+          }
+        })();
         const diagnosticsAnalytics = summarizeRunDiagnosticsForAnalytics({
           events: run.events,
           exitCode: status.exitCode ?? null,

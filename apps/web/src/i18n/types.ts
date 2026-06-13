@@ -724,6 +724,16 @@ export interface Dict {
   'settings.memoryExtractionsClear': string;
   'settings.memoryExtractionsClearTitle': string;
   'settings.memoryExtractionsClearConfirm': string;
+  'settings.memoryDistillTitle': string;
+  'settings.memoryDistillHint': string;
+  'settings.memoryDistillPlaceholder': string;
+  'settings.memoryDistillRun': string;
+  'settings.memoryDistillRunning': string;
+  'settings.memoryDistillEmpty': string;
+  'settings.memoryVerifyTitle': string;
+  'settings.memoryVerifyHint': string;
+  'settings.memoryVerifyEmpty': string;
+  'settings.memoryVerifyClear': string;
   'settings.memoryNoProviderBannerTitle': string;
   'settings.memoryNoProviderBannerBody': string;
   // Memory model picker — rendered inline next to the chat model picker

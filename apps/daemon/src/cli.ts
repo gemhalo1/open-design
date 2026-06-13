@@ -214,6 +214,10 @@ const MEMORY_STRING_FLAGS = new Set([
   // parseFlags collapses duplicate keys). `--prompt-file <path|->` mirrors the
   // long-prose embeddability contract used by `od automation`/`od brand`.
   'field', 'prompt-file', 'assertion', 'check', 'rationale',
+  // `od memory rule suggest` distils annotations into rule proposals: a single
+  // `--note` plus optional target context, or a `--prompt-file` carrying a JSON
+  // array of annotations / newline-separated notes.
+  'note', 'target', 'file', 'current-text',
   // `od memory config` toggles accept true|false values (string, not boolean)
   // so an agent can set OR clear a hook in one shape: `--profile false`.
   'enabled', 'profile', 'rewrite', 'verify', 'extraction',
@@ -7298,6 +7302,19 @@ function printMemoryHelp() {
       Add a rule. The body is "Assertion: …\nCheck: …" (plus an optional
       Rationale line), or the verbatim --prompt-file content when supplied.
 
+  od memory rule suggest --note <text> [--target <label>] [--file <path>]
+                         [--current-text <text>] [--json]
+  od memory rule suggest --prompt-file <path|-> [--json]
+      Distil annotations into candidate rule proposals (display-only). Pass one
+      annotation via --note, or a JSON array of annotations / one note per line
+      via --prompt-file. Keep one with: od memory rule add.
+
+  od memory verify [list] [--json]
+      List recent POST self-verify enforcement outcomes (pass/fail/missing) the
+      daemon recorded for artifact turns with active rules.
+  od memory verify clear [--json]
+      Drop the in-memory verification history.
+
   od memory config [--enabled true|false] [--extraction true|false]
                    [--profile true|false] [--rewrite true|false]
                    [--verify true|false] [--json]
@@ -7505,7 +7522,13 @@ async function runMemory(args) {
     process.exit(args.length === 0 ? 2 : 0);
   }
   const topic = args[0];
-  if (topic !== 'tree' && topic !== 'profile' && topic !== 'rule' && topic !== 'config') {
+  if (
+    topic !== 'tree'
+    && topic !== 'profile'
+    && topic !== 'rule'
+    && topic !== 'config'
+    && topic !== 'verify'
+  ) {
     console.error(`unknown subcommand: od memory ${topic}`);
     printMemoryHelp();
     process.exit(2);
@@ -7532,6 +7555,9 @@ async function runMemory(args) {
   }
   if (topic === 'rule') {
     return runMemoryRule(base, rest, flags, writeJson);
+  }
+  if (topic === 'verify') {
+    return runMemoryVerify(base, rest, flags, writeJson);
   }
   if (topic === 'config') {
     return runMemoryConfig(base, rest, flags, writeJson);
@@ -7766,7 +7792,160 @@ async function runMemoryRule(base, rest, flags, writeJson) {
     return;
   }
 
+  if (action === 'suggest') {
+    // Distil annotations into rule proposals (THREAD 1). Display-only: the
+    // daemon never writes; the user Keeps a proposal (web) or pipes it into
+    // `od memory rule add` (CLI) to commit it. Annotations come from a single
+    // --note (+ optional --target/--file/--current-text) or a --prompt-file
+    // carrying a JSON array of annotation objects or newline-separated notes.
+    const annotations = await collectDistillAnnotations(flags);
+    if (annotations.length === 0) {
+      console.error('Usage: od memory rule suggest --note <text> [--target <label>] [--file <path>] [--current-text <text>]');
+      console.error('   or: od memory rule suggest --prompt-file <path|->   (JSON array of annotations, or one note per line)');
+      process.exit(2);
+    }
+    let resp;
+    try {
+      resp = await fetch(`${base}/api/memory/rules/suggest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ annotations }),
+      });
+    } catch (err) {
+      surfaceFetchError(err, base);
+      process.exit(3);
+    }
+    if (!resp.ok) return structuredHttpFailure(resp);
+    const data = await resp.json();
+    if (flags.json) return writeJson(data);
+    const proposals = data.proposals ?? [];
+    if (proposals.length === 0) {
+      console.log('No rule proposals distilled from these annotations.');
+      return;
+    }
+    console.log(`[memory] ${proposals.length} rule proposal(s) (source: ${data.source}, llm: ${data.attemptedLLM ? 'yes' : 'no'})`);
+    for (const p of proposals) {
+      console.log(`\n${p.name}`);
+      if (p.description) console.log(`  ${p.description}`);
+      console.log(`  Assertion: ${p.assertion}`);
+      console.log(`  Check: ${p.check}`);
+      if (p.rationale) console.log(`  Rationale: ${p.rationale}`);
+    }
+    console.log('\nTo keep one: od memory rule add --name "<name>" --assertion "<...>" --check "<...>"');
+    return;
+  }
+
   console.error(`unknown subcommand: od memory rule ${action}`);
+  printMemoryHelp();
+  process.exit(2);
+}
+
+// Collect annotation inputs for `od memory rule suggest` from either a single
+// --note (+ optional target context) or a --prompt-file. The prompt-file may
+// hold a JSON array of annotation objects, or plain text with one note per
+// line — both keep the --prompt-file embeddability contract clean for jobs
+// that pipe through xargs/jq/heredoc.
+async function collectDistillAnnotations(flags) {
+  const annotations = [];
+  if (typeof flags.note === 'string' && flags.note.trim()) {
+    annotations.push({
+      note: flags.note,
+      ...(typeof flags.target === 'string' ? { targetLabel: flags.target } : {}),
+      ...(typeof flags.file === 'string' ? { filePath: flags.file } : {}),
+      ...(typeof flags['current-text'] === 'string'
+        ? { currentText: flags['current-text'] }
+        : {}),
+    });
+  }
+  const promptBody = await readMemoryPromptFile(flags);
+  if (typeof promptBody === 'string' && promptBody.trim()) {
+    const trimmed = promptBody.trim();
+    let parsedJson = null;
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        parsedJson = JSON.parse(trimmed);
+      } catch {
+        parsedJson = null;
+      }
+    }
+    if (Array.isArray(parsedJson)) {
+      for (const item of parsedJson) {
+        const note = item && typeof item.note === 'string' ? item.note : '';
+        if (!note.trim()) continue;
+        annotations.push({
+          note,
+          ...(typeof item.targetLabel === 'string' ? { targetLabel: item.targetLabel } : {}),
+          ...(typeof item.filePath === 'string' ? { filePath: item.filePath } : {}),
+          ...(typeof item.currentText === 'string' ? { currentText: item.currentText } : {}),
+          ...(typeof item.selectionKind === 'string' ? { selectionKind: item.selectionKind } : {}),
+          ...(typeof item.htmlHint === 'string' ? { htmlHint: item.htmlHint } : {}),
+        });
+      }
+    } else if (parsedJson && typeof parsedJson === 'object' && typeof parsedJson.note === 'string') {
+      annotations.push({ note: parsedJson.note });
+    } else {
+      for (const line of trimmed.split(/\r?\n/)) {
+        const note = line.trim();
+        if (note) annotations.push({ note });
+      }
+    }
+  }
+  return annotations;
+}
+
+// `od memory verify <list|clear>` — inspect or wipe the POST self-verify
+// enforcement history (THREAD 2). `list` prints recent enforcement outcomes
+// (`pass` / `fail` / `missing`) the daemon recorded for artifact turns with
+// active rules; `clear` drops the in-memory buffer.
+async function runMemoryVerify(base, rest, flags, writeJson) {
+  const parts = memoryPositionals(rest);
+  const action = parts[0] ?? 'list';
+
+  if (action === 'list') {
+    let resp;
+    try {
+      resp = await fetch(`${base}/api/memory/verifications`);
+    } catch (err) {
+      surfaceFetchError(err, base);
+      process.exit(3);
+    }
+    if (!resp.ok) return structuredHttpFailure(resp);
+    const data = await resp.json();
+    if (flags.json) return writeJson(data);
+    const verifications = data.verifications ?? [];
+    if (verifications.length === 0) {
+      console.log('No verification records yet.');
+      return;
+    }
+    console.log('# status\trules\tcovered\trowsFail\tat\trunId');
+    for (const v of verifications) {
+      const at = new Date(v.at).toISOString();
+      console.log(
+        `${v.status}\t${v.rulesActive}\t${v.rulesCovered}\t${v.rowsFailed}\t${at}\t${v.runId ?? '-'}`,
+      );
+      if (Array.isArray(v.uncoveredRules) && v.uncoveredRules.length > 0) {
+        console.log(`  uncovered: ${v.uncoveredRules.join(', ')}`);
+      }
+    }
+    return;
+  }
+
+  if (action === 'clear') {
+    let resp;
+    try {
+      resp = await fetch(`${base}/api/memory/verifications`, { method: 'DELETE' });
+    } catch (err) {
+      surfaceFetchError(err, base);
+      process.exit(3);
+    }
+    if (!resp.ok) return structuredHttpFailure(resp);
+    const data = await resp.json();
+    if (flags.json) return writeJson(data);
+    console.log(`[memory] cleared ${data.removed ?? 0} verification record(s)`);
+    return;
+  }
+
+  console.error(`unknown subcommand: od memory verify ${action}`);
   printMemoryHelp();
   process.exit(2);
 }

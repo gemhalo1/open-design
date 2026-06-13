@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@open-design/components';
 import type { BrandFontSpec, BrandImagerySample, BrandSummary } from '@open-design/contracts';
 import { useT } from '../i18n';
-import { navigate } from '../router';
+import { navigate, useRoute } from '../router';
 import { projectRawUrl } from '../providers/registry';
 import { NewBrandModal } from './NewBrandModal';
 import styles from './BrandsTab.module.css';
@@ -31,6 +31,11 @@ async function fetchBrands(): Promise<BrandSummary[]> {
 
 export function BrandsTab() {
   const t = useT();
+  const route = useRoute();
+  // A `/brands/:id` deep-link (from the rail, a chat link, or a shared URL)
+  // preselects which brand the inline preview renders. Undefined on `/brands`.
+  const routedBrandId =
+    route.kind === 'home' && route.view === 'brands' ? route.brandId : undefined;
   const [brands, setBrands] = useState<BrandSummary[] | null>(null);
   const [query, setQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,9 +61,10 @@ export function BrandsTab() {
     });
   }, [brands, query]);
 
-  // Default the preview to the first brand on load, and keep the selection
-  // valid as the list refreshes (e.g. a brand finishes extracting or is
-  // removed). Only fall back to the first entry when the current pick is gone.
+  // Resolve which brand the preview shows. A routed brand id (deep-link / rail
+  // selection) wins when it exists; otherwise keep the current pick valid as
+  // the list refreshes (e.g. a brand finishes extracting or is removed), and
+  // fall back to the first entry only when the current pick is gone.
   useEffect(() => {
     const list = brands ?? [];
     if (list.length === 0) {
@@ -66,10 +72,19 @@ export function BrandsTab() {
       return;
     }
     setSelectedBrandId((cur) => {
+      if (routedBrandId && list.some((b) => b.meta.id === routedBrandId)) return routedBrandId;
       if (cur && list.some((b) => b.meta.id === cur)) return cur;
       return list[0]?.meta.id ?? null;
     });
-  }, [brands]);
+  }, [brands, routedBrandId]);
+
+  // Selecting a brand drives the inline preview and reflects the choice in the
+  // URL so the selection is shareable / deep-linkable, without navigating to a
+  // separate page.
+  const handleSelect = useCallback((id: string) => {
+    setSelectedBrandId(id);
+    navigate({ kind: 'home', view: 'brands', brandId: id }, { replace: true });
+  }, []);
 
   const selected = useMemo(() => {
     if (!selectedBrandId) return null;
@@ -142,7 +157,7 @@ export function BrandsTab() {
                 key={summary.meta.id}
                 summary={summary}
                 active={summary.meta.id === selectedBrandId}
-                onSelect={setSelectedBrandId}
+                onSelect={handleSelect}
               />
             ))
           )}
@@ -285,6 +300,10 @@ interface PreviewProps {
   onChanged: () => void | Promise<void>;
 }
 
+/** How many imagery samples render inline before the rest are gated behind a
+ *  subtle "show all" toggle, so a long sample set never floods the panel. */
+const IMAGE_CAP = 8;
+
 /** Build a CSS font-family stack from a brand font spec, quoting multi-word
  *  family names so they parse as a single family. */
 function fontStack(spec: BrandFontSpec): string {
@@ -403,6 +422,8 @@ function BrandPreview({ summary, onChanged }: PreviewProps) {
   const [busy, setBusy] = useState(false);
   const [tokens, setTokens] = useState<BrandTokenSubset | null>(null);
   const [dsTheme, setDsTheme] = useState<'light' | 'dark'>('light');
+  const [imagesExpanded, setImagesExpanded] = useState(false);
+  const [lightbox, setLightbox] = useState<{ src: string; caption: string } | null>(null);
 
   const colors = brand?.colors ?? [];
   const fonts = useMemo<{ font: BrandFontSpec; label: string }[]>(() => {
@@ -430,8 +451,11 @@ function BrandPreview({ summary, onChanged }: PreviewProps) {
     return Array.from(new Set(all));
   }, [brand]);
   const [activeLogo, setActiveLogo] = useState(0);
+  const activeLogoSrc = logoCandidates[activeLogo] ?? logoCandidates[0] ?? null;
   useEffect(() => {
     setActiveLogo(0);
+    setImagesExpanded(false);
+    setLightbox(null);
   }, [meta.id]);
 
   const samples = useMemo<BrandImagerySample[]>(() => {
@@ -513,6 +537,8 @@ function BrandPreview({ summary, onChanged }: PreviewProps) {
     setBusy(true);
     try {
       await fetch(`/api/brands/${encodeURIComponent(meta.id)}`, { method: 'DELETE' });
+      // Drop the now-stale `/brands/:id` selection before refreshing the list.
+      navigate({ kind: 'home', view: 'brands' }, { replace: true });
       await onChanged();
     } catch {
       setBusy(false);
@@ -610,15 +636,11 @@ function BrandPreview({ summary, onChanged }: PreviewProps) {
         </section>
       ) : null}
 
-      {projectId && logoCandidates.length > 0 ? (
+      {projectId && activeLogoSrc ? (
         <section className={styles.section} aria-label={t('brandDetail.logo')}>
           <h3 className={styles.sectionTitle}>{t('brandDetail.logo')}</h3>
           <div className={styles.logoStage}>
-            <img
-              className={styles.logoStageImg}
-              src={projectRawUrl(projectId, logoCandidates[activeLogo] ?? logoCandidates[0])}
-              alt={name}
-            />
+            <img className={styles.logoStageImg} src={projectRawUrl(projectId, activeLogoSrc)} alt={name} />
           </div>
           {logoCandidates.length > 1 ? (
             <div className={styles.logoThumbs}>
@@ -785,27 +807,45 @@ function BrandPreview({ summary, onChanged }: PreviewProps) {
 
       {projectId && samples.length > 0 ? (
         <section className={styles.section} aria-label={t('brandDetail.images')}>
-          <h3 className={styles.sectionTitle}>{t('brandDetail.images')}</h3>
+          <div className={styles.dsHead}>
+            <h3 className={styles.sectionTitle}>{t('brandDetail.images')}</h3>
+            {samples.length > IMAGE_CAP ? (
+              <button
+                type="button"
+                className={styles.sectionAction}
+                onClick={() => setImagesExpanded((v) => !v)}
+              >
+                {imagesExpanded
+                  ? t('brandDetail.viewLess')
+                  : t('brandDetail.viewMore').replace('{count}', String(samples.length))}
+              </button>
+            ) : null}
+          </div>
           <div className={styles.gallery}>
-            {samples.map((s, i) => (
-              <figure key={`${s.file}-${i}`} className={styles.shot}>
-                <div className={styles.shotFrame}>
-                  <img
-                    src={projectRawUrl(projectId, s.file)}
-                    alt={s.caption || s.kind || name}
-                    loading="lazy"
-                  />
-                </div>
-                {s.caption || s.kind ? (
-                  <figcaption className={styles.shotMeta}>
-                    <span className={styles.shotCap}>{s.caption || s.kind}</span>
-                    {s.caption && s.kind ? (
-                      <span className={styles.shotKind}>{s.kind}</span>
-                    ) : null}
-                  </figcaption>
-                ) : null}
-              </figure>
-            ))}
+            {(imagesExpanded ? samples : samples.slice(0, IMAGE_CAP)).map((s, i) => {
+              const src = projectRawUrl(projectId, s.file);
+              const cap = s.caption || s.kind || name;
+              return (
+                <figure key={`${s.file}-${i}`} className={styles.shot}>
+                  <button
+                    type="button"
+                    className={styles.shotFrame}
+                    onClick={() => setLightbox({ src, caption: cap })}
+                    aria-label={cap}
+                  >
+                    <img src={src} alt={cap} loading="lazy" />
+                  </button>
+                  {s.caption || s.kind ? (
+                    <figcaption className={styles.shotMeta}>
+                      <span className={styles.shotCap}>{s.caption || s.kind}</span>
+                      {s.caption && s.kind ? (
+                        <span className={styles.shotKind}>{s.kind}</span>
+                      ) : null}
+                    </figcaption>
+                  ) : null}
+                </figure>
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -908,6 +948,31 @@ function BrandPreview({ summary, onChanged }: PreviewProps) {
           </div>
         </section>
       ) : null}
+
+      {lightbox ? (
+        <div
+          className={styles.lightbox}
+          role="dialog"
+          aria-modal="true"
+          aria-label={lightbox.caption}
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            type="button"
+            className={styles.lightboxClose}
+            onClick={() => setLightbox(null)}
+            aria-label={t('newBrand.close')}
+          >
+            <CloseGlyph />
+          </button>
+          <img
+            className={styles.lightboxImg}
+            src={lightbox.src}
+            alt={lightbox.caption}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -951,6 +1016,19 @@ function ExternalGlyph() {
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CloseGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden>
+      <path
+        d="M4 4l8 8M12 4l-8 8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
       />
     </svg>
   );

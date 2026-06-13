@@ -261,8 +261,11 @@
 .previewInner {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 24px 28px 36px;
+  gap: 22px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 28px 32px 48px;
   animation: previewIn 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
@@ -281,12 +284,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 220px;
+  height: 208px;
   padding: 32px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(120% 120% at 50% 0%, var(--bg-subtle) 0%, var(--bg) 100%);
+    radial-gradient(120% 140% at 50% -10%, var(--bg-subtle) 0%, var(--bg) 70%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-strong) 4%, transparent);
 }
 
 .coverLogo {
@@ -558,6 +562,88 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* A subtle inline section-header affordance (e.g. "Show all"). */
+.sectionAction {
+  border: 0;
+  padding: 2px 4px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+.sectionAction:hover {
+  opacity: 0.78;
+}
+
+/* Image lightbox overlay. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: rgba(10, 10, 12, 0.74);
+  backdrop-filter: blur(3px);
+  animation: lightboxIn 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes lightboxIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lightboxImg {
+  max-width: min(1100px, 92vw);
+  max-height: 86vh;
+  object-fit: contain;
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  animation: lightboxImgIn 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes lightboxImgIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.lightboxClose {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color var(--dur-quick) var(--ease-out);
+}
+
+.lightboxClose:hover {
+  background: rgba(255, 255, 255, 0.26);
 }
 
 /* ── Logo section ─────────────────────────────────────────────────── */
@@ -837,8 +923,14 @@
 }
 
 .shotFrame {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
   aspect-ratio: 4 / 3;
   background: var(--bg);
+  cursor: zoom-in;
+  overflow: hidden;
 }
 
 .shotFrame img {
@@ -846,6 +938,11 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.shot:hover .shotFrame img {
+  transform: scale(1.04);
 }
 
 .shotMeta {

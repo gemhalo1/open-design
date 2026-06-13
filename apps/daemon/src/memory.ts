@@ -672,6 +672,30 @@ async function readEntryBodyById(dataDir, id) {
   return entry?.body ?? '';
 }
 
+// Return the `rule` memory entries that are ACTIVE — i.e. linked in MEMORY.md
+// — with their bodies. The POST self-verify enforcement (memory-verify.ts)
+// reads these as the rubric an artifact turn must be checked against. We honor
+// the same active-set gate composeMemoryBody uses so a rule the user removed
+// from the index stops being enforced without deleting the file. Returns an
+// empty array when memory is disabled (the master switch turns enforcement
+// off for free).
+export async function listActiveRuleEntries(dataDir) {
+  const cfg = await readMemoryConfig(dataDir);
+  if (!cfg.enabled) return [];
+  const allEntries = await listMemoryEntries(dataDir);
+  const rules = allEntries.filter((e) => e.type === 'rule');
+  if (rules.length === 0) return [];
+  const indexBody = await readMemoryIndex(dataDir);
+  const linkedIds = parseIndexLinkIds(indexBody);
+  const active = rules.filter((e) => linkedIds.has(e.id));
+  const out = [];
+  for (const e of active) {
+    const body = await readEntryBodyById(dataDir, e.id);
+    out.push({ id: e.id, name: e.name, description: e.description, body });
+  }
+  return out;
+}
+
 function capitalize(s) {
   return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
 }

@@ -25,6 +25,12 @@ import {
   removeExtraction as removeMemoryExtraction,
 } from '../memory-extractions.js';
 import {
+  clearVerifications as clearMemoryVerifications,
+  listVerifications as listMemoryVerifications,
+  removeVerification as removeMemoryVerification,
+} from '../memory-verify.js';
+import { distillRulesFromAnnotations } from '../memory-rules.js';
+import {
   extractMemoryFromConnectors,
   suggestMemoryFromConnectors,
 } from '../memory-connectors.js';
@@ -287,11 +293,19 @@ export function registerMemoryRoutes(app: Express, ctx: RegisterMemoryRoutesDeps
     const onExtraction = (event: unknown) => {
       sse.send('extraction', event);
     };
+    // `verify` events carry POST self-verify enforcement outcomes (THREAD 2),
+    // one per enforced turn. Multiplexed on the same connection as `change`
+    // and `extraction` so the settings panel opens a single stream.
+    const onVerify = (event: unknown) => {
+      sse.send('verify', event);
+    };
     memoryEvents.on('change', onChange);
     memoryEvents.on('extraction', onExtraction);
+    memoryEvents.on('verify', onVerify);
     res.on('close', () => {
       memoryEvents.off('change', onChange);
       memoryEvents.off('extraction', onExtraction);
+      memoryEvents.off('verify', onVerify);
     });
   });
 
@@ -323,6 +337,93 @@ export function registerMemoryRoutes(app: Express, ctx: RegisterMemoryRoutesDeps
     try {
       const removed = removeMemoryExtraction(req.params.id);
       res.json({ removed });
+    } catch (err) {
+      res.status(400).json({ error: errorMessage(err) });
+    }
+  });
+
+  // Recent POST self-verify enforcement outcomes (THREAD 2; newest first,
+  // capped server-side). Surfaces `missing` (model skipped the scorecard) and
+  // `fail` (a rule failed or was left uncovered) so the user can see that
+  // verification is actually enforced, not honour-system.
+  app.get('/api/memory/verifications', async (_req, res) => {
+    try {
+      res.json({ verifications: listMemoryVerifications() });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Drop the entire verification history. Registered BEFORE the `:id`
+  // catch-all so a literal "/api/memory/verifications" can be cleared.
+  app.delete('/api/memory/verifications', async (_req, res) => {
+    try {
+      const removed = clearMemoryVerifications();
+      res.json({ removed });
+    } catch (err) {
+      res.status(400).json({ error: errorMessage(err) });
+    }
+  });
+
+  app.delete('/api/memory/verifications/:id', async (req, res) => {
+    try {
+      const removed = removeMemoryVerification(req.params.id);
+      res.json({ removed });
+    } catch (err) {
+      res.status(400).json({ error: errorMessage(err) });
+    }
+  });
+
+  // Distil a batch of in-canvas/in-deck annotations into candidate rule
+  // proposals (THREAD 1). Display-only: the response feeds the existing
+  // rule-proposal Keep gate; nothing is written until the user confirms a
+  // proposal through `POST /api/memory` (`type: 'rule'`). Runs a heuristic
+  // pass always, and an LLM pass when an extraction provider is configured.
+  app.post('/api/memory/rules/suggest', async (req, res) => {
+    try {
+      const body = asRecord(req.body);
+      const rawAnnotations = Array.isArray(body.annotations) ? body.annotations : [];
+      const annotations = rawAnnotations
+        .map((item: unknown) => {
+          const a = asRecord(item);
+          const note = typeof a.note === 'string' ? a.note : '';
+          if (!note.trim()) return null;
+          return {
+            note,
+            ...(typeof a.targetLabel === 'string' ? { targetLabel: a.targetLabel } : {}),
+            ...(typeof a.filePath === 'string' ? { filePath: a.filePath } : {}),
+            ...(typeof a.currentText === 'string' ? { currentText: a.currentText } : {}),
+            ...(typeof a.selectionKind === 'string' ? { selectionKind: a.selectionKind } : {}),
+            ...(typeof a.htmlHint === 'string' ? { htmlHint: a.htmlHint } : {}),
+          };
+        })
+        .filter((a): a is { note: string } => a !== null);
+      const appConfig = (await readAppConfig(RUNTIME_DATA_DIR).catch(() => ({}))) as MemoryAppConfigLike;
+      const chatAgentId =
+        typeof body.chatAgentId === 'string' && body.chatAgentId.trim()
+          ? body.chatAgentId.trim()
+          : typeof appConfig.agentId === 'string' && appConfig.agentId.trim()
+            ? appConfig.agentId.trim()
+            : null;
+      const chatModel =
+        typeof body.chatModel === 'string' && body.chatModel.trim()
+          ? body.chatModel.trim()
+          : (chatAgentId && appConfig.agentModels?.[chatAgentId]?.model
+            ? appConfig.agentModels[chatAgentId].model ?? null
+            : null);
+      const result = await distillRulesFromAnnotations(
+        RUNTIME_DATA_DIR,
+        { annotations },
+        {
+          projectRoot: PROJECT_ROOT,
+          ...(chatAgentId ? { chatAgentId } : {}),
+          ...(chatModel ? { chatModel } : {}),
+          ...(body.chatProvider && typeof body.chatProvider === 'object'
+            ? { chatProvider: body.chatProvider }
+            : {}),
+        },
+      );
+      res.json(result);
     } catch (err) {
       res.status(400).json({ error: errorMessage(err) });
     }

@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { Button } from '@open-design/components';
 import { Icon, type IconName } from './Icon';
 import { ConnectorLogo, useResolvedTheme } from './ConnectorLogo';
+import { RuleDistillPanel } from './RuleDistillPanel';
 import { useT } from '../i18n';
 
 type Translate = ReturnType<typeof useT>;
@@ -2447,6 +2448,7 @@ export function MemorySection({
 	              </>
 	            )}
           </div>
+          <RuleDistillPanel />
         </div>
       </section>
 
