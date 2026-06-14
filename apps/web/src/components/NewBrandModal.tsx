@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Button } from '@open-design/components';
 import { useT } from '../i18n';
 import { useBrandExtract } from '../runtime/useBrandExtract';
+import type { BrandReference } from '../runtime/brand-references';
+import { BrandReferencePicker } from './BrandReferencePicker';
 import styles from './NewBrandModal.module.css';
 
 interface Props {
@@ -54,6 +56,17 @@ export function NewBrandModal({ open, onClose, onCreated }: Props) {
       void run(trimmed);
     },
     [url, starting, run],
+  );
+
+  // Picking a reference brand fills the URL field for visible feedback and
+  // immediately kicks off extraction against that domain.
+  const handlePick = useCallback(
+    (brand: BrandReference) => {
+      if (starting) return;
+      setUrl(brand.domain);
+      void run(brand.domain);
+    },
+    [starting, run],
   );
 
   useEffect(() => {
@@ -124,6 +137,10 @@ export function NewBrandModal({ open, onClose, onCreated }: Props) {
             </Button>
           </div>
         </form>
+
+        <div className={styles.pickerWrap}>
+          <BrandReferencePicker variant="compact" disabled={starting} onPick={handlePick} />
+        </div>
       </div>
     </div>,
     document.body,

@@ -724,16 +724,6 @@ export interface Dict {
   'settings.memoryExtractionsClear': string;
   'settings.memoryExtractionsClearTitle': string;
   'settings.memoryExtractionsClearConfirm': string;
-  'settings.memoryDistillTitle': string;
-  'settings.memoryDistillHint': string;
-  'settings.memoryDistillPlaceholder': string;
-  'settings.memoryDistillRun': string;
-  'settings.memoryDistillRunning': string;
-  'settings.memoryDistillEmpty': string;
-  'settings.memoryVerifyTitle': string;
-  'settings.memoryVerifyHint': string;
-  'settings.memoryVerifyEmpty': string;
-  'settings.memoryVerifyClear': string;
   'settings.memoryNoProviderBannerTitle': string;
   'settings.memoryNoProviderBannerBody': string;
   // Memory model picker — rendered inline next to the chat model picker
@@ -3330,4 +3320,12 @@ export interface Dict {
   'onboarding.brandSubtitle': string;
   'onboarding.brandSkip': string;
   'onboarding.brandDone': string;
+  // Brand reference picker — pick a brand to extract from
+  'brandPicker.heading': string;
+  'brandPicker.subtext': string;
+  'brandPicker.quickPicksLabel': string;
+  'brandPicker.searchPlaceholder': string;
+  'brandPicker.allCategories': string;
+  'brandPicker.extractAction': string;
+  'brandPicker.showMore': string;
 }

@@ -21,7 +21,10 @@
 
 .modal {
   width: 100%;
-  max-width: 440px;
+  max-width: 620px;
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
   padding: 24px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -235,4 +238,14 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* Reference brand picker below the URL form: its own scroll context so the
+   gallery can grow without pushing the URL field off-screen. */
+.pickerWrap {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  overflow-y: auto;
+  scrollbar-width: thin;
 }

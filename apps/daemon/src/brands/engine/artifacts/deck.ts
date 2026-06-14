@@ -18,9 +18,18 @@
  * their own words. Never lorem ipsum.
  *
  * Mechanism preserved exactly: >=10 `.slide` sections, scroll-snap, the literal
- * 16 / 9 aspect frame, container-query (cqi) type so it never overflows, a
- * keyboard pager (ArrowRight/ArrowLeft + Space/PageUp/PageDown/Home/End), and a
- * `.deck-counter` page indicator. Pure & deterministic: (brand, tokens) -> string.
+ * 16 / 9 aspect frame, a keyboard pager (ArrowRight/ArrowLeft +
+ * Space/PageUp/PageDown/Home/End), and a `.deck-counter` page indicator. Pure &
+ * deterministic: (brand, tokens) -> string.
+ *
+ * No-clip guarantee (robust by construction). The frame is a *size* container
+ * so type can scale against both axes, and every slide body is wrapped in a
+ * `.f-fit` layer that the runtime shrinks-to-fit: after layout it measures the
+ * body and, if the content is taller/wider than the fixed 16:9 frame, applies a
+ * single downward `transform: scale()` about the centre so NO brand copy — of
+ * any length, at any viewport — can ever be clipped, truncated, or spill the
+ * frame. The deterministic output is audited at build time by
+ * `auditDeckLayout` (apps/daemon/src/brands/engine/deck-layout-guard.ts).
  */
 
 import type { Brand } from "../../schema.js";
@@ -49,7 +58,7 @@ const DECK_CSS = `
       .frame {
         position: relative; aspect-ratio: 16 / 9;
         width: min(1280px, 94vw, calc((100vh - 48px) * 16 / 9));
-        container-type: inline-size;
+        container-type: size;
         background: var(--brand-color-bg-container);
         border: var(--brand-line-width) solid var(--brand-color-border-secondary);
         border-radius: var(--brand-border-radius-lg);
@@ -71,7 +80,12 @@ const DECK_CSS = `
       .f-head .wm { font-family: var(--display-family); font-weight: var(--brand-font-weight-strong); font-size: 1.7cqi; letter-spacing: -0.01em; color: inherit; }
       .f-head .rule { flex: 1; height: var(--brand-line-width); background: var(--brand-color-border-secondary); }
       .f-head .ix { font-variant-numeric: tabular-nums; letter-spacing: 0.12em; }
-      .f-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 5cqi; min-height: 0; }
+      .f-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 5cqi; min-height: 0; overflow: hidden; }
+      /* shrink-to-fit layer: the runtime scales this down about its centre when
+         a slide's content would otherwise exceed the fixed frame (no-clip).
+         flex:none keeps its natural (unshrunk) height so the runtime can
+         measure the true overflow instead of a flex-shrunk box. */
+      .f-fit { flex: none; width: 100%; transform-origin: center center; will-change: transform; }
       .f-foot { display: flex; justify-content: space-between; align-items: center; gap: 2cqi; padding: 0 5cqi 3cqi; color: var(--brand-color-text-quaternary); font-size: 1.25cqi; }
       .f-foot .rule { flex: 1; height: var(--brand-line-width); background: var(--brand-color-border-secondary); }
 
@@ -101,11 +115,15 @@ const DECK_CSS = `
       .s-metric .l { margin-top: 1.2cqi; font-size: 1.5cqi; line-height: 1.35; color: var(--brand-color-text-tertiary); }
       .frame--accent .s-metric .l { color: rgba(255,255,255,0.78); }
 
-      /* market funnel bars */
-      .s-bars { display: flex; flex-direction: column; gap: 1.6cqi; margin-top: 3.4cqi; max-width: 74cqi; }
-      .s-bar { display: grid; grid-template-columns: 14cqi 1fr; align-items: center; gap: 2.4cqi; }
+      /* market funnel bars — value labels live OUTSIDE the proportional track in
+         their own auto column, so a long label can never wrap/clip the bar. */
+      .s-bars { display: flex; flex-direction: column; gap: 1.8cqi; margin-top: 3.4cqi; max-width: 82cqi; }
+      .s-bar { display: grid; grid-template-columns: 12cqi 1fr auto; align-items: center; gap: 2cqi; }
       .s-bar .tag { font-size: 1.5cqi; font-weight: var(--brand-font-weight-strong); color: var(--brand-color-text-secondary); letter-spacing: 0.04em; }
-      .s-bar .track { height: 4.6cqi; border-radius: 0.8cqi; display: flex; align-items: center; padding: 0 2cqi; color: #fff; font-family: var(--display-family); font-weight: var(--brand-font-weight-strong); font-size: 2cqi; }
+      .s-bar .lane { min-width: 0; }
+      .s-bar .track { height: 4.2cqi; border-radius: 0.8cqi; }
+      .s-bar .val { font-family: var(--display-family); font-weight: var(--brand-font-weight-strong); font-size: 1.9cqi; color: var(--brand-color-text); white-space: nowrap; }
+      .frame--accent .s-bar .val { color: #fff; }
 
       /* competition matrix */
       .s-matrix { display: grid; gap: 1.6cqi; margin-top: 3.4cqi; }
@@ -179,6 +197,39 @@ const DECK_CSS = `
 
 const DECK_SCRIPT = `
 (function () {
+  /* od-deck-fit: shrink-to-fit guarantee — keep every slide's content inside
+     the fixed 16:9 frame so brand copy of any length never clips. */
+  function fitFrame(body) {
+    var fit = body.querySelector('.f-fit');
+    if (!fit) return;
+    fit.style.transform = 'none';
+    var availH = body.clientHeight;
+    var availW = fit.clientWidth;
+    if (availH <= 0 || availW <= 0) return;
+    var naturalH = fit.offsetHeight;
+    var naturalW = fit.scrollWidth;
+    var scale = Math.min(1, availH / naturalH, availW / naturalW);
+    if (scale < 1) {
+      // small safety margin so descenders never touch the clip edge
+      fit.style.transform = 'scale(' + (scale * 0.98) + ')';
+    }
+  }
+  function fitAll() {
+    [].forEach.call(document.querySelectorAll('.f-body'), fitFrame);
+  }
+  var fitScheduled = false;
+  function scheduleFit() {
+    if (fitScheduled) return;
+    fitScheduled = true;
+    requestAnimationFrame(function () { fitScheduled = false; fitAll(); });
+  }
+  window.addEventListener('resize', scheduleFit);
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit).catch(function () {});
+  }
+  window.addEventListener('load', scheduleFit);
+  scheduleFit();
+
   var deck = document.querySelector('.deck');
   var slides = [].slice.call(document.querySelectorAll('.slide'));
   var dots = [].slice.call(document.querySelectorAll('.deck-dot'));
@@ -283,8 +334,8 @@ export function renderDeck(brand: Brand, tokens: DesignTokens): string {
       kicker: adjLine,
       variant: "accent",
       body: `<span class="s-kicker">${esc(adjLine)}</span>
-          <h1 class="s-mega clamp-2">${esc(name)}</h1>
-          <p class="s-lede clamp-2" style="font-size:2.6cqi;color:rgba(255,255,255,0.92);">${esc(tagline)}</p>`,
+          <h1 class="s-mega">${esc(name)}</h1>
+          <p class="s-lede" style="font-size:2.6cqi;color:rgba(255,255,255,0.92);">${esc(tagline)}</p>`,
     },
 
     // 2 — PROBLEM (assertion: the pain is real, big, costly)
@@ -293,7 +344,7 @@ export function renderDeck(brand: Brand, tokens: DesignTokens): string {
       variant: "surface",
       body: `<span class="s-kicker">The problem</span>
           <h2 class="s-title">Getting ${esc(category)} right is still painfully hard.</h2>
-          <p class="s-lede clamp-2">${esc(blurb)}</p>
+          <p class="s-lede">${esc(blurb)}</p>
           ${cardGrid(
             [
               {
@@ -320,7 +371,7 @@ export function renderDeck(brand: Brand, tokens: DesignTokens): string {
     {
       kicker: "The solution",
       body: `<span class="s-kicker">The solution</span>
-          <h2 class="s-title clamp-2"><span class="s-accent">${esc(name)}</span> ${esc(
+          <h2 class="s-title"><span class="s-accent">${esc(name)}</span> ${esc(
             taglineClause(tagline, name),
           )}</h2>
           <div class="s-pillars">
@@ -426,7 +477,7 @@ export function renderDeck(brand: Brand, tokens: DesignTokens): string {
               )
               .join("\n            ")}
           </div>
-          <p class="s-lede clamp-1" style="color:rgba(255,255,255,0.78);font-size:1.5cqi;max-width:64cqi;margin-top:3.4cqi;">Illustrative figures — replace with your live numbers before pitching.</p>`,
+          <p class="s-lede" style="color:rgba(255,255,255,0.78);font-size:1.5cqi;max-width:64cqi;margin-top:3.4cqi;">Illustrative figures — replace with your live numbers before pitching.</p>`,
     },
 
     // 10 — TEAM (assertion: this team can pull it off)
@@ -453,7 +504,7 @@ export function renderDeck(brand: Brand, tokens: DesignTokens): string {
       kicker: "The ask",
       variant: "accent",
       body: `<span class="s-kicker">The ask</span>
-          <h2 class="s-mega clamp-2" style="font-size:6.4cqi;">Let's build the future of ${esc(
+          <h2 class="s-mega" style="font-size:6.4cqi;">Let's build the future of ${esc(
             category,
           )} together.</h2>
           <div class="s-ask">
@@ -481,7 +532,9 @@ export function renderDeck(brand: Brand, tokens: DesignTokens): string {
             s.kicker.toUpperCase(),
           )}</span></div>
           <div class="f-body">
+            <div class="f-fit">
           ${s.body}
+            </div>
           </div>
           <div class="f-foot"><span>${esc(host)}</span><span class="rule"></span><span class="ix">${ix} / ${String(
             total,
@@ -542,7 +595,8 @@ function marketBars(): string {
   return rows
     .map(
       (r) => `<div class="s-bar"><span class="tag">${esc(r.tag)}</span>
-              <div class="track" style="width:${r.w}%;background:${r.color};">${esc(r.v)}</div></div>`,
+              <div class="lane"><div class="track" style="width:${r.w}%;background:${r.color};"></div></div>
+              <span class="val">${esc(r.v)}</span></div>`,
     )
     .join("\n            ");
 }

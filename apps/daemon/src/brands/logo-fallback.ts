@@ -238,17 +238,28 @@ export async function harvestFallbackLogos(
 }
 
 /**
- * Ensure `logosDir` has at least one logo and `logo` carries a primary. When a
- * logo already exists (agent-saved files or a populated `logo.primary`) this is
- * a no-op. Otherwise it harvests fallback marks and fills in
- * `logo.primary`/`logo.alternates`. Mutates and returns `logo`. Best-effort.
+ * Ensure `logosDir` has at least one logo and `logo` carries a primary. When
+ * `logo.primary` is already set this is a no-op. When logo files already sit on
+ * disk (agent-saved or seed-harvested) but `logo.primary` is empty, those files
+ * are adopted into `logo.primary`/`logo.alternates` — otherwise the kit page
+ * would report "No logo found" despite real marks living in `logos/`. Only when
+ * the dir is genuinely empty does it harvest fallback marks over the network.
+ * Mutates and returns `logo`. Best-effort.
  */
 export async function ensureLogoFallback(
   siteUrl: string,
   logosDir: string,
   logo: LogoSlot,
 ): Promise<{ changed: boolean }> {
-  if (logo.primary || hasAnyFile(logosDir)) return { changed: false };
+  if (logo.primary) return { changed: false };
+  // Adopt existing files first so a populated `logos/` dir always resolves to a
+  // primary, even when the agent's brand.json left `logo.primary` empty.
+  if (hasAnyFile(logosDir)) {
+    const adopted = adoptExistingLogos(logosDir, logo);
+    if (adopted.changed) return adopted;
+    // Files exist but none look like usable marks — fall through and try the
+    // network harvest below as a last resort.
+  }
   let harvested: FallbackLogo[] = [];
   try {
     harvested = await harvestFallbackLogos(siteUrl, logosDir);
@@ -261,6 +272,54 @@ export async function ensureLogoFallback(
   logo.alternates = harvested.slice(1).map((l) => l.rel);
   if (!logo.notes) logo.notes = 'Auto-fetched site icon (no logo markup was saved during extraction).';
   return { changed: true };
+}
+
+/** Extension priority for ranking on-disk logo files: vector/transparent marks
+ *  before raster, raster before icons. Mirrors `resolveBrandLogoPath`. */
+const LOGO_EXT_PRIORITY = ['.svg', '.png', '.webp', '.jpg', '.jpeg', '.gif', '.ico'];
+const LOGO_FILE_RE = /\.(svg|png|webp|jpe?g|gif|ico)$/i;
+
+function logoExtRank(name: string): number {
+  const i = LOGO_EXT_PRIORITY.indexOf(path.extname(name).toLowerCase());
+  return i === -1 ? LOGO_EXT_PRIORITY.length : i;
+}
+
+/**
+ * Wire the image files already present in `logosDir` into an empty `logo` slot:
+ * the best mark (by extension priority, then name) becomes `logo.primary` and
+ * the rest become `logo.alternates`, each as a `logos/<file>` path relative to
+ * the dir owner. No-op when `logo.primary` is set or the dir holds no image
+ * files. Mutates and returns the slot. Pure filesystem — never touches the
+ * network.
+ */
+export function adoptExistingLogos(logosDir: string, logo: LogoSlot): { changed: boolean } {
+  if (logo.primary) return { changed: false };
+  let names: string[];
+  try {
+    names = fs.readdirSync(logosDir);
+  } catch {
+    return { changed: false };
+  }
+  const ranked = names
+    .filter((n) => LOGO_FILE_RE.test(n) && isFileIn(logosDir, n))
+    .sort((a, b) => logoExtRank(a) - logoExtRank(b) || a.localeCompare(b));
+  if (ranked.length === 0) return { changed: false };
+  const rels = ranked.map((n) => `logos/${n}`);
+  logo.primary = rels[0] ?? null;
+  // Keep any alternates the agent already declared, then append the on-disk
+  // files, de-duped and excluding whatever became the primary.
+  const merged = [...logo.alternates, ...rels.slice(1)];
+  logo.alternates = Array.from(new Set(merged)).filter((rel) => rel !== logo.primary);
+  if (!logo.notes) logo.notes = 'Logo files saved during extraction.';
+  return { changed: true };
+}
+
+function isFileIn(dir: string, name: string): boolean {
+  try {
+    return fs.statSync(path.join(dir, name)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function hasAnyFile(dir: string): boolean {

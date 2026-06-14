@@ -137,6 +137,8 @@ import {
   notifyAmrLoginStatusChanged,
 } from './amrLoginPolling';
 import { useBrandExtract } from '../runtime/useBrandExtract';
+import type { BrandReference } from '../runtime/brand-references';
+import { BrandReferencePicker } from './BrandReferencePicker';
 import { closeAmrActivationWindowBestEffort } from './AmrLoginPill';
 import { AnimatePresence } from 'motion/react';
 import { smoothScrollToTop } from '../utils/smoothScrollToTop';
@@ -990,24 +992,39 @@ function OnboardingView({
   // Clicking Extract here behaves exactly like the Brands tab: stand up the
   // extraction project, then finish onboarding and open it so the agent runs
   // the extraction live (with a browser tab on the target site).
-  const handleOnboardingBrandExtract = useCallback(async () => {
-    const trimmed = brandUrl.trim();
-    if (!trimmed || brandExtractActive) return;
-    const result = await runBrandExtract(trimmed);
-    if (!result) return;
-    try {
-      window.sessionStorage.setItem(`od:auto-send-first:${result.projectId}`, '1');
-    } catch {
-      // Private-mode storage failures should not block navigation.
-    }
-    onFinish();
-    navigate({
-      kind: 'project',
-      projectId: result.projectId,
-      fileName: null,
-      conversationId: result.conversationId,
-    });
-  }, [brandUrl, brandExtractActive, runBrandExtract, onFinish]);
+  const handleOnboardingBrandExtract = useCallback(
+    async (explicitUrl?: string) => {
+      // An explicit URL (a picked reference brand) wins over the input, whose
+      // state update may not have committed yet when the picker fires.
+      const trimmed = (explicitUrl ?? brandUrl).trim();
+      if (!trimmed || brandExtractActive) return;
+      const result = await runBrandExtract(trimmed);
+      if (!result) return;
+      try {
+        window.sessionStorage.setItem(`od:auto-send-first:${result.projectId}`, '1');
+      } catch {
+        // Private-mode storage failures should not block navigation.
+      }
+      onFinish();
+      navigate({
+        kind: 'project',
+        projectId: result.projectId,
+        fileName: null,
+        conversationId: result.conversationId,
+      });
+    },
+    [brandUrl, brandExtractActive, runBrandExtract, onFinish],
+  );
+
+  // The onboarding picker fills the URL field and immediately starts extraction.
+  const handleOnboardingPickReference = useCallback(
+    (brand: BrandReference) => {
+      if (brandExtractActive) return;
+      setBrandUrl(brand.domain);
+      void handleOnboardingBrandExtract(brand.domain);
+    },
+    [brandExtractActive, handleOnboardingBrandExtract],
+  );
   const [amrLoginError, setAmrLoginError] = useState<string | null>(null);
   const [visibleAgentIds, setVisibleAgentIds] = useState<string[]>([]);
   const [providerTestState, setProviderTestState] = useState<
@@ -2273,6 +2290,19 @@ function OnboardingView({
                     {brandExtractState.error || t('brand.failed')}
                   </span>
                 ) : null}
+              </div>
+              <div
+                style={{
+                  marginTop: 22,
+                  paddingTop: 18,
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                <BrandReferencePicker
+                  variant="compact"
+                  disabled={brandExtractActive}
+                  onPick={handleOnboardingPickReference}
+                />
               </div>
             </div>
           ) : null}

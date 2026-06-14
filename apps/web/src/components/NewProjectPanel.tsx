@@ -53,6 +53,8 @@ import {
   useAIHubMixAudioModels,
 } from '../media/aihubmix-image-models';
 import { formatPickAndImportFailure } from '../utils/pickAndImportError';
+import { useBrandsByDesignSystemId } from '../runtime/brands';
+import { BrandPreviewCard } from './BrandPreviewCard';
 import { Icon } from './Icon';
 import { Skeleton } from './Loading';
 import { Toast } from './Toast';
@@ -2001,8 +2003,15 @@ function DesignSystemPicker({
   const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+
+  // Upgrade the popover's thin list to the rich Brand Kit card whenever the
+  // hovered / selected row is a finalized brand (`user:<id>` design system).
+  // Fetched lazily on first open; non-brand systems are absent and the popover
+  // stays a plain list. See `DesignSystemPicker.tsx` for the same wiring.
+  const brandsByDesignSystem = useBrandsByDesignSystemId(open);
 
   const byId = useMemo(() => {
     const map = new Map<string, DesignSystemSummary>();
@@ -2044,7 +2053,10 @@ function DesignSystemPicker({
   }, [ordered, query]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setHoveredId(null);
+      return;
+    }
     const t = window.setTimeout(() => searchRef.current?.focus(), 30);
     return () => window.clearTimeout(t);
   }, [open]);
@@ -2098,6 +2110,12 @@ function DesignSystemPicker({
   const primary = primaryId ? byId.get(primaryId) ?? null : null;
   const extraCount = Math.max(0, selectedIds.length - 1);
   const isDefault = !!primary && primary.id === defaultDesignSystemId;
+
+  // The hovered row wins over the current selection so scrubbing the list
+  // previews each brand; falling back to the primary pick keeps the rich card
+  // visible while the pointer rests outside the list.
+  const previewId = hoveredId ?? primaryId;
+  const previewBrand = previewId ? brandsByDesignSystem.get(previewId) ?? null : null;
 
   if (loading && designSystems.length === 0) {
     return (
@@ -2209,6 +2227,8 @@ function DesignSystemPicker({
                     multi={multi}
                     order={order}
                     onClick={() => toggle(d.id)}
+                    onMouseEnter={() => setHoveredId(d.id)}
+                    onMouseLeave={() => setHoveredId(null)}
                     avatar={<DesignSystemAvatar system={d} />}
                     title={d.title}
                     badge={
@@ -2241,6 +2261,15 @@ function DesignSystemPicker({
           ) : null}
         </div>
       ) : null}
+      {open && previewBrand ? (
+        <aside
+          className="ds-picker-brand-flyout"
+          data-testid="new-project-ds-brand-flyout"
+          aria-label={t('brandDetail.identity')}
+        >
+          <BrandPreviewCard variant="compact" summary={previewBrand} />
+        </aside>
+      ) : null}
     </div>
   );
 }
@@ -2250,6 +2279,8 @@ function DsPickerItem({
   multi,
   order,
   onClick,
+  onMouseEnter,
+  onMouseLeave,
   avatar,
   title,
   subtitle,
@@ -2259,6 +2290,8 @@ function DsPickerItem({
   multi: boolean;
   order?: number;
   onClick: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   avatar: React.ReactNode;
   title: string;
   subtitle: string;
@@ -2271,6 +2304,9 @@ function DsPickerItem({
       aria-selected={active}
       className={`ds-picker-item${active ? ' active' : ''}`}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onFocus={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <span className="ds-picker-item-avatar">{avatar}</span>
       <span className="ds-picker-item-text">

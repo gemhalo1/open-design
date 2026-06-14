@@ -10,7 +10,6 @@ import { createPortal } from 'react-dom';
 import { Button } from '@open-design/components';
 import { Icon, type IconName } from './Icon';
 import { ConnectorLogo, useResolvedTheme } from './ConnectorLogo';
-import { RuleDistillPanel } from './RuleDistillPanel';
 import { useT } from '../i18n';
 
 type Translate = ReturnType<typeof useT>;
@@ -1493,7 +1492,6 @@ export function MemorySection({
 	      <div className="library-card-info">
 	        <div className="library-card-title-row">
 	          <span className="library-card-name">{entry.name}</span>
-	          <span className="library-card-badge">{entry.id}</span>
 	        </div>
 	        <div className="library-card-desc">
 	          {entry.description || '—'}
@@ -2448,7 +2446,6 @@ export function MemorySection({
 	              </>
 	            )}
           </div>
-          <RuleDistillPanel />
         </div>
       </section>
 
