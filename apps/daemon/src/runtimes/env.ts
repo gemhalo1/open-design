@@ -27,24 +27,24 @@ const RUNTIME_MODULE_PROJECT_ROOT = resolveProjectRootFromNestedModule(
 
 // Build the env passed to spawn() for a given agent adapter.
 //
-// The claude adapter strips Anthropic API credentials so Claude Code's own auth
-// resolution (claude login / Pro/Max plan) wins instead of silently
-// falling back to API-key billing whenever the daemon happened to be
-// launched from a shell that exported the key for SDK or scripting use.
-// See issue #398.
+// The claude adapter strips inherited Anthropic API credentials so Claude
+// Code's own auth resolution (claude login / Pro/Max plan) wins instead of
+// silently falling back to API-key billing whenever the daemon happened to be
+// launched from a shell that exported the key for SDK or scripting use. See
+// issue #398. Credentials explicitly configured through Open Design Settings
+// are preserved because that is the user's selected Claude Code auth mode.
 //
-// However, when ANTHROPIC_BASE_URL is set the user is intentionally
-// routing Claude Code to a custom endpoint (e.g. a Kimi/Moonshot proxy).
-// In that case claude login is meaningless, so preserve the credential so
-// the child can authenticate against the custom base URL.
+// When ANTHROPIC_BASE_URL is set the user is intentionally routing Claude Code
+// to a custom endpoint (e.g. a Kimi/Moonshot proxy). In that case claude login
+// is meaningless, so preserve the credential so the child can authenticate
+// against the custom base URL.
 //
-// The codex adapter has the symmetric problem: a stale BYOK
-// OPENAI_API_KEY / CODEX_API_KEY left behind in app-config.json silently
-// outranks Codex CLI's own `~/.codex/auth.json` (codex login) and trips
-// 401 invalid_api_key whenever execution mode is switched back to
-// Local CLI. Strip both keys unless the user has also configured a
-// custom OPENAI_BASE_URL — i.e. they are intentionally routing Codex
-// CLI through a third-party OpenAI-compatible gateway. See issue #2420.
+// The codex adapter has the symmetric problem: inherited OPENAI_API_KEY /
+// CODEX_API_KEY values can silently outrank Codex CLI's own
+// `~/.codex/auth.json` (codex login) and trip 401 invalid_api_key whenever
+// execution mode is Local CLI. Strip inherited keys unless the user has also
+// configured a custom OPENAI_BASE_URL, but preserve credentials explicitly
+// configured through Open Design Settings for Codex Local CLI. See issue #2420.
 //
 // Windows env-var names are case-insensitive at the kernel level
 // (`GetEnvironmentVariable`), but spreading `process.env` into a plain
@@ -88,11 +88,12 @@ export function spawnEnvForAgent(
   options: SpawnEnvOptions = {},
 ): NodeJS.ProcessEnv {
   const sandboxRuntime = sandboxRuntimeConfigForBaseEnv(baseEnv);
+  const expandedConfiguredEnv = expandConfiguredEnv(configuredEnv);
   const env = mergeProxyAwareEnv(
     process.platform,
     systemProxyEnv,
     baseEnv,
-    expandConfiguredEnv(configuredEnv),
+    expandedConfiguredEnv,
   );
   if (agentId === 'amr') {
     Object.assign(env, amrVelaProfileEnv(env));
@@ -132,18 +133,28 @@ export function spawnEnvForAgent(
   }
   if (agentId === 'claude') {
     if (!isOpenClaudeExecutable(options.resolvedBin)) {
+      const configuredAnthropicCredentials = pickNonEmptyEnvValues(
+        expandedConfiguredEnv,
+        ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
+      );
       stripUnlessCustomBaseUrl(env, 'ANTHROPIC_BASE_URL', [
         'ANTHROPIC_API_KEY',
         'ANTHROPIC_AUTH_TOKEN',
       ]);
+      Object.assign(env, configuredAnthropicCredentials);
     }
     return reapplySandboxRuntimeEnv(env, sandboxRuntime);
   }
   if (agentId === 'codex') {
+    const configuredOpenAiCredentials = pickNonEmptyEnvValues(
+      expandedConfiguredEnv,
+      ['OPENAI_API_KEY', 'CODEX_API_KEY'],
+    );
     stripUnlessCustomBaseUrl(env, 'OPENAI_BASE_URL', [
       'OPENAI_API_KEY',
       'CODEX_API_KEY',
     ]);
+    Object.assign(env, configuredOpenAiCredentials);
     return reapplySandboxRuntimeEnv(env, sandboxRuntime);
   }
   if (agentId === 'opencode') {
@@ -245,6 +256,20 @@ function stripUnlessCustomBaseUrl(
   for (const key of Object.keys(env)) {
     if (secretKeysUpper.has(key.toUpperCase())) delete env[key];
   }
+}
+
+function pickNonEmptyEnvValues(
+  env: Record<string, string>,
+  keysToKeep: readonly string[],
+): Record<string, string> {
+  const keysUpper = new Set(keysToKeep.map((key) => key.toUpperCase()));
+  const kept: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!keysUpper.has(key.toUpperCase())) continue;
+    if (!value.trim()) continue;
+    kept[key] = value;
+  }
+  return kept;
 }
 
 function stripKeysCaseInsensitive(

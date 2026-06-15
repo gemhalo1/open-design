@@ -2186,11 +2186,15 @@ setImmediate(() => process.exit(0));
     }
   });
 
-  it('strips stale Codex API keys when no custom OPENAI_BASE_URL is configured', async () => {
+  it('strips inherited Codex API keys when no custom OPENAI_BASE_URL is configured', async () => {
     const markerDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'od-conn-test-codex-strip-'));
     const envFile = path.join(markerDir, 'env.json');
     const codexHome = path.join(markerDir, 'codex-home');
+    const previousOpenAiKey = process.env.OPENAI_API_KEY;
+    const previousCodexKey = process.env.CODEX_API_KEY;
     try {
+      process.env.OPENAI_API_KEY = 'sk-inherited-openai';
+      process.env.CODEX_API_KEY = 'sk-inherited-codex';
       await withFakeCodex(
         `
 const fs = require('node:fs');
@@ -2203,12 +2207,9 @@ console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_messag
 setImmediate(() => process.exit(0));
 `,
         async () => {
-          // Simulates the user flow that triggered issue #2420: a stale
-          // BYOK OPENAI_API_KEY sat in agentCliEnv.codex from a previous
-          // session, the user cleared the BYOK dialog (which doesn't
-          // touch agentCliEnv) and switched back to Local CLI. Without
-          // an OPENAI_BASE_URL the daemon must keep the secret out of
-          // the spawn so Codex CLI's own `codex login` wins.
+          // Simulates the issue #2420 boundary: inherited OpenAI/Codex API
+          // credentials in the daemon environment must not silently override
+          // Codex CLI's own login when no custom OPENAI_BASE_URL is configured.
           const res = await realFetch(`${baseUrl}/api/test/connection`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -2218,8 +2219,6 @@ setImmediate(() => process.exit(0));
               agentCliEnv: {
                 codex: {
                   CODEX_HOME: codexHome,
-                  OPENAI_API_KEY: 'sk-stale-byok',
-                  CODEX_API_KEY: 'sk-stale-byok',
                 },
               },
             }),
@@ -2240,6 +2239,143 @@ setImmediate(() => process.exit(0));
         },
       );
     } finally {
+      if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousOpenAiKey;
+      if (previousCodexKey === undefined) delete process.env.CODEX_API_KEY;
+      else process.env.CODEX_API_KEY = previousCodexKey;
+      await fsp.rm(markerDir, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves explicitly configured Codex API credentials during connection tests', async () => {
+    const markerDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'od-conn-test-codex-api-'));
+    const envFile = path.join(markerDir, 'env.json');
+    const previousOpenAiKey = process.env.OPENAI_API_KEY;
+    const previousCodexKey = process.env.CODEX_API_KEY;
+    try {
+      process.env.OPENAI_API_KEY = 'sk-inherited-openai';
+      process.env.CODEX_API_KEY = 'sk-inherited-codex';
+      await withFakeCodex(
+        `
+const fs = require('node:fs');
+fs.writeFileSync(${JSON.stringify(envFile)}, JSON.stringify({
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || null,
+  CODEX_API_KEY: process.env.CODEX_API_KEY || null,
+  OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || null,
+}));
+console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'ok' } }));
+setImmediate(() => process.exit(0));
+`,
+        async () => {
+          const res = await realFetch(`${baseUrl}/api/test/connection`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              mode: 'agent',
+              agentId: 'codex',
+              agentCliEnv: {
+                codex: {
+                  OPENAI_API_KEY: 'sk-configured-openai',
+                  CODEX_API_KEY: 'sk-configured-codex',
+                },
+              },
+            }),
+          });
+          expect(res.status).toBe(200);
+          await expect(res.json()).resolves.toMatchObject({
+            ok: true,
+            kind: 'success',
+            agentName: 'Codex CLI',
+          });
+          await expect(fsp.readFile(envFile, 'utf8')).resolves.toBe(
+            JSON.stringify({
+              OPENAI_API_KEY: 'sk-configured-openai',
+              CODEX_API_KEY: 'sk-configured-codex',
+              OPENAI_BASE_URL: null,
+            }),
+          );
+        },
+      );
+    } finally {
+      if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousOpenAiKey;
+      if (previousCodexKey === undefined) delete process.env.CODEX_API_KEY;
+      else process.env.CODEX_API_KEY = previousCodexKey;
+      await fsp.rm(markerDir, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves explicitly configured Claude API credentials during connection tests', async () => {
+    const markerDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'od-conn-test-claude-api-'));
+    const envFile = path.join(markerDir, 'env.json');
+    const previousKey = process.env.ANTHROPIC_API_KEY;
+    const previousToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    try {
+      process.env.ANTHROPIC_API_KEY = 'sk-inherited-stale';
+      process.env.ANTHROPIC_AUTH_TOKEN = 'sk-inherited-token';
+      await withFakeClaude(
+        `
+const fs = require('node:fs');
+fs.writeFileSync(${JSON.stringify(envFile)}, JSON.stringify({
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || null,
+  ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || null,
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || null,
+}));
+let input = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  try {
+    JSON.parse(input.trim());
+    console.log(JSON.stringify({
+      type: 'assistant',
+      message: {
+        id: 'msg_1',
+        content: [{ type: 'text', text: 'ok' }],
+        stop_reason: 'end_turn',
+      },
+    }));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+});
+`,
+        async () => {
+          const res = await realFetch(`${baseUrl}/api/test/connection`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              mode: 'agent',
+              agentId: 'claude',
+              agentCliEnv: {
+                claude: {
+                  ANTHROPIC_API_KEY: 'sk-configured',
+                  ANTHROPIC_AUTH_TOKEN: 'sk-configured-token',
+                },
+              },
+            }),
+          });
+          expect(res.status).toBe(200);
+          await expect(res.json()).resolves.toMatchObject({
+            ok: true,
+            kind: 'success',
+            agentName: 'Claude Code',
+          });
+          await expect(fsp.readFile(envFile, 'utf8')).resolves.toBe(
+            JSON.stringify({
+              ANTHROPIC_API_KEY: 'sk-configured',
+              ANTHROPIC_AUTH_TOKEN: 'sk-configured-token',
+              ANTHROPIC_BASE_URL: null,
+            }),
+          );
+        },
+      );
+    } finally {
+      if (previousKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previousKey;
+      if (previousToken === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN;
+      else process.env.ANTHROPIC_AUTH_TOKEN = previousToken;
       await fsp.rm(markerDir, { recursive: true, force: true });
     }
   });

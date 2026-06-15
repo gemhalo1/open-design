@@ -30,7 +30,7 @@ test('spawnEnvForAgent strips Anthropic API credentials for the claude adapter',
   assert.equal(env.OD_DAEMON_URL, 'http://127.0.0.1:7456');
 });
 
-test('spawnEnvForAgent applies configured Claude Code env before auth stripping', () => {
+test('spawnEnvForAgent applies configured Claude Code env before inherited auth stripping', () => {
   const env = spawnEnvForAgent(
     'claude',
     {
@@ -46,6 +46,25 @@ test('spawnEnvForAgent applies configured Claude Code env before auth stripping'
   assert.equal(env.CLAUDE_CONFIG_DIR, '/Users/test/.claude-2');
   assert.equal('ANTHROPIC_API_KEY' in env, false);
   assert.equal('ANTHROPIC_AUTH_TOKEN' in env, false);
+  assert.equal(env.PATH, '/usr/bin');
+});
+
+test('spawnEnvForAgent preserves explicitly configured Claude Code API credentials', () => {
+  const env = spawnEnvForAgent(
+    'claude',
+    {
+      ANTHROPIC_API_KEY: 'sk-inherited-stale',
+      ANTHROPIC_AUTH_TOKEN: 'sk-inherited-token',
+      PATH: '/usr/bin',
+    },
+    {
+      ANTHROPIC_API_KEY: 'sk-configured',
+      ANTHROPIC_AUTH_TOKEN: 'sk-configured-token',
+    },
+  );
+
+  assert.equal(env.ANTHROPIC_API_KEY, 'sk-configured');
+  assert.equal(env.ANTHROPIC_AUTH_TOKEN, 'sk-configured-token');
   assert.equal(env.PATH, '/usr/bin');
 });
 
@@ -1173,12 +1192,9 @@ test('spawnEnvForAgent preserves Anthropic credentials for non-claude adapters',
 });
 
 // Issue #2420: Codex CLI prefers OPENAI_API_KEY / CODEX_API_KEY over its own
-// `codex login` OAuth credentials when both are set. When the user has not
-// pointed Codex at a custom proxy via OPENAI_BASE_URL, a stale BYOK key
-// silently outranks `~/.codex/auth.json` and trips 401 invalid_api_key.
-// Strip the API keys in that case so Codex CLI's own auth resolution wins —
-// mirroring the existing ANTHROPIC_API_KEY behavior the claude adapter has
-// for issue #398.
+// `codex login` OAuth credentials when both are set. Strip inherited keys so
+// Codex CLI's own auth resolution wins, while preserving credentials the user
+// explicitly configured through Settings → Local CLI.
 test('spawnEnvForAgent strips OPENAI_API_KEY for the codex adapter when OPENAI_BASE_URL is absent', () => {
   const env = spawnEnvForAgent('codex', {
     OPENAI_API_KEY: 'sk-stale-byok',
@@ -1306,24 +1322,22 @@ test('spawnEnvForAgent applies configured codex env and preserves API key when b
   assert.equal(env.OPENAI_API_KEY, 'sk-configured');
 });
 
-// The dual-key shape every BYOK Codex user hits in production: prior session
-// left OPENAI_API_KEY in the daemon's app-config, the user cleared the BYOK
-// dialog but never opened Settings → Local CLI → Codex env to also clear
-// OPENAI_API_KEY, then switched execution mode back to Local CLI. spawnEnv
-// must strip the stale BYOK key so Codex CLI's own `codex login` wins.
-test('spawnEnvForAgent strips stale configured OPENAI_API_KEY when configured base URL was also cleared', () => {
+test('spawnEnvForAgent preserves explicitly configured Codex API credentials without a custom base URL', () => {
   const env = spawnEnvForAgent(
     'codex',
-    { PATH: '/usr/bin' },
     {
-      // Empty OPENAI_BASE_URL — i.e. user is on Local CLI mode without a
-      // custom proxy. validateAgentCliEnv would drop the empty string in
-      // practice; we pass it explicitly here to lock the spawn-side guard.
-      OPENAI_API_KEY: 'sk-stale-byok',
+      OPENAI_API_KEY: 'sk-inherited-stale',
+      CODEX_API_KEY: 'sk-inherited-codex',
+      PATH: '/usr/bin',
+    },
+    {
+      OPENAI_API_KEY: 'sk-configured-openai',
+      CODEX_API_KEY: 'sk-configured-codex',
     },
   );
 
-  assert.equal('OPENAI_API_KEY' in env, false);
+  assert.equal(env.OPENAI_API_KEY, 'sk-configured-openai');
+  assert.equal(env.CODEX_API_KEY, 'sk-configured-codex');
   assert.equal(env.PATH, '/usr/bin');
 });
 
