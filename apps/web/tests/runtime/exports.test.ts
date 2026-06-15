@@ -620,6 +620,8 @@ describe('sandboxed preview Blob exports', () => {
     // In the sandboxed wrapper the srcdoc attribute is HTML-escaped, so the
     // handshake script content is present as unescaped JS fragments.
     expect(htmlArg).toContain('document.images');
+    expect(htmlArg).toContain("img.loading==='lazy'");
+    expect(htmlArg).toContain("img.loading='eager'");
     expect(htmlArg).toContain("img.addEventListener('load'");
     expect(htmlArg).toContain("img.addEventListener('error'");
     expect(htmlArg).toContain('img.complete');
