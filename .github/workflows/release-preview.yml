@@ -211,6 +211,33 @@ jobs:
         with:
           node-version: 24
 
+      - name: Compute mac_arm64 tools-pack cache key
+        id: mac_arm64_tools_pack_cache_key
+        env:
+          MAC_TOOLS_PACK_ORIGIN_KEY: ${{ hashFiles('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/daemon/**', 'apps/web/**', 'apps/desktop/**', 'apps/packaged/**', 'packages/agui-adapter/**', 'packages/contracts/**', 'packages/plugin-runtime/**', 'packages/sidecar-proto/**', 'packages/sidecar/**', 'packages/platform/**', 'tools/pack/bin/**', 'tools/pack/package.json', 'tools/pack/resources/**', 'tools/pack/src/**', 'tools/pack/tsconfig.json', 'assets/community-pets/**', 'assets/frames/**', 'craft/**', 'design-systems/**', 'design-templates/**', 'plugins/_official/**', 'plugins/registry/**', 'prompt-templates/**', 'skills/**', '.github/workflows/release-preview.yml', '.github/scripts/release/cache/mac.sh') }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MAC_TOOLS_PACK_ORIGIN_KEY" ]; then
+            echo "mac_arm64 tools-pack cache origin key is empty" >&2
+            exit 1
+          fi
+          prefix="tools-pack-mac-v1-preview-${RUNNER_OS}-arm64-"
+          {
+            echo "origin=$MAC_TOOLS_PACK_ORIGIN_KEY"
+            echo "prefix=$prefix"
+            echo "key=$prefix$MAC_TOOLS_PACK_ORIGIN_KEY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore mac_arm64 tools-pack cache
+        id: mac_arm64_tools_pack_cache_restore
+        uses: actions/cache/restore@v5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/tools-pack-cache
+          key: ${{ steps.mac_arm64_tools_pack_cache_key.outputs.key }}
+          restore-keys: |
+            ${{ steps.mac_arm64_tools_pack_cache_key.outputs.prefix }}
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -253,20 +280,21 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build preview mac artifacts
+        id: mac_arm64_tools_pack_build
+        continue-on-error: true
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          tools_pack_dir="$RUNNER_TEMP/tools-pack"
-          build_json_path="$RUNNER_TEMP/mac-tools-pack-build.json"
-          build_log_path="$RUNNER_TEMP/mac-tools-pack-build.log"
-          rm -rf "$tools_pack_dir"
-          : > "$build_log_path"
+          mkdir -p "$RUNNER_TEMP/release-build/mac_arm64"
+          rm -rf "$RUNNER_TEMP/tools-pack"
+          : > "$RUNNER_TEMP/release-build/mac_arm64/build.log"
           build_args=(
             exec tools-pack mac build
-            --dir "$tools_pack_dir"
+            --dir "$RUNNER_TEMP/tools-pack"
+            --cache-dir "$RUNNER_TEMP/tools-pack-cache"
             --namespace release-preview
             --portable
             --app-version "${{ needs.metadata.outputs.release_version }}"
@@ -275,13 +303,59 @@ jobs:
             --json
             --signed
           )
-          if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$build_log_path" >&2))"; then
-            printf '%s\n' "$build_output" | tee "$build_json_path"
+          if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$RUNNER_TEMP/release-build/mac_arm64/build.log" >&2))"; then
+            printf '%s\n' "$build_output" | tee "$RUNNER_TEMP/release-build/mac_arm64/build.json"
           else
             build_status=$?
             printf '%s\n' "$build_output"
             exit "$build_status"
           fi
+
+      - name: Retry preview mac_arm64 without restored cache
+        if: ${{ steps.mac_arm64_tools_pack_build.outcome == 'failure' }}
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/tools-pack-cache"
+          mkdir -p "$RUNNER_TEMP/release-build/mac_arm64"
+          pnpm exec tools-pack mac cleanup --dir "$RUNNER_TEMP/tools-pack" --namespace release-preview --json
+          : > "$RUNNER_TEMP/release-build/mac_arm64/build.log"
+          build_args=(
+            exec tools-pack mac build
+            --dir "$RUNNER_TEMP/tools-pack"
+            --cache-dir "$RUNNER_TEMP/tools-pack-cache"
+            --namespace release-preview
+            --portable
+            --app-version "${{ needs.metadata.outputs.release_version }}"
+            --mac-compression normal
+            --to all
+            --json
+            --signed
+          )
+          if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$RUNNER_TEMP/release-build/mac_arm64/build.log" >&2))"; then
+            printf '%s\n' "$build_output" | tee "$RUNNER_TEMP/release-build/mac_arm64/build.json"
+          else
+            build_status=$?
+            printf '%s\n' "$build_output"
+            exit "$build_status"
+          fi
+
+      - name: Delete failed mac_arm64 tools-pack cache
+        if: ${{ steps.mac_arm64_tools_pack_build.outcome == 'failure' && steps.mac_arm64_tools_pack_cache_restore.outputs.cache-matched-key != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          matched_key="${{ steps.mac_arm64_tools_pack_cache_restore.outputs.cache-matched-key }}"
+          cache_ids="$(gh cache list --key "$matched_key" --limit 100 --json id,key,ref --jq ".[] | select(.key == \"$matched_key\") | .id")"
+          count=0
+          while IFS= read -r cache_id; do
+            if [ -n "$cache_id" ]; then
+              gh cache delete "$cache_id"
+              count=$((count + 1))
+            fi
+          done <<< "$cache_ids"
+          echo "deletedFailedCacheKey=$matched_key count=$count"
 
       - name: Capture mac framework diagnostics
         if: ${{ failure() }}
@@ -353,33 +427,85 @@ jobs:
         with:
           name: open-design-preview-mac-build-diagnostics
           path: |
-            ${{ runner.temp }}/mac-tools-pack-build.log
-            ${{ runner.temp }}/mac-tools-pack-build.json
+            ${{ runner.temp }}/release-build/mac_arm64/build.log
+            ${{ runner.temp }}/release-build/mac_arm64/build.json
             ${{ runner.temp }}/mac-framework-diagnostics.txt
           if-no-files-found: warn
 
       - name: Smoke preview mac packaged runtime
         working-directory: e2e
         env:
-          OD_PACKAGED_E2E_BUILD_JSON_PATH: ${{ runner.temp }}/mac-tools-pack-build.json
-          OD_PACKAGED_E2E_BUILD_LOG_PATH: ${{ runner.temp }}/mac-tools-pack-build.log
+          OD_PACKAGED_E2E_BUILD_JSON_PATH: ${{ runner.temp }}/release-build/mac_arm64/build.json
+          OD_PACKAGED_E2E_BUILD_LOG_PATH: ${{ runner.temp }}/release-build/mac_arm64/build.log
           OD_PACKAGED_E2E_MAC: "1"
           OD_PACKAGED_E2E_NAMESPACE: release-preview
           OD_PACKAGED_E2E_RELEASE_CHANNEL: preview
           OD_PACKAGED_E2E_RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-          OD_PACKAGED_E2E_REPORT_DIR: ${{ runner.temp }}/release-report/mac
+          OD_PACKAGED_E2E_REPORT_DIR: ${{ runner.temp }}/release-report/mac_arm64
           OD_PACKAGED_E2E_TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
         run: |
           set -euo pipefail
           pnpm exec tsx scripts/release-smoke.ts mac specs/mac.spec.ts
+
+      - name: Write mac_arm64 release report
+        if: ${{ always() }}
+        env:
+          BUILD_JSON_PATH: ${{ runner.temp }}/release-build/mac_arm64/build.json
+          BUILD_LOG_PATH: ${{ runner.temp }}/release-build/mac_arm64/build.log
+          RELEASE_BUILD_TARGET: all
+          RELEASE_CHANNEL: preview
+          RELEASE_NAMESPACE: release-preview
+          RELEASE_REPORT_DIR: ${{ runner.temp }}/release-report/mac_arm64
+          RELEASE_REPORT_JSON_PATH: ${{ runner.temp }}/release-report/mac_arm64/report.json
+          RELEASE_REPORT_SUMMARY_PATH: ${{ runner.temp }}/release-report/mac_arm64/summary.md
+          RELEASE_SMOKE_MODE: core
+          RELEASE_TARGET: mac_arm64
+          RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
+          REPORT_TITLE: mac_arm64 preview build
+        run: pnpm exec tools-release write-report
+
+      - name: Publish mac_arm64 report summary
+        if: ${{ always() }}
+        run: cat "${{ runner.temp }}/release-report/mac_arm64/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload mac e2e spec report
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: open-design-preview-mac-e2e-report
-          path: ${{ runner.temp }}/release-report/mac
+          path: ${{ runner.temp }}/release-report/mac_arm64
           if-no-files-found: warn
+
+      - name: Prune mac_arm64 tools-pack cache
+        continue-on-error: true
+        run: bash .github/scripts/release/cache/mac.sh
+
+      - name: Save mac_arm64 tools-pack cache
+        if: ${{ success() && (steps.mac_arm64_tools_pack_cache_restore.outputs.cache-hit != 'true' || steps.mac_arm64_tools_pack_build.outcome == 'failure') }}
+        uses: actions/cache/save@v5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/tools-pack-cache
+          key: ${{ steps.mac_arm64_tools_pack_cache_key.outputs.key }}
+
+      - name: Retain recent mac_arm64 tools-pack caches
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prefix="${{ steps.mac_arm64_tools_pack_cache_key.outputs.prefix }}"
+          keep=3
+          cache_ids="$(gh cache list --key "$prefix" --sort created_at --order desc --limit 100 --json id,key,createdAt --jq ".[$keep:] | .[].id")"
+          count=0
+          while IFS= read -r cache_id; do
+            if [ -n "$cache_id" ]; then
+              gh cache delete "$cache_id"
+              count=$((count + 1))
+            fi
+          done <<< "$cache_ids"
+          echo "actionsCachePrefix=$prefix deleted=$count"
 
       - name: Prepare mac preview assets
         env:
@@ -404,8 +530,8 @@ jobs:
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}/release-platform-manifests
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}/release-platform-outputs/mac_arm64.json
           RELEASE_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
-          RELEASE_REPORT_DIR: ${{ runner.temp }}/release-report/mac
-          RELEASE_REPORT_ZIP_PATH: ${{ runner.temp }}/release-report/mac-report.zip
+          RELEASE_REPORT_DIR: ${{ runner.temp }}/release-report/mac_arm64
+          RELEASE_REPORT_ZIP_PATH: ${{ runner.temp }}/release-report/mac_arm64-report.zip
           RELEASE_SIGNED: "true"
           RELEASE_STORAGE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_RELEASES_AK }}
           RELEASE_STORAGE_BUCKET: ${{ secrets.CLOUDFLARE_R2_RELEASES_BUCKET }}
@@ -447,6 +573,33 @@ jobs:
         with:
           node-version: 24
 
+      - name: Compute mac_x64 tools-pack cache key
+        id: mac_x64_tools_pack_cache_key
+        env:
+          MAC_TOOLS_PACK_ORIGIN_KEY: ${{ hashFiles('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/daemon/**', 'apps/web/**', 'apps/desktop/**', 'apps/packaged/**', 'packages/agui-adapter/**', 'packages/contracts/**', 'packages/plugin-runtime/**', 'packages/sidecar-proto/**', 'packages/sidecar/**', 'packages/platform/**', 'tools/pack/bin/**', 'tools/pack/package.json', 'tools/pack/resources/**', 'tools/pack/src/**', 'tools/pack/tsconfig.json', 'assets/community-pets/**', 'assets/frames/**', 'craft/**', 'design-systems/**', 'design-templates/**', 'plugins/_official/**', 'plugins/registry/**', 'prompt-templates/**', 'skills/**', '.github/workflows/release-preview.yml', '.github/scripts/release/cache/mac.sh') }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MAC_TOOLS_PACK_ORIGIN_KEY" ]; then
+            echo "mac_x64 tools-pack cache origin key is empty" >&2
+            exit 1
+          fi
+          prefix="tools-pack-mac-v1-preview-${RUNNER_OS}-x64-"
+          {
+            echo "origin=$MAC_TOOLS_PACK_ORIGIN_KEY"
+            echo "prefix=$prefix"
+            echo "key=$prefix$MAC_TOOLS_PACK_ORIGIN_KEY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore mac_x64 tools-pack cache
+        id: mac_x64_tools_pack_cache_restore
+        uses: actions/cache/restore@v5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/tools-pack-cache
+          key: ${{ steps.mac_x64_tools_pack_cache_key.outputs.key }}
+          restore-keys: |
+            ${{ steps.mac_x64_tools_pack_cache_key.outputs.prefix }}
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -466,21 +619,134 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build preview mac intel artifacts
+        id: mac_x64_tools_pack_build
+        continue-on-error: true
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          pnpm exec tools-pack mac build \
-            --dir "$RUNNER_TEMP/tools-pack" \
-            --namespace release-preview-intel \
-            --portable \
-            --app-version "${{ needs.metadata.outputs.release_version }}" \
-            --mac-compression normal \
-            --to all \
-            --json \
+          mkdir -p "$RUNNER_TEMP/release-build/mac_x64"
+          rm -rf "$RUNNER_TEMP/tools-pack"
+          : > "$RUNNER_TEMP/release-build/mac_x64/build.log"
+          build_args=(
+            exec tools-pack mac build
+            --dir "$RUNNER_TEMP/tools-pack"
+            --cache-dir "$RUNNER_TEMP/tools-pack-cache"
+            --namespace release-preview-intel
+            --portable
+            --app-version "${{ needs.metadata.outputs.release_version }}"
+            --mac-compression normal
+            --to all
+            --json
             --signed
+          )
+          if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$RUNNER_TEMP/release-build/mac_x64/build.log" >&2))"; then
+            printf '%s\n' "$build_output" | tee "$RUNNER_TEMP/release-build/mac_x64/build.json"
+          else
+            build_status=$?
+            printf '%s\n' "$build_output"
+            exit "$build_status"
+          fi
+
+      - name: Retry preview mac_x64 without restored cache
+        if: ${{ steps.mac_x64_tools_pack_build.outcome == 'failure' }}
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/tools-pack-cache"
+          mkdir -p "$RUNNER_TEMP/release-build/mac_x64"
+          pnpm exec tools-pack mac cleanup --dir "$RUNNER_TEMP/tools-pack" --namespace release-preview-intel --json
+          : > "$RUNNER_TEMP/release-build/mac_x64/build.log"
+          build_args=(
+            exec tools-pack mac build
+            --dir "$RUNNER_TEMP/tools-pack"
+            --cache-dir "$RUNNER_TEMP/tools-pack-cache"
+            --namespace release-preview-intel
+            --portable
+            --app-version "${{ needs.metadata.outputs.release_version }}"
+            --mac-compression normal
+            --to all
+            --json
+            --signed
+          )
+          if build_output="$(pnpm "${build_args[@]}" 2> >(tee -a "$RUNNER_TEMP/release-build/mac_x64/build.log" >&2))"; then
+            printf '%s\n' "$build_output" | tee "$RUNNER_TEMP/release-build/mac_x64/build.json"
+          else
+            build_status=$?
+            printf '%s\n' "$build_output"
+            exit "$build_status"
+          fi
+
+      - name: Delete failed mac_x64 tools-pack cache
+        if: ${{ steps.mac_x64_tools_pack_build.outcome == 'failure' && steps.mac_x64_tools_pack_cache_restore.outputs.cache-matched-key != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          matched_key="${{ steps.mac_x64_tools_pack_cache_restore.outputs.cache-matched-key }}"
+          cache_ids="$(gh cache list --key "$matched_key" --limit 100 --json id,key,ref --jq ".[] | select(.key == \"$matched_key\") | .id")"
+          count=0
+          while IFS= read -r cache_id; do
+            if [ -n "$cache_id" ]; then
+              gh cache delete "$cache_id"
+              count=$((count + 1))
+            fi
+          done <<< "$cache_ids"
+          echo "deletedFailedCacheKey=$matched_key count=$count"
+
+      - name: Write mac_x64 release report
+        if: ${{ always() }}
+        env:
+          BUILD_JSON_PATH: ${{ runner.temp }}/release-build/mac_x64/build.json
+          BUILD_LOG_PATH: ${{ runner.temp }}/release-build/mac_x64/build.log
+          RELEASE_BUILD_TARGET: all
+          RELEASE_CHANNEL: preview
+          RELEASE_NAMESPACE: release-preview-intel
+          RELEASE_REPORT_DIR: ${{ runner.temp }}/release-report/mac_x64
+          RELEASE_REPORT_JSON_PATH: ${{ runner.temp }}/release-report/mac_x64/report.json
+          RELEASE_REPORT_SUMMARY_PATH: ${{ runner.temp }}/release-report/mac_x64/summary.md
+          RELEASE_SMOKE_MODE: skip
+          RELEASE_TARGET: mac_x64
+          RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
+          REPORT_TITLE: mac_x64 preview build
+        run: pnpm exec tools-release write-report
+
+      - name: Publish mac_x64 report summary
+        if: ${{ always() }}
+        run: cat "${{ runner.temp }}/release-report/mac_x64/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prune mac_x64 tools-pack cache
+        continue-on-error: true
+        run: bash .github/scripts/release/cache/mac.sh
+
+      - name: Save mac_x64 tools-pack cache
+        if: ${{ success() && (steps.mac_x64_tools_pack_cache_restore.outputs.cache-hit != 'true' || steps.mac_x64_tools_pack_build.outcome == 'failure') }}
+        uses: actions/cache/save@v5
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/tools-pack-cache
+          key: ${{ steps.mac_x64_tools_pack_cache_key.outputs.key }}
+
+      - name: Retain recent mac_x64 tools-pack caches
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prefix="${{ steps.mac_x64_tools_pack_cache_key.outputs.prefix }}"
+          keep=3
+          cache_ids="$(gh cache list --key "$prefix" --sort created_at --order desc --limit 100 --json id,key,createdAt --jq ".[$keep:] | .[].id")"
+          count=0
+          while IFS= read -r cache_id; do
+            if [ -n "$cache_id" ]; then
+              gh cache delete "$cache_id"
+              count=$((count + 1))
+            fi
+          done <<< "$cache_ids"
+          echo "actionsCachePrefix=$prefix deleted=$count"
 
       - name: Prepare mac intel preview assets
         env:
@@ -504,6 +770,8 @@ jobs:
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}/release-platform-manifests
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}/release-platform-outputs/mac_x64.json
           RELEASE_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
+          RELEASE_REPORT_DIR: ${{ runner.temp }}/release-report/mac_x64
+          RELEASE_REPORT_ZIP_PATH: ${{ runner.temp }}/release-report/mac_x64-report.zip
           RELEASE_SIGNED: "true"
           RELEASE_STORAGE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_RELEASES_AK }}
           RELEASE_STORAGE_BUCKET: ${{ secrets.CLOUDFLARE_R2_RELEASES_BUCKET }}
@@ -556,7 +824,7 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:WIN_TOOLS_PACK_ORIGIN_KEY)) {
             throw "Windows tools-pack cache origin key is empty"
           }
-          $prefix = "tools-pack-win-v7-preview-$env:RUNNER_OS-"
+          $prefix = "tools-pack-win-v1-preview-$env:RUNNER_OS-"
           "origin=$env:WIN_TOOLS_PACK_ORIGIN_KEY" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "prefix=$prefix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "key=$prefix$env:WIN_TOOLS_PACK_ORIGIN_KEY" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -589,7 +857,9 @@ jobs:
           $ErrorActionPreference = "Stop"
           $toolsPackDir = "${{ runner.temp }}/tools-pack"
           $cacheDir = "${{ runner.temp }}/tools-pack-cache"
-          $buildJsonPath = Join-Path $env:RUNNER_TEMP "windows-tools-pack-build.json"
+          $buildJsonPath = Join-Path $env:RUNNER_TEMP "release-build\win_x64\build.json"
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $buildJsonPath) | Out-Null
+          pnpm.cmd exec tools-pack win cleanup --dir $toolsPackDir --namespace release-preview-win --json
           $buildArgs = @(
             "exec", "tools-pack", "win", "build",
             "--dir", $toolsPackDir,
@@ -610,8 +880,10 @@ jobs:
             Write-Warning "Windows tools-pack cached build failed; removing restored cache and retrying without cache."
             "cache_failed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $cacheDir
+            pnpm.cmd exec tools-pack win cleanup --dir $toolsPackDir --namespace release-preview-win --json
             $buildOutput = pnpm exec tools-pack win build `
               --dir $toolsPackDir `
+              --cache-dir $cacheDir `
               --namespace release-preview-win `
               --portable `
               --app-version "${{ needs.metadata.outputs.release_version }}" `
@@ -622,6 +894,8 @@ jobs:
             }
           }
           $buildOutput | Set-Content -Path $buildJsonPath
+          $build = $buildOutput | ConvertFrom-Json
+          pnpm.cmd exec tools-pack win validate-payload --namespace release-preview-win --payload-path $build.payloadPath --expected-version "${{ needs.metadata.outputs.release_version }}" --json
           $buildOutput
 
       - name: Delete failed Windows tools-pack cache
@@ -641,13 +915,14 @@ jobs:
       - name: Smoke preview windows packaged runtime
         working-directory: e2e
         env:
-          OD_PACKAGED_E2E_BUILD_JSON_PATH: ${{ runner.temp }}/windows-tools-pack-build.json
+          OD_PACKAGED_E2E_BUILD_JSON_PATH: ${{ runner.temp }}\release-build\win_x64\build.json
           OD_PACKAGED_E2E_WIN: "1"
           OD_PACKAGED_E2E_NAMESPACE: release-preview-win
           OD_PACKAGED_E2E_RELEASE_CHANNEL: preview
           OD_PACKAGED_E2E_RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
-          OD_PACKAGED_E2E_REPORT_DIR: ${{ runner.temp }}/release-report/win
+          OD_PACKAGED_E2E_REPORT_DIR: ${{ runner.temp }}\release-report\win_x64
           OD_PACKAGED_E2E_TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
+          OD_PACKAGED_E2E_WIN_SMOKE_PROFILE: core
         run: |
           $ErrorActionPreference = "Stop"
           pnpm exec tsx scripts/release-smoke.ts win specs/win.spec.ts
@@ -655,12 +930,33 @@ jobs:
             exit $LASTEXITCODE
           }
 
+      - name: Write win_x64 release report
+        if: ${{ always() }}
+        env:
+          BUILD_JSON_PATH: ${{ runner.temp }}\release-build\win_x64\build.json
+          RELEASE_BUILD_TARGET: all
+          RELEASE_CHANNEL: preview
+          RELEASE_NAMESPACE: release-preview-win
+          RELEASE_REPORT_DIR: ${{ runner.temp }}\release-report\win_x64
+          RELEASE_REPORT_JSON_PATH: ${{ runner.temp }}\release-report\win_x64\report.json
+          RELEASE_REPORT_SUMMARY_PATH: ${{ runner.temp }}\release-report\win_x64\summary.md
+          RELEASE_SMOKE_MODE: core
+          RELEASE_TARGET: win_x64
+          RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
+          REPORT_TITLE: win_x64 preview build
+        run: pnpm exec tools-release write-report
+
+      - name: Publish win_x64 report summary
+        if: ${{ always() }}
+        shell: pwsh
+        run: Get-Content "${{ runner.temp }}\release-report\win_x64\summary.md" | Add-Content $env:GITHUB_STEP_SUMMARY
+
       - name: Upload windows e2e spec report
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: open-design-preview-win-e2e-report
-          path: ${{ runner.temp }}/release-report/win
+          path: ${{ runner.temp }}\release-report\win_x64
           if-no-files-found: warn
 
       - name: Prune Windows tools-pack cache
@@ -698,7 +994,7 @@ jobs:
           tools\release\scripts\prepare-platform-assets.ps1 `
             -ReleaseTarget win_x64 `
             -ReleaseAssetsDir "${{ runner.temp }}\release-assets\win_x64" `
-            -BuildJsonPath "${{ runner.temp }}\windows-tools-pack-build.json" `
+            -BuildJsonPath "${{ runner.temp }}\release-build\win_x64\build.json" `
             -ReleaseNamespace release-preview-win `
             -ReleaseVersion "${{ needs.metadata.outputs.release_version }}" `
             -ReleaseAssetSuffix "" `
@@ -715,7 +1011,7 @@ jobs:
           RELEASE_MANIFEST_DIR: ${{ runner.temp }}\release-platform-manifests
           RELEASE_OUTPUTS_PATH: ${{ runner.temp }}\release-platform-outputs\win_x64.json
           RELEASE_PUBLIC_ORIGIN: ${{ vars.CLOUDFLARE_R2_RELEASES_PUBLIC_ORIGIN }}
-          RELEASE_REPORT_DIR: ${{ runner.temp }}\release-report\win
+          RELEASE_REPORT_DIR: ${{ runner.temp }}\release-report\win_x64
           RELEASE_SIGNED: "false"
           RELEASE_STORAGE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_RELEASES_AK }}
           RELEASE_STORAGE_BUCKET: ${{ secrets.CLOUDFLARE_R2_RELEASES_BUCKET }}
