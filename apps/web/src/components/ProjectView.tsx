@@ -2984,7 +2984,9 @@ export function ProjectView({
                   computeTraceObjectFiles(
                     beforeFileNames,
                     nextFiles,
-                    extractTouchedFilePathsFromEvents(message.events),
+                    extractTouchedFilePathsFromEvents(
+                      needsFullReplay ? replayedEvents : message.events,
+                    ),
                   ) ?? [],
                   recoveredExistingArtifact,
                 );
