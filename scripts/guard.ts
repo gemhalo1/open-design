@@ -94,6 +94,10 @@ const residualAllowedExactPaths = new Set([
   // runtime deps (puppeteer-core + a headless Chrome + ffmpeg) are provided by
   // the CI environment and never pulled into the daemon/web TS build or bundle.
   "scripts/bake-plugin-previews.mjs",
+  // clone-website skill capture engine. Skills run in the user's agent cwd with
+  // no TS build step, so this ships as a directly-runnable .mjs; it imports
+  // Playwright at runtime to render a URL and snapshot it into editable HTML.
+  "skills/clone-website/assets/capture.mjs",
   "scripts/scaffold-html-ppt-skills.mjs",
   "scripts/sync-hyperframes-skill.mjs",
   "scripts/verify-media-models.mjs",
