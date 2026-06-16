@@ -378,6 +378,15 @@ const activeLoginProcs = new Map<number, ChildProcess>();
 const LOGIN_STARTUP_GRACE_MS = 250;
 const LOGIN_ACTIVATION_GRACE_MS = 10_000;
 const LOGIN_CANCEL_KILL_GRACE_MS = 2000;
+
+// How long the login request blocks waiting for the direct attempt's activation
+// URL before returning and letting the UI poll /status. Overridable so tests can
+// exercise the slow-direct path without a multi-second wait. Never used to kill
+// the direct attempt — see waitForLoginActivationSteadyState.
+function resolveLoginActivationGraceMs(baseEnv: NodeJS.ProcessEnv): number {
+  const raw = Number(baseEnv.OD_AMR_LOGIN_ACTIVATION_GRACE_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : LOGIN_ACTIVATION_GRACE_MS;
+}
 // Cap the captured buffers: the activation URL + code land in the first handful
 // of stdout lines, so a few KB is plenty and bounds memory if vela stays chatty.
 const LOGIN_CAPTURE_LIMIT_BYTES = 8192;
@@ -532,9 +541,20 @@ async function waitForImmediateLoginFailure(child: ChildProcess): Promise<void> 
   );
 }
 
+// Wait for the direct `vela login` attempt to either print its device-auth
+// activation URL (healthy — the direct path works even on the transparent-proxy
+// networks this fix targets, just possibly slowly) or exit/error BEFORE printing
+// it (a real failure the caller can retry through the IPv4 proxy). Crucially, a
+// merely slow-but-still-running direct login is NOT killed: once the grace
+// elapses we simply stop blocking the request and let it keep running (the UI
+// polls /status). Killing a slow-healthy direct login and re-routing it through
+// the proxy is exactly the regression this avoids — on a corporate transparent
+// proxy the proxy hop loses the client IP and the upstream 502s. Only an
+// explicit pre-activation exit/error triggers the proxy fallback.
 async function waitForLoginActivationSteadyState(
   child: ChildProcess,
   capture: VelaLoginActivationCapture,
+  graceMs: number,
 ): Promise<void> {
   if (capture.activation.activationUrl) return;
   if (!isChildRunning(child)) {
@@ -550,7 +570,7 @@ async function waitForLoginActivationSteadyState(
     | { kind: 'activated' }
     | { kind: 'exit'; code: number | null; signal: NodeJS.Signals | null }
     | { kind: 'error'; error: Error }
-    | { kind: 'timeout' }
+    | { kind: 'still-running' }
   >((resolve) => {
     let settled = false;
     let poll: NodeJS.Timeout | null = null;
@@ -560,7 +580,7 @@ async function waitForLoginActivationSteadyState(
         | { kind: 'activated' }
         | { kind: 'exit'; code: number | null; signal: NodeJS.Signals | null }
         | { kind: 'error'; error: Error }
-        | { kind: 'timeout' },
+        | { kind: 'still-running' },
     ) => {
       if (settled) return;
       settled = true;
@@ -571,26 +591,19 @@ async function waitForLoginActivationSteadyState(
     poll = setInterval(() => {
       if (capture.activation.activationUrl) finish({ kind: 'activated' });
     }, 50);
-    timer = setTimeout(
-      () => finish({ kind: 'timeout' }),
-      LOGIN_ACTIVATION_GRACE_MS,
-    );
+    timer = setTimeout(() => finish({ kind: 'still-running' }), graceMs);
+    timer.unref?.();
     child.once('exit', (code, signal) => finish({ kind: 'exit', code, signal }));
     child.once('error', (error) => finish({ kind: 'error', error }));
     if (capture.activation.activationUrl) finish({ kind: 'activated' });
   });
 
   if (result.kind === 'activated') return;
+  // Slow but still alive: leave the direct attempt running and let the request
+  // return — do NOT kill it or fall back to the proxy.
+  if (result.kind === 'still-running') return;
   if (result.kind === 'error') {
     throw new Error(`vela login failed to start: ${result.error.message}`);
-  }
-  if (result.kind === 'timeout') {
-    try {
-      if (isChildRunning(child)) child.kill('SIGTERM');
-    } catch {
-      // Best effort; the caller will surface the timeout and may retry via proxy.
-    }
-    throw new Error('vela login did not reach device authorization in time');
   }
   if (result.code === 0) return;
   const detail = (capture.stderr || capture.stdout).trim();
@@ -651,7 +664,11 @@ export async function spawnVelaLogin(
   const activationCapture = beginLoginActivationCapture(child);
   await waitForImmediateLoginFailure(child);
   if (deps.waitForActivation) {
-    await waitForLoginActivationSteadyState(child, activationCapture);
+    await waitForLoginActivationSteadyState(
+      child,
+      activationCapture,
+      resolveLoginActivationGraceMs(baseEnv),
+    );
   }
   // vela opens the browser itself (OpenBrowser in apps/cli/.../login.go), but it
   // also prints the activation URL + code to stdout first and warns on stderr if

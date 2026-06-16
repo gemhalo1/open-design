@@ -307,9 +307,6 @@ function loginAndExit() {
   if (env.FAKE_VELA_ENV_DUMP_PATH) {
     writeFileSync(env.FAKE_VELA_ENV_DUMP_PATH, JSON.stringify(env, null, 2), 'utf8');
   }
-  stdout.write('Open this URL to continue:\n');
-  stdout.write('https://fake-vela.example/cli/activate?deviceId=fake-device\n\n');
-  stdout.write('Code: FAKE-CODE\n');
   const profile = (env.VELA_PROFILE || 'prod').trim() || 'prod';
   const allowed = new Set(['prod', 'test', 'local']);
   if (!allowed.has(profile)) {
@@ -344,8 +341,20 @@ function loginAndExit() {
     stdout.write(`Login successful for ${userEmail}.\n`);
     exit(0);
   };
-  if (delayMs > 0) setTimeout(finish, delayMs);
-  else finish();
+  // Print the device-auth activation block (what the daemon parses to detect a
+  // healthy direct attempt), then write config. FAKE_VELA_LOGIN_ACTIVATION_DELAY_MS
+  // models a direct path that is healthy but slow to reach activation, so tests
+  // can assert it is preserved (not killed + re-routed through the proxy).
+  const emitActivation = () => {
+    stdout.write('Open this URL to continue:\n');
+    stdout.write('https://fake-vela.example/cli/activate?deviceId=fake-device\n\n');
+    stdout.write('Code: FAKE-CODE\n');
+    if (delayMs > 0) setTimeout(finish, delayMs);
+    else finish();
+  };
+  const activationDelayMs = Number(env.FAKE_VELA_LOGIN_ACTIVATION_DELAY_MS) || 0;
+  if (activationDelayMs > 0) setTimeout(emitActivation, activationDelayMs);
+  else emitActivation();
 }
 
 if (argv[2] === 'login') {
