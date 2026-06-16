@@ -156,6 +156,7 @@ describe('LibrarySection lazy-mount contract', () => {
     fetchLibraryAssets.mockReset().mockResolvedValue([
       makeAsset({ id: 'img-1', kind: 'image', sourceTitle: 'A photo' }),
       makeAsset({ id: 'html-1', kind: 'html', sourceTitle: 'A page' }),
+      makeAsset({ id: 'ds-1', kind: 'design-system', sourceTitle: 'A design system' }),
     ]);
     fetchLibraryAsset.mockReset().mockResolvedValue(null);
     // The SSE effect's `new EventSource` is wrapped in try/catch; a no-op stub
@@ -173,7 +174,7 @@ describe('LibrarySection lazy-mount contract', () => {
     render(<LibrarySection active onOpenProject={() => {}} />);
     await screen.findByText('A photo');
     // Both cards are present as box-select targets even though nothing is in view.
-    expect(document.querySelectorAll('[data-asset-card]')).toHaveLength(2);
+    expect(document.querySelectorAll('[data-asset-card]')).toHaveLength(3);
     document.querySelectorAll('[data-asset-card]').forEach((el) => {
       expect((el as HTMLElement).dataset.assetId).toBeTruthy();
     });
@@ -190,6 +191,17 @@ describe('LibrarySection lazy-mount contract', () => {
       const img = document.querySelector('img');
       expect(img).not.toBeNull();
       expect(img?.getAttribute('src')).toBe('/raw/img-1');
+    });
+  });
+
+  it('mounts html and design-system iframe thumbnails once cards are in view', async () => {
+    lazyInView = true;
+    render(<LibrarySection active onOpenProject={() => {}} />);
+    await screen.findByText('A design system');
+    await waitFor(() => {
+      const srcs = [...document.querySelectorAll('iframe')].map((frame) => frame.getAttribute('src'));
+      expect(srcs).toContain('/raw/html-1');
+      expect(srcs).toContain('/raw/ds-1');
     });
   });
 });

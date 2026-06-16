@@ -53,6 +53,7 @@ describe('LibraryPicker debounced search', () => {
     fetchLibraryAssets.mockReset().mockResolvedValue([
       makeAsset({ id: 'alpha', sourceTitle: 'Alpha' }),
       makeAsset({ id: 'beta', sourceTitle: 'Beta' }),
+      makeAsset({ id: 'brand-system', kind: 'design-system', sourceTitle: 'Acme Brand System' }),
     ]);
   });
 
@@ -71,6 +72,17 @@ describe('LibraryPicker debounced search', () => {
     expect(screen.getByText('Alpha')).toBeTruthy();
     // The picker fetches the catalog exactly once — search is client-side.
     expect(fetchLibraryAssets).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes design-system assets as their own picker kind', async () => {
+    render(<LibraryPicker onClose={() => {}} onConfirm={() => {}} />);
+    await screen.findByText('Acme Brand System');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Brand kit' }));
+
+    expect(screen.getByText('Acme Brand System')).toBeTruthy();
+    expect(screen.queryByText('Alpha')).toBeNull();
+    expect(screen.queryByText('Beta')).toBeNull();
   });
 });
 

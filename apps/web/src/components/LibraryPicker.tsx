@@ -246,6 +246,47 @@ export function LibraryPicker({ onClose, onConfirm, title, confirmLabel }: Props
   );
 }
 
+interface PickerCardProps {
+  asset: LibraryAsset;
+  selected: boolean;
+  onToggle: (id: string) => void;
+}
+
+// One picker grid cell. Memoized so toggling one asset's selection re-renders
+// only that card, not every visible card — the whole-grid re-render was the
+// picker's biggest cost on a large Library. `onToggle` is a stable useCallback,
+// so the shallow-prop compare holds until this card's `selected` flips.
+const PickerCard = memo(function PickerCard({ asset, selected, onToggle }: PickerCardProps) {
+  return (
+    <li>
+      <button
+        type="button"
+        className={`${styles.card}${selected ? ` ${styles.cardSelected}` : ''}`}
+        onClick={() => onToggle(asset.id)}
+        aria-pressed={selected}
+        title={assetTitle(asset)}
+      >
+        <span className={styles.thumb}>
+          <AssetThumb asset={asset} />
+          <span
+            className={styles.kindBadge}
+            style={{ ['--kind-tint' as string]: kindTint(badgeKind(asset)) }}
+          >
+            <KindIcon kind={badgeKind(asset)} size={11} />
+            {kindLabel(badgeKind(asset))}
+          </span>
+          {selected ? (
+            <span className={styles.check} aria-hidden>
+              <Icon name="check" size={12} />
+            </span>
+          ) : null}
+        </span>
+        <span className={styles.label}>{assetTitle(asset)}</span>
+      </button>
+    </li>
+  );
+});
+
 // Kinds whose thumbnail pulls full bytes over the network (a grid cell loads
 // the original image/video). They mount lazily so opening the picker doesn't
 // fire one full-bytes request per asset; a kind glyph holds the box until the
@@ -255,29 +296,53 @@ const PICKER_LAZY_KINDS = new Set<string>(['image', 'video']);
 function AssetThumb({ asset }: { asset: LibraryAsset }) {
   const lazy = PICKER_LAZY_KINDS.has(asset.kind);
   const { ref, inView } = useInView<HTMLSpanElement>({ once: true, rootMargin: '240px' });
+  // Shimmer-until-loaded skeleton, mirroring the clipper's "Select images to
+  // save" picker (clipper/content.js → `.thumb.shim`): the media fades in over
+  // the skeleton on `load`. A cached image that finished before React attached
+  // `onLoad` is caught via the `complete` probe once the card mounts in view.
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) setLoaded(true);
+  }, [inView]);
+
   if (lazy) {
+    const flag = loaded ? 'true' : 'false';
     return (
       <span ref={ref} className={styles.thumbLazy}>
         {!inView ? (
           <span className={styles.glyph} aria-hidden>
             <KindIcon kind={badgeKind(asset)} size={26} />
           </span>
-        ) : asset.kind === 'image' ? (
-          <img
-            src={libraryAssetRawUrl(asset.id)}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className={styles.thumbImg}
-          />
         ) : (
-          <video
-            src={libraryAssetRawUrl(asset.id)}
-            muted
-            playsInline
-            preload="metadata"
-            className={styles.thumbImg}
-          />
+          <>
+            {loaded ? null : <span className={styles.thumbSkeleton} aria-hidden />}
+            {asset.kind === 'image' ? (
+              <img
+                ref={imgRef}
+                src={libraryAssetRawUrl(asset.id)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className={styles.thumbImg}
+                data-loaded={flag}
+                onLoad={() => setLoaded(true)}
+                onError={() => setLoaded(true)}
+              />
+            ) : (
+              <video
+                src={libraryAssetRawUrl(asset.id)}
+                muted
+                playsInline
+                preload="metadata"
+                className={styles.thumbImg}
+                data-loaded={flag}
+                onLoadedData={() => setLoaded(true)}
+                onError={() => setLoaded(true)}
+              />
+            )}
+          </>
         )}
       </span>
     );
