@@ -40,6 +40,10 @@ zoomed into view.
 - Best-effort: complex CSS (gradients beyond the first layer, blend modes, transforms,
   pseudo-elements, SVG internals) is simplified; tainted/cross-origin images that the
   clipper couldn't inline are dropped.
+- Images in any web format (SVG, WebP, GIF, AVIF, …) are supported: Figma's image API
+  only accepts PNG/JPEG, so the plugin re-encodes the rest to PNG on import (SVGs are
+  rasterized, not kept as editable vectors). The status line reports how many were
+  converted.
 
 The capture schema is documented in [`IR.md`](./IR.md) and must stay in sync with
 `clipper/capture.js`.

@@ -616,26 +616,281 @@
     };
   }
 
-  function collectComponents() {
-    const s = (selector, fallback) => {
-      const el = document.querySelector(selector);
-      if (!el) return fallback;
-      const cs = getComputedStyle(el);
-      return {
-        background: cs.backgroundColor,
-        color: cs.color,
-        border: cs.borderTopColor,
-        radius: cs.borderTopLeftRadius,
-        shadow: cs.boxShadow,
-        font: cs.fontFamily,
-      };
-    };
+  function styleProfile(el) {
+    const cs = getComputedStyle(el);
     return {
-      button: s('button, a[role="button"], input[type="submit"], .btn, [class*="button" i]', {}),
-      input: s('input, textarea, select, [contenteditable="true"]', {}),
-      card: s('article, section, .card, [class*="card" i], [class*="panel" i]', {}),
-      nav: s('nav, header', {}),
+      background: cs.backgroundColor,
+      color: cs.color,
+      border: cs.borderTopColor,
+      borderWidth: cs.borderTopWidth,
+      radius: cs.borderTopLeftRadius,
+      padX: cs.paddingLeft,
+      padY: cs.paddingTop,
+      font: cs.fontFamily,
+      weight: cs.fontWeight,
+      size: cs.fontSize,
+      transform: cs.textTransform,
+      letterSpacing: cs.letterSpacing,
+      shadow: cs.boxShadow,
     };
+  }
+
+  function isShown(cs, r) {
+    return cs && cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) !== 0 && r && r.width > 0 && r.height > 0;
+  }
+
+  // Pick the most representative primary button on the page: a visible, solidly
+  // filled control of button-ish size (prefer saturated fills, then bordered).
+  function pickButton() {
+    const sel = 'button, a[role="button"], [role="button"], input[type="submit"], input[type="button"], .btn, [class*="btn" i], [class*="button" i]';
+    let best = null;
+    let bestScore = -1;
+    for (const el of Array.from(document.querySelectorAll(sel)).slice(0, 160)) {
+      let cs;
+      let r;
+      try {
+        cs = getComputedStyle(el);
+        r = el.getBoundingClientRect();
+      } catch {
+        continue;
+      }
+      if (!isShown(cs, r) || r.width < 40 || r.height < 22 || r.height > 90) continue;
+      const bg = parseRgb(cs.backgroundColor);
+      const solid = bg && bg.a > 0.55 ? 1 : 0;
+      const sat = bg ? saturation(bg) : 0;
+      const bw = parseFloat(cs.borderTopWidth) || 0;
+      const hasBorder = parseRgb(cs.borderTopColor) && bw > 0 ? 1 : 0;
+      const score = solid * 36 + sat * 24 + hasBorder * 8 + Math.min(18, r.width / 14);
+      if (score > bestScore) {
+        bestScore = score;
+        best = el;
+      }
+    }
+    return best;
+  }
+
+  function pickFirstShown(selector) {
+    for (const el of Array.from(document.querySelectorAll(selector)).slice(0, 80)) {
+      let cs;
+      let r;
+      try {
+        cs = getComputedStyle(el);
+        r = el.getBoundingClientRect();
+      } catch {
+        continue;
+      }
+      if (isShown(cs, r)) return el;
+    }
+    return null;
+  }
+
+  // Pick a representative content card: a visible block with a real border or a
+  // shadow (plus some rounding/padding) so the kit's card mirrors the site.
+  function pickCard() {
+    const sel = 'article, section, .card, [class*="card" i], [class*="panel" i], [class*="tile" i], li';
+    let best = null;
+    let bestScore = -1;
+    for (const el of Array.from(document.querySelectorAll(sel)).slice(0, 120)) {
+      let cs;
+      let r;
+      try {
+        cs = getComputedStyle(el);
+        r = el.getBoundingClientRect();
+      } catch {
+        continue;
+      }
+      if (!isShown(cs, r) || r.width < 120 || r.height < 60 || r.width > 920) continue;
+      const bw = parseFloat(cs.borderTopWidth) || 0;
+      const hasBorder = parseRgb(cs.borderTopColor) && bw > 0 ? 1 : 0;
+      const hasShadow = cs.boxShadow && cs.boxShadow !== 'none' ? 1 : 0;
+      const radius = parseFloat(cs.borderTopLeftRadius) || 0;
+      const pad = parseFloat(cs.paddingTop) || 0;
+      if (!hasBorder && !hasShadow && radius < 4) continue;
+      const score = hasShadow * 24 + hasBorder * 16 + Math.min(12, radius) + Math.min(10, pad / 2);
+      if (score > bestScore) {
+        bestScore = score;
+        best = el;
+      }
+    }
+    return best;
+  }
+
+  function collectComponents() {
+    const profile = (el) => (el ? styleProfile(el) : {});
+    return {
+      button: profile(pickButton()),
+      input: profile(pickFirstShown('input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select')),
+      card: profile(pickCard()),
+      nav: profile(pickFirstShown('nav, header')),
+    };
+  }
+
+  function clampPx(value, min, max, fallback) {
+    const n = pxValue(value);
+    if (n == null) return fallback;
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function colorOr(value, fallback) {
+    const c = parseRgb(value);
+    return c && c.a > 0.04 ? hexOf(c) : fallback;
+  }
+
+  function weightOr(value, fallback) {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n >= 100 ? Math.max(400, Math.min(800, n)) : fallback;
+  }
+
+  function transformOr(value) {
+    return value === 'uppercase' || value === 'capitalize' ? value : 'none';
+  }
+
+  function shadowOr(value, fallback) {
+    if (!value || value === 'none') return fallback;
+    // Keep a real shadow but bound its length so a monster computed value can't
+    // bloat the saved file.
+    return String(value).slice(0, 120);
+  }
+
+  // Translate the captured component profiles into a sanitized set of "atoms"
+  // the kit and templates render with. Every site yields its own button radius,
+  // padding, border weight, shadow, weight and letter-case, so each captured
+  // design system's kit looks like THAT site — not a shared template.
+  function deriveAtoms(components, brand) {
+    const b = components.button || {};
+    const i = components.input || {};
+    const c = components.card || {};
+    const btnBgRaw = parseRgb(b.background);
+    const btnBg = btnBgRaw && btnBgRaw.a > 0.5 ? hexOf(btnBgRaw) : brand.accent;
+    const btnFg = colorOr(b.color, contrastText(btnBg));
+    return {
+      button: {
+        bg: btnBg,
+        fg: btnFg,
+        border: colorOr(b.border, btnBg),
+        borderWidth: clampPx(b.borderWidth, 0, 3, 1),
+        radius: clampPx(b.radius, 0, 26, 10),
+        padX: clampPx(b.padX, 10, 30, 18),
+        padY: clampPx(b.padY, 6, 18, 11),
+        weight: weightOr(b.weight, 600),
+        transform: transformOr(b.transform),
+        letterSpacing: b.letterSpacing && b.letterSpacing !== 'normal' ? b.letterSpacing : 'normal',
+        shadow: shadowOr(b.shadow, 'none'),
+      },
+      input: {
+        bg: colorOr(i.background, brand.surface),
+        fg: colorOr(i.color, brand.foreground),
+        border: colorOr(i.border, brand.border),
+        borderWidth: clampPx(i.borderWidth, 0, 3, 1),
+        radius: clampPx(i.radius, 0, 22, 9),
+        padX: clampPx(i.padX, 8, 22, 12),
+        padY: clampPx(i.padY, 6, 16, 10),
+        shadow: shadowOr(i.shadow, 'none'),
+      },
+      card: {
+        bg: colorOr(c.background, brand.surface),
+        border: colorOr(c.border, brand.border),
+        borderWidth: clampPx(c.borderWidth, 0, 3, 1),
+        radius: clampPx(c.radius, 0, 28, 12),
+        shadow: shadowOr(c.shadow, '0 1px 2px rgba(0,0,0,.05)'),
+        pad: clampPx(c.padX, 12, 28, 18),
+      },
+      accent: brand.accent,
+      onAccent: contrastText(brand.accent),
+    };
+  }
+
+  // srcdoc carries a full HTML document inside an attribute. Escaping only the
+  // attribute delimiter (") keeps the real image/logo URLs byte-identical so the
+  // service worker's inline pass still swaps them for data URIs; HTML5 tolerates
+  // literal <, >, & inside a double-quoted attribute value.
+  function srcdocEscape(html) {
+    return String(html).replace(/"/g, '&quot;');
+  }
+
+  // Shared CSS for every asset template: the captured atoms (button / input /
+  // card) plus palette + type, so the generated artifacts look like THIS brand.
+  function assetBase(ctx) {
+    const a = ctx.atoms;
+    return [
+      '*{box-sizing:border-box;margin:0;padding:0}',
+      'html,body{height:100%}',
+      `body{font-family:${ctx.fontBody};color:${ctx.fg};background:${ctx.bg};line-height:1.5;-webkit-font-smoothing:antialiased}`,
+      `.serif{font-family:${ctx.fontDisplay}}`,
+      'img{display:block;max-width:100%}',
+      'a{color:inherit;text-decoration:none}',
+      '.muted{color:' + ctx.muted + '}',
+      `.accbar{height:4px;width:54px;background:${ctx.accent};border-radius:2px}`,
+      `.btn{display:inline-flex;align-items:center;justify-content:center;cursor:default;background:${a.button.bg};color:${a.button.fg};border:${a.button.borderWidth}px solid ${a.button.border};border-radius:${a.button.radius}px;padding:${a.button.padY}px ${a.button.padX}px;font-weight:${a.button.weight};text-transform:${a.button.transform};letter-spacing:${a.button.letterSpacing};box-shadow:${a.button.shadow};font-size:14px}`,
+      `.btn.ghost{background:transparent;color:${ctx.ink};border-color:${ctx.border};box-shadow:none}`,
+      `.card{background:${a.card.bg};border:${a.card.borderWidth}px solid ${a.card.border};border-radius:${a.card.radius}px;box-shadow:${a.card.shadow};padding:${a.card.pad}px}`,
+      `.input{width:100%;background:${a.input.bg};color:${a.input.fg};border:${a.input.borderWidth}px solid ${a.input.border};border-radius:${a.input.radius}px;padding:${a.input.padY}px ${a.input.padX}px;font-size:14px;font-family:inherit}`,
+    ].join('');
+  }
+
+  function assetDoc(ctx, body, extra) {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${assetBase(ctx)}${extra || ''}</style></head><body>${body}</body></html>`;
+  }
+
+  function tplLanding(ctx) {
+    const links = ctx.headings.slice(0, 3).map((h) => `<a>${escapeHtml(h)}</a>`).join('');
+    const featSrc = ctx.headings.length ? ctx.headings : [ctx.title, ctx.title, ctx.title];
+    const feats = featSrc
+      .slice(0, 3)
+      .map((h) => `<div class="f"><span class="fdot"></span><h3 class="serif">${escapeHtml(h)}</h3><p class="muted">${escapeHtml(ctx.tagline)}</p></div>`)
+      .join('');
+    const hero = ctx.images[0] ? `<div class="himg"><img src="${ctx.images[0]}" alt=""></div>` : '';
+    const mark = ctx.logo ? `<img src="${ctx.logo}" alt="">` : `<span class="serif" style="color:${ctx.accent}">${ctx.initial}</span>`;
+    const extra = `.nav{display:flex;align-items:center;justify-content:space-between;padding:20px 44px;border-bottom:1px solid ${ctx.border}}.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px}.brand img{height:26px}.links{display:flex;gap:24px;color:${ctx.muted};font-size:14px}.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:34px;align-items:center;padding:60px 44px 40px}.hero h1{font-size:48px;line-height:1.04;letter-spacing:-.02em}.hero .sub{margin:18px 0 26px;color:${ctx.muted};font-size:18px;max-width:30ch}.cta{display:flex;gap:12px}.himg{aspect-ratio:4/3;border-radius:${ctx.atoms.card.radius}px;overflow:hidden;background:${ctx.surfaceMuted}}.himg img{width:100%;height:100%;object-fit:cover}.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;padding:0 44px 56px}.f .fdot{display:block;width:30px;height:30px;border-radius:8px;background:${ctx.accent};margin-bottom:12px}.f h3{font-size:17px;margin-bottom:6px}.f p{font-size:13px}`;
+    const body = `<div class="nav"><div class="brand">${mark}<span>${escapeHtml(ctx.title)}</span></div><div class="links">${links}</div><span class="btn">Get started</span></div><div class="hero"><div><h1 class="serif">${escapeHtml(ctx.title)}</h1><p class="sub">${escapeHtml(ctx.tagline)}</p><div class="cta"><span class="btn">Get started</span><span class="btn ghost">Learn more</span></div></div>${hero}</div><div class="feats">${feats}</div>`;
+    return assetDoc(ctx, body, extra);
+  }
+
+  function tplDeck(ctx) {
+    const mark = ctx.logo ? `<img src="${ctx.logo}" alt="">` : `<span class="serif" style="color:${ctx.accent}">${ctx.initial}</span>`;
+    const extra = `.slide{height:100%;display:flex;flex-direction:column;justify-content:center;padding:64px 72px;position:relative}.eye{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:${ctx.muted};margin-bottom:18px}.slide h1{font-size:60px;line-height:1.02;letter-spacing:-.02em;max-width:18ch}.slide .sub{margin-top:20px;font-size:22px;color:${ctx.muted};max-width:34ch}.foot{position:absolute;left:72px;right:72px;bottom:40px;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:${ctx.muted}}.mark{display:flex;align-items:center;gap:8px;font-weight:700}.mark img{height:22px}`;
+    const body = `<div class="slide"><div class="eye">${escapeHtml(ctx.domain || 'Design system')}</div><h1 class="serif">${escapeHtml(ctx.title)}</h1><div class="accbar" style="margin-top:24px"></div><p class="sub">${escapeHtml(ctx.tagline)}</p><div class="foot"><div class="mark">${mark}<span>${escapeHtml(ctx.title)}</span></div><div>01 / 12</div></div></div>`;
+    return assetDoc(ctx, body, extra);
+  }
+
+  function tplPoster(ctx) {
+    const mark = ctx.logo ? `<img src="${ctx.logo}" alt="">` : `<span>${ctx.initial}</span>`;
+    const extra = `.poster{height:100%;display:grid;grid-template-rows:auto 1fr auto}.pt{background:${ctx.accent};color:${ctx.onAccent};padding:28px 40px;display:flex;align-items:center;justify-content:space-between}.pt .mark{display:flex;align-items:center;gap:10px;font-weight:700}.pt img{height:26px}.pb{padding:48px 40px;display:flex;flex-direction:column;justify-content:center}.pb h1{font-size:58px;line-height:1;letter-spacing:-.02em}.pb p{margin-top:20px;font-size:20px;color:${ctx.muted};max-width:26ch}.pf{padding:22px 40px;border-top:1px solid ${ctx.border};display:flex;justify-content:space-between;font-size:13px;color:${ctx.muted}}`;
+    const body = `<div class="poster"><div class="pt"><div class="mark">${mark}<span>${escapeHtml(ctx.title)}</span></div><span>${escapeHtml(ctx.domain)}</span></div><div class="pb"><h1 class="serif">${escapeHtml(ctx.headings[0] || ctx.title)}</h1><p>${escapeHtml(ctx.tagline)}</p><div style="margin-top:30px"><span class="btn">Learn more</span></div></div><div class="pf"><span>${escapeHtml(ctx.title)}</span><span>${escapeHtml(ctx.domain)}</span></div></div>`;
+    return assetDoc(ctx, body, extra);
+  }
+
+  function tplEmail(ctx) {
+    const mark = ctx.logo ? `<img src="${ctx.logo}" alt="">` : `<span class="serif" style="color:${ctx.accent}">${ctx.initial}</span>`;
+    const extra = `body{background:${ctx.surfaceMuted}}.wrap{max-width:600px;margin:0 auto;background:${ctx.surface};min-height:100%}.eh{padding:24px 32px;border-bottom:1px solid ${ctx.border};display:flex;align-items:center;gap:10px;font-weight:700}.eh img{height:24px}.eb{padding:36px 32px}.eb h1{font-size:26px;line-height:1.2}.eb p{margin:14px 0 24px;color:${ctx.muted};font-size:15px}.ef{padding:24px 32px;border-top:1px solid ${ctx.border};color:${ctx.muted};font-size:12px;text-align:center;line-height:1.7}`;
+    const body = `<div class="wrap"><div class="eh">${mark}<span>${escapeHtml(ctx.title)}</span></div><div class="eb"><h1 class="serif">${escapeHtml(ctx.headings[0] || ctx.title)}</h1><p>${escapeHtml(ctx.tagline)}</p><span class="btn">Read more</span></div><div class="ef">${escapeHtml(ctx.domain)} — you are receiving this because you subscribed.<br>Unsubscribe · Preferences</div></div>`;
+    return assetDoc(ctx, body, extra);
+  }
+
+  function tplNewsletter(ctx) {
+    const lead = ctx.images[0] ? `<div class="lead"><img src="${ctx.images[0]}" alt=""></div>` : '';
+    const itemSrc = ctx.headings.slice(1, 4).length ? ctx.headings.slice(1, 4) : [ctx.title, ctx.title];
+    const items = itemSrc.map((h) => `<div class="it"><h4 class="serif">${escapeHtml(h)}</h4><p class="muted">${escapeHtml(ctx.tagline)}</p></div>`).join('');
+    const extra = `.wrap{max-width:680px;margin:0 auto;padding:36px 40px}.mh{text-align:center;border-bottom:3px solid ${ctx.accent};padding-bottom:16px}.mh h1{font-size:40px;letter-spacing:-.01em}.mh .d{margin-top:6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:${ctx.muted}}.lead{margin:24px 0;aspect-ratio:16/8;overflow:hidden;border-radius:${ctx.atoms.card.radius}px;background:${ctx.surfaceMuted}}.lead img{width:100%;height:100%;object-fit:cover}.lh{font-size:24px;line-height:1.2}.lp{margin:10px 0 0;color:${ctx.muted};font-size:15px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:26px;border-top:1px solid ${ctx.border};padding-top:22px}.it h4{font-size:16px;margin-bottom:6px}.it p{font-size:13px}`;
+    const body = `<div class="wrap"><div class="mh"><h1 class="serif">${escapeHtml(ctx.title)}</h1><div class="d">${escapeHtml(ctx.domain)} · Newsletter</div></div>${lead}<h2 class="serif lh">${escapeHtml(ctx.headings[0] || ctx.title)}</h2><p class="lp">${escapeHtml(ctx.tagline)}</p><div class="grid">${items}</div></div>`;
+    return assetDoc(ctx, body, extra);
+  }
+
+  function tplForm(ctx) {
+    const extra = `body{background:${ctx.surfaceMuted};display:flex;align-items:center;justify-content:center;padding:40px}.fc{width:100%;max-width:420px}.fc h1{font-size:24px;margin-bottom:4px}.fc .s{color:${ctx.muted};font-size:14px;margin-bottom:22px}.row{margin-bottom:16px}.row label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}.check{display:flex;align-items:center;gap:8px;font-size:13px;color:${ctx.muted};margin:4px 0 20px}.check i{width:16px;height:16px;border-radius:4px;background:${ctx.accent};display:inline-block;flex:none}.fc .btn{width:100%}`;
+    const body = `<div class="card fc"><h1 class="serif">Create account</h1><div class="s">${escapeHtml(ctx.tagline || ctx.title)}</div><div class="row"><label>Full name</label><input class="input" value="Ada Lovelace"></div><div class="row"><label>Email</label><input class="input" value="ada@example.com"></div><div class="check"><i></i><span>I agree to the terms</span></div><span class="btn">Create account</span></div>`;
+    return assetDoc(ctx, body, extra);
+  }
+
+  function buildAssetTemplates(ctx) {
+    return [
+      { key: 'landing', label: tr('assetLanding'), desc: tr('assetLandingDesc'), html: tplLanding(ctx) },
+      { key: 'deck', label: tr('assetDeck'), desc: tr('assetDeckDesc'), html: tplDeck(ctx) },
+      { key: 'poster', label: tr('assetPoster'), desc: tr('assetPosterDesc'), html: tplPoster(ctx) },
+      { key: 'email', label: tr('assetEmail'), desc: tr('assetEmailDesc'), html: tplEmail(ctx) },
+      { key: 'newsletter', label: tr('assetNewsletter'), desc: tr('assetNewsletterDesc'), html: tplNewsletter(ctx) },
+      { key: 'form', label: tr('assetForm'), desc: tr('assetFormDesc'), html: tplForm(ctx) },
+    ];
   }
 
   function renderHtml(data, fontFaces) {

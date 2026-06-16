@@ -90,6 +90,13 @@ Same box properties as `FRAME` but never has `children`. Emitted for leaf image 
 > The clipper emits image fills with a `url` placeholder; the clipper's service worker
 > fetches the bytes and rewrites `url` → `dataUri` before the IR is stored or downloaded.
 > The plugin only ever sees `dataUri`.
+>
+> The `dataUri` may carry any web image format the page used (PNG, JPEG, **SVG, WebP,
+> GIF, AVIF, …**). `figma.createImage()` only decodes PNG and JPEG, so the plugin UI
+> (`ui.html`, a Chromium iframe) re-encodes every non-PNG/JPEG fill to PNG — vectors
+> rasterized at 2× their box, rasters at their own pixel size — before the IR reaches
+> the main thread. A fill whose bytes can't be decoded is dropped rather than aborting
+> the import. Producers therefore do **not** need to pre-convert formats.
 
 `r`/`g`/`b`/`a` are 0–1 floats.
 
