@@ -43,7 +43,15 @@ import { commentTargetDisplayName, commentsToAttachments, simplePositionLabel } 
 import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessage';
 import { AmrGuidance } from './AmrGuidance';
 import { AmrLoginPill } from './AmrLoginPill';
+import {
+  AMR_LOGIN_STATUS_EVENT,
+  amrLoginStatusEventReason,
+} from './amrLoginPolling';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
+import {
+  fetchVelaLoginStatus,
+  type VelaLoginStatus,
+} from '../providers/daemon';
 import { RESUME_CONTINUE_PROMPT } from '../runtime/resume';
 import {
   ChatComposer,
@@ -747,6 +755,8 @@ export function ChatPane({
   const t = useT();
   const analytics = useAnalytics();
   const amrProfile = config?.agentCliEnv?.amr?.[AMR_PROFILE_ENV_KEY] ?? null;
+  const [inlineAmrLoginStatus, setInlineAmrLoginStatus] =
+    useState<VelaLoginStatus | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   // Guards the inline AMR sign-in card so a successful login auto-retries the
   // failed run exactly once (the pill's onStatusChange fires loggedIn on every
@@ -768,6 +778,25 @@ export function ChatPane({
   // shouldn't be yanked back the moment the next chunk streams in.
   const pinnedToBottomRef = useRef(true);
   const scrolledToFormRef = useRef<Set<string>>(new Set());
+  const refreshInlineAmrLoginStatus = useCallback(async () => {
+    const next = await fetchVelaLoginStatus().catch(() => null);
+    if (next) setInlineAmrLoginStatus(next);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    void refreshInlineAmrLoginStatus();
+    const onAmrLoginStatusChange = (event: Event) => {
+      const reason = amrLoginStatusEventReason(event);
+      if (reason === 'login-canceled') return;
+      void refreshInlineAmrLoginStatus();
+    };
+    window.addEventListener(AMR_LOGIN_STATUS_EVENT, onAmrLoginStatusChange);
+    return () => {
+      window.removeEventListener(AMR_LOGIN_STATUS_EVENT, onAmrLoginStatusChange);
+    };
+  }, [refreshInlineAmrLoginStatus]);
+
   // "Anchor the just-sent turn to the top" (ChatGPT-style). On send we pin
   // the user's message to the top of the viewport and let the reply stream
   // below it instead of following the bottom. `pending` is armed by the
@@ -864,6 +893,33 @@ export function ChatPane({
   const runFailureUi = retryAssistant
     ? resolveRunFailureUi(failedRunErrorEvent?.code, retryAssistant.agentId)
     : null;
+  const hasInlineAmrAuthorizeFailure = Boolean(
+    retryAssistant && onRetry && runFailureUi?.primaryAction === 'authorize',
+  );
+  useEffect(() => {
+    if (!hasInlineAmrAuthorizeFailure || !retryAssistant || !onRetry) return;
+    let stopped = false;
+    const retryIfSignedIn = async () => {
+      const next = await refreshInlineAmrLoginStatus();
+      if (stopped || !next?.loggedIn) return;
+      if (amrAuthRetriedRef.current === retryAssistant.id) return;
+      amrAuthRetriedRef.current = retryAssistant.id;
+      onRetry(retryAssistant);
+    };
+    void retryIfSignedIn();
+    const interval = window.setInterval(() => {
+      void retryIfSignedIn();
+    }, 500);
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    hasInlineAmrAuthorizeFailure,
+    onRetry,
+    refreshInlineAmrLoginStatus,
+    retryAssistant,
+  ]);
   // Offer Continue (resume) when the failed run is resumable AND the active
   // agent still matches the agent that produced it. The daemon stores a
   // resumable session per (conversation, agent); after an agent switch the new
@@ -2000,6 +2056,7 @@ export function ChatPane({
                               className="chat-error-amr-login"
                               signInLabel={t('chat.amrError.authorizeCta')}
                               amrEntrySourceDetail="chat_error_authorize_retry"
+                              initialStatus={inlineAmrLoginStatus}
                               hideSignedOutStatus
                               revealPendingCancelAction
                               onStatusChange={(loginStatus) => {

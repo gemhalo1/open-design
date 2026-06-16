@@ -9,13 +9,15 @@
  * AmrLoginPill.test.tsx; here we only assert ChatPane's wiring.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { forwardRef } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { forwardRef, useEffect } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatPane } from '../../src/components/ChatPane';
 import type { AppConfig, ChatMessage } from '../../src/types';
 import type { VelaLoginStatus } from '../../src/providers/daemon';
+
+const fetchVelaLoginStatusMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../src/i18n', () => ({
   useT: () => (key: string) => key,
@@ -31,20 +33,29 @@ vi.mock('../../src/components/ChatComposer', () => ({
   ChatComposer: forwardRef((_props, _ref) => <div data-testid="composer" />),
 }));
 
+vi.mock('../../src/providers/daemon', () => ({
+  fetchVelaLoginStatus: fetchVelaLoginStatusMock,
+}));
+
 // Capture the props ChatPane hands the inline pill, and expose a button that
 // lets the test drive the login-status callback.
 let lastPillProps: {
   signInLabel?: string;
   amrEntrySourceDetail?: string;
+  initialStatus?: VelaLoginStatus | null;
   onStatusChange?: (s: VelaLoginStatus | null) => void;
 } | null = null;
 vi.mock('../../src/components/AmrLoginPill', () => ({
   AmrLoginPill: (props: {
     signInLabel?: string;
     amrEntrySourceDetail?: string;
+    initialStatus?: VelaLoginStatus | null;
     onStatusChange?: (s: VelaLoginStatus | null) => void;
   }) => {
     lastPillProps = props;
+    useEffect(() => {
+      props.onStatusChange?.(props.initialStatus ?? null);
+    }, [props.initialStatus, props.onStatusChange]);
     return <div data-testid="amr-login-pill">{props.signInLabel}</div>;
   },
 }));
@@ -53,6 +64,15 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   lastPillProps = null;
+});
+
+beforeEach(() => {
+  fetchVelaLoginStatusMock.mockResolvedValue({
+    loggedIn: false,
+    profile: 'prod',
+    user: null,
+    configPath: '',
+  });
 });
 
 function amrAuthFailedMessage(): ChatMessage {
@@ -139,5 +159,17 @@ describe('ChatPane inline AMR auth', () => {
     });
 
     expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('retries promptly when the shared AMR status refresh reports signed in', async () => {
+    fetchVelaLoginStatusMock.mockResolvedValue(signedIn);
+    const onRetry = vi.fn();
+    renderChat(onRetry);
+
+    await waitFor(() => {
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+    expect(lastPillProps?.initialStatus).toMatchObject({ loggedIn: true });
+    expect(onRetry.mock.calls[0]![0]).toMatchObject({ id: 'msg-amr-auth' });
   });
 });
