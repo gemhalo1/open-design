@@ -92,6 +92,10 @@ function parseBetaMetadataJson(value: string): ParsedBetaMetadata {
   }
 
   const record = parsed as Record<string, unknown>;
+  // The unified release publisher stamps beta metadata.json with generic
+  // releaseVersion/releaseNumber fields, while the legacy publisher used
+  // betaVersion/betaNumber. Accept either spelling so the daily beta reader
+  // survives whichever publisher last wrote the feed.
   const betaVersion = readStringField(record, "releaseVersion") ?? readStringField(record, "betaVersion");
   const betaNumber = readNumberField(record, "releaseNumber") ?? readNumberField(record, "betaNumber");
   const baseVersion = readStringField(record, "baseVersion");
@@ -108,7 +112,7 @@ function parseBetaMetadataJson(value: string): ParsedBetaMetadata {
   }
 
   if (baseVersion == null || betaNumber == null) {
-    fail("beta metadata.json must include releaseVersion or baseVersion+releaseNumber");
+    fail("beta metadata.json must include betaVersion/releaseVersion or baseVersion+betaNumber/releaseNumber");
   }
 
   const parsedBase = parseReleaseBaseVersion(baseVersion);

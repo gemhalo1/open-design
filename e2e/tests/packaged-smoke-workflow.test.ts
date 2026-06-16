@@ -20,6 +20,7 @@ const releasePrereleaseWorkflowPath = join(workspaceRoot, ".github", "workflows"
 const releaseStableWorkflowPath = join(workspaceRoot, ".github", "workflows", "release-stable.yml");
 const releasePreviewScriptPath = join(workspaceRoot, "tools", "release", "src", "metadata", "prepare-preview.ts");
 const releaseStableScriptPath = join(workspaceRoot, "tools", "release", "src", "metadata", "prepare-stable.ts");
+const releaseBetaScriptPath = join(workspaceRoot, "tools", "release", "src", "metadata", "prepare-beta.ts");
 const releasePublishMetadataScriptPath = join(
   workspaceRoot,
   "tools",
@@ -235,67 +236,119 @@ describe("packaged smoke workflow", () => {
     expect(prereleaseWorkflow).toContain("Required when ref is not release/vX.Y.Z");
   });
 
-  it("[P2] lets stable release dispatch use an explicit version when ref is not a release branch", async () => {
+  it("[P2] requires stable release dispatch to use the release version branch", async () => {
     const [workflow, script] = await Promise.all([
       readFile(releaseStableWorkflowPath, "utf8"),
       readFile(releaseStableScriptPath, "utf8"),
     ]);
 
-    expect(workflow).toContain("release_version:");
-    expect(workflow).toContain("Required when ref is not release/vX.Y.Z");
-    expect(workflow).toContain("OPEN_DESIGN_STABLE_VERSION: ${{ inputs.release_version }}");
+    expect(workflow).not.toContain("OPEN_DESIGN_STABLE_VERSION:");
+    expect(workflow).not.toContain("inputs.release_version");
+    expect(workflow).toContain("Stable release branch to build, for example release/v0.5.1.");
 
     expect(script).toContain("const stableReleaseBranchPattern = /^release\\/v(\\d+\\.\\d+\\.\\d+)$/;");
     expect(script).toContain("function resolveStableBaseVersion");
-    expect(script).toContain("release-stable requires either a release/vX.Y.Z branch or OPEN_DESIGN_STABLE_VERSION");
-    expect(script).toContain("OPEN_DESIGN_STABLE_VERSION ${inputVersion.value} must match release branch version");
+    expect(script).toContain("release-stable requires GITHUB_REF_NAME to be release/vX.Y.Z");
+    expect(script).toContain("function resolvePrereleaseBaseVersion");
     expect(script).toContain(
       '${stableBaseVersion.source ?? "release base"} version ${stableBaseVersion.value} must match apps/packaged/package.json version',
     );
-    expect(script).not.toContain("release-stable can only run from release/vX.Y.Z branches");
   });
 
-  it("[P2] rejects stable release runs without a release branch or explicit version", async () => {
+  it("[P2] rejects stable release runs without the release version branch", async () => {
     const output = await runReleaseStableForFailure({
       GITHUB_REF_NAME: "main",
       OPEN_DESIGN_STABLE_VERSION: "",
     });
 
-    expect(output).toContain("release-stable requires either a release/vX.Y.Z branch or OPEN_DESIGN_STABLE_VERSION");
+    expect(output).toContain("release-stable requires GITHUB_REF_NAME to be release/vX.Y.Z; got main");
   });
 
-  it("[P2] rejects conflicting stable release branch and explicit version inputs", async () => {
+  it("[P2] ignores explicit stable version inputs in favor of the release branch gate", async () => {
     const output = await runReleaseStableForFailure({
-      GITHUB_REF_NAME: "release/v0.10.0",
+      GITHUB_REF_NAME: "main",
       OPEN_DESIGN_STABLE_VERSION: "0.10.1",
     });
 
-    expect(output).toContain("OPEN_DESIGN_STABLE_VERSION 0.10.1 must match release branch version 0.10.0");
+    expect(output).toContain("release-stable requires GITHUB_REF_NAME to be release/vX.Y.Z; got main");
   });
 
-  it("[P2] supports release dry-run preflight without build or publish side effects", async () => {
+  it("[P2] reads beta metadata.json written with releaseVersion/releaseNumber field names", async () => {
+    // The unified publisher refactor (.github/workflow/scripts/release/storage)
+    // and the in-flight tools-release rewrite stamp beta/latest/metadata.json
+    // with generic releaseVersion/releaseNumber fields instead of the legacy
+    // betaVersion/betaNumber. tools-release's daily-beta reader must accept
+    // those aliases or the scheduled build dies at metadata time.
+    const packagedVersion = JSON.parse(
+      await readFile(join(workspaceRoot, "apps", "packaged", "package.json"), "utf8"),
+    ).version as string;
+
+    const objects: Record<string, unknown> = {
+      "stable/latest/metadata.json": { channel: "stable", stableVersion: "0.0.1" },
+      "beta/latest/metadata.json": {
+        baseVersion: packagedVersion,
+        channel: "beta",
+        releaseNumber: 4,
+        releaseVersion: `${packagedVersion}-beta.4`,
+      },
+    };
+    const fixture = await startStablePrereleaseMetadataServer(objects);
+    const runnerTemp = await mkdtemp(join(tmpdir(), "od-release-beta-reader-"));
+    const outputPath = join(runnerTemp, "outputs.txt");
+
+    try {
+      const result = await execFileAsync(process.execPath, ["--experimental-strip-types", releaseBetaScriptPath], {
+        cwd: workspaceRoot,
+        env: {
+          ...process.env,
+          GITHUB_OUTPUT: outputPath,
+          GITHUB_REF_NAME: "main",
+          GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+          NODE_TLS_REJECT_UNAUTHORIZED: "0",
+          OPEN_DESIGN_BETA_METADATA_URL: `${fixture.origin}/beta/latest/metadata.json`,
+          OPEN_DESIGN_STABLE_METADATA_URL: `${fixture.origin}/stable/latest/metadata.json`,
+        },
+        maxBuffer: 1024 * 1024,
+      });
+
+      expect(result.stdout).toContain(`[release-beta] beta version: ${packagedVersion}-beta.5`);
+      const outputs = await readFile(outputPath, "utf8");
+      expect(outputs).toContain(`beta_version=${packagedVersion}-beta.5`);
+    } finally {
+      await fixture.close();
+      await rm(runnerTemp, { force: true, recursive: true });
+    }
+  });
+
+  it("[P2] supports stable dry-run metadata and prepublish boundaries", async () => {
     const [workflow, script] = await Promise.all([
       readFile(releaseStableWorkflowPath, "utf8"),
       readFile(releaseStableScriptPath, "utf8"),
     ]);
 
     expect(workflow).toContain("dry_run:");
-    expect(workflow).toContain("Validate release inputs and read-only remote gates without building or publishing.");
-    expect(workflow).toContain("group: open-design-release-stable-${{ inputs.dry_run && 'dry-run' || 'publish' }}");
-    expect(workflow).toContain("default: true");
+    expect(workflow).toContain("Dry-run boundary to validate. metadata stops after promotion metadata; prepublish runs build/smoke/report/plan without publishing.");
+    expect(workflow).toContain("group: open-design-release-stable-${{ inputs.dry_run }}");
+    expect(workflow).toContain("type: choice");
+    expect(workflow).toContain("- metadata");
+    expect(workflow).toContain("- prepublish");
+    expect(workflow).toContain("default: metadata");
     expect(workflow).not.toContain("inputs.channel");
     expect(workflow).toContain("OPEN_DESIGN_RELEASE_DRY_RUN: ${{ inputs.dry_run }}");
     expect(workflow).toContain("dry_run: ${{ steps.stable.outputs.dry_run }}");
-    expect(workflow).toContain("if: ${{ steps.stable.outputs.dry_run != 'true' }}");
-    expect(workflow).toContain("if: ${{ needs.metadata.outputs.dry_run != 'true' }}");
-    expect(workflow).toContain("needs.metadata.outputs.dry_run != 'true' &&");
+    expect(workflow).toContain("dry_run_mode: ${{ steps.stable.outputs.dry_run_mode }}");
+    expect(workflow).toContain("if: ${{ needs.metadata.outputs.run_prepublish_jobs == 'true' }}");
+    expect(workflow).toContain("RELEASE_PUBLISH_SIDE_EFFECTS: ${{ needs.metadata.outputs.publish_side_effects_enabled }}");
 
-    expect(script).toContain("function parseBooleanInput");
-    expect(script).toContain('parseBooleanInput(process.env.OPEN_DESIGN_RELEASE_DRY_RUN, "OPEN_DESIGN_RELEASE_DRY_RUN")');
+    expect(script).toContain("function parseStableDryRunMode");
+    expect(script).toContain("OPEN_DESIGN_RELEASE_DRY_RUN must be metadata, prepublish, true, or false");
     expect(script).toContain('setOutput("dry_run", dryRun ? "true" : "false");');
+    expect(script).toContain('setOutput("dry_run_mode", stableDryRunMode);');
+    expect(script).toContain('setOutput("run_prepublish_jobs", runPrepublishJobs ? "true" : "false");');
+    expect(script).toContain('setOutput("publish_side_effects_enabled", publishSideEffectsEnabled ? "true" : "false");');
   });
 
-  it("[P2] validates stable dry-run prerelease metadata from a non-release ref", async () => {
+  it("[P2] validates stable dry-run prerelease metadata from a release branch", async () => {
     const objects: Record<string, unknown> = {};
     const fixture = await startStablePrereleaseMetadataServer(objects);
     objects["prerelease/versions/0.10.2-prerelease.12/metadata.json"] = stablePrereleaseMetadataFixture(
@@ -314,7 +367,7 @@ describe("packaged smoke workflow", () => {
         cwd: workspaceRoot,
         env: {
           ...process.env,
-          GITHUB_REF_NAME: "main",
+          GITHUB_REF_NAME: "release/v0.10.2",
           GITHUB_REPOSITORY: "nexu-io/open-design",
           GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
           NODE_TLS_REJECT_UNAUTHORIZED: "0",
@@ -323,7 +376,6 @@ describe("packaged smoke workflow", () => {
           OPEN_DESIGN_RELEASES_PUBLIC_ORIGIN: fixture.origin,
           OPEN_DESIGN_GH_NODE_SCRIPT: join(runnerTemp, "bin", "gh"),
           OPEN_DESIGN_STABLE_PRERELEASE_VERSION: "0.10.2-prerelease.12",
-          OPEN_DESIGN_STABLE_VERSION: "0.10.2",
           Path: fakePath,
           PATH: fakePath,
         },
@@ -346,7 +398,7 @@ describe("packaged smoke workflow", () => {
       OPEN_DESIGN_STABLE_VERSION: "",
     });
 
-    expect(output).toContain("OPEN_DESIGN_RELEASE_DRY_RUN must be true or false; got maybe");
+    expect(output).toContain("OPEN_DESIGN_RELEASE_DRY_RUN must be metadata, prepublish, true, or false");
   });
 
   it("keeps both beta release lanes on the shared payload-aware metadata surface", async () => {
