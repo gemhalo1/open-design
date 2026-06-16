@@ -216,30 +216,147 @@
     }));
   }
 
-  function buildTheme(palette) {
-    const parsed = palette.map((p) => ({ ...p, c: parseRgb(p.hex) })).filter((p) => p.c);
-    const light = [...parsed].sort((a, b) => luminance(b.c) - luminance(a.c));
-    const dark = [...parsed].sort((a, b) => luminance(a.c) - luminance(b.c));
-    const saturated = [...parsed]
-      .filter((p) => saturation(p.c) > 0.18 && luminance(p.c) > 0.12 && luminance(p.c) < 0.82)
-      .sort((a, b) => b.score * saturation(b.c) - a.score * saturation(a.c));
-    const neutral = [...parsed]
-      .filter((p) => saturation(p.c) < 0.14)
-      .sort((a, b) => b.score - a.score);
-    const accent = saturated[0]?.hex || parsed[0]?.hex || '#C96442';
-    const bg = light[0]?.hex || '#FFFFFF';
-    const surface = light[1]?.hex || '#F7F7F5';
-    const fg = dark[0]?.hex || '#111111';
-    const muted = neutral.find((p) => luminance(p.c) > 0.18 && luminance(p.c) < 0.58)?.hex || '#666666';
-    const border = neutral.find((p) => luminance(p.c) > 0.58 && luminance(p.c) < 0.9)?.hex || '#DDDDDD';
-    const darkBg = dark[0]?.hex || '#111111';
-    const darkSurface = dark[1]?.hex || '#1E1E1E';
-    const darkFg = light[0]?.hex || '#FFFFFF';
-    const darkMuted = neutral.find((p) => luminance(p.c) > 0.48 && luminance(p.c) < 0.82)?.hex || '#AAAAAA';
+  function clamp255(n) {
+    return Math.max(0, Math.min(255, Math.round(n)));
+  }
+
+  // Linear interpolation between two hex colors (t in 0..1, toward b).
+  function mixHex(a, b, t) {
+    const ca = parseRgb(a) || { r: 255, g: 255, b: 255 };
+    const cb = parseRgb(b) || { r: 0, g: 0, b: 0 };
+    return hexOf({
+      r: clamp255(ca.r + (cb.r - ca.r) * t),
+      g: clamp255(ca.g + (cb.g - ca.g) * t),
+      b: clamp255(ca.b + (cb.b - ca.b) * t),
+    });
+  }
+
+  function pxValue(value) {
+    const match = /(-?[\d.]+)px/.exec(String(value || ''));
+    return match ? parseFloat(match[1]) : null;
+  }
+
+  function firstDefined() {
+    for (let i = 0; i < arguments.length; i += 1) {
+      if (arguments[i] != null) return arguments[i];
+    }
+    return null;
+  }
+
+  const ROLE_NAME_KEYS = {
+    background: 'swatchBackground',
+    surface: 'swatchSurface',
+    foreground: 'swatchForeground',
+    muted: 'swatchMuted',
+    border: 'swatchBorder',
+    accent: 'swatchAccent',
+    'accent-secondary': 'swatchSupport',
+    highlight: 'swatchHighlight',
+  };
+  const ROLE_USAGE_KEYS = {
+    background: 'swatchUseBackground',
+    surface: 'swatchUseSurface',
+    foreground: 'swatchUseForeground',
+    muted: 'swatchUseMuted',
+    border: 'swatchUseBorder',
+    accent: 'swatchUseAccent',
+    'accent-secondary': 'swatchUseSupport',
+    highlight: 'swatchUseHighlight',
+  };
+
+  function roleColor(role, hex) {
     return {
-      light: { background: bg, surface, foreground: fg, muted, border, accent },
-      dark: { background: darkBg, surface: darkSurface, foreground: darkFg, muted: darkMuted, border: muted, accent },
+      role,
+      hex,
+      name: tr(ROLE_NAME_KEYS[role] || 'swatchHighlight'),
+      usage: tr(ROLE_USAGE_KEYS[role] || 'swatchUseHighlight'),
     };
+  }
+
+  // Map the observed palette onto stable semantic roles. Crucially, only these
+  // swatches and the single accent ever surface the real brand colors — the page
+  // chrome stays on a fixed neutral paper/surface set. That is the fix for the
+  // old behavior where a saturated brand background (picked as `surface`) tinted
+  // every card on the page.
+  function deriveBrandColors(palette) {
+    const parsed = palette.map((p) => ({ ...p, c: parseRgb(p.hex) })).filter((p) => p.c);
+    if (!parsed.length) {
+      return [roleColor('background', '#FFFFFF'), roleColor('foreground', '#1A1A18'), roleColor('accent', '#C96442')];
+    }
+    const lumOf = (p) => luminance(p.c);
+    const satOf = (p) => saturation(p.c);
+    const byLight = [...parsed].sort((a, b) => lumOf(b) - lumOf(a));
+    const byScore = (list) => [...list].sort((a, b) => b.score - a.score);
+    const neutrals = byScore(parsed.filter((p) => satOf(p) < 0.16));
+    const colored = parsed
+      .filter((p) => satOf(p) > 0.2 && lumOf(p) > 0.05 && lumOf(p) < 0.93)
+      .sort((a, b) => b.score * (0.4 + satOf(b)) - a.score * (0.4 + satOf(a)));
+
+    const background = byLight[0] && lumOf(byLight[0]) > 0.55 ? byLight[0].hex : '#FFFFFF';
+    const darkest = [...byLight].reverse();
+    const foreground = (darkest.find((p) => lumOf(p) < 0.4) || darkest[0]).hex;
+    const surface =
+      firstDefined((neutrals.find((p) => p.hex !== background && lumOf(p) > 0.84) || {}).hex) ||
+      mixHex(background, '#FFFFFF', 0.55);
+    const muted =
+      firstDefined((neutrals.find((p) => lumOf(p) > 0.22 && lumOf(p) < 0.62) || {}).hex) ||
+      mixHex(foreground, background, 0.5);
+    const border =
+      firstDefined(
+        (neutrals.find((p) => lumOf(p) > 0.6 && lumOf(p) < 0.92 && p.hex !== surface && p.hex !== background) || {})
+          .hex,
+      ) || mixHex(background, foreground, 0.12);
+    const accent = (colored[0] && colored[0].hex) || mixHex(foreground, '#C96442', 0.45);
+    const accentLum = luminance(parseRgb(accent) || { r: 0, g: 0, b: 0 });
+    const accentSecondary = colored.find((p) => p.hex !== accent && Math.abs(lumOf(p) - accentLum) > 0.03);
+
+    const used = new Set([background, surface, foreground, muted, border, accent]);
+    const roles = [
+      roleColor('background', background),
+      roleColor('surface', surface),
+      roleColor('foreground', foreground),
+      roleColor('muted', muted),
+      roleColor('border', border),
+      roleColor('accent', accent),
+    ];
+    if (accentSecondary) {
+      roles.push(roleColor('accent-secondary', accentSecondary.hex));
+      used.add(accentSecondary.hex);
+    }
+    // Surface any remaining distinctive brand colors so the palette feels complete.
+    for (const p of colored) {
+      if (roles.length >= 8) break;
+      if (used.has(p.hex)) continue;
+      used.add(p.hex);
+      roles.push(roleColor('highlight', p.hex));
+    }
+    return roles;
+  }
+
+  // A readable variant of the accent for text/iconography on light surfaces — a
+  // pale brand accent (e.g. a yellow) is darkened toward the ink so chips, links
+  // and "—" pillar markers never fall below legibility on white.
+  function accentInk(accent, foreground) {
+    const c = parseRgb(accent);
+    if (c && luminance(c) > 0.6) return mixHex(accent, foreground || '#1A1A18', 0.55);
+    return accent;
+  }
+
+  // Observable layout posture — corner radius, shadow depth and border treatment
+  // read straight off the page's real components. Honest, not invented.
+  function deriveLayout(components) {
+    const card = components.card || {};
+    const button = components.button || {};
+    const input = components.input || {};
+    const radius = firstDefined(pxValue(card.radius), pxValue(button.radius), pxValue(input.radius));
+    const hasShadow = [card.shadow, button.shadow].some((s) => s && s !== 'none');
+    const rules = [];
+    if (radius != null) {
+      rules.push(radius <= 2 ? tr('layoutSquare') : tr('layoutRounded', { px: Math.round(radius) }));
+    }
+    rules.push(hasShadow ? tr('layoutShadow') : tr('layoutFlat'));
+    rules.push(tr('layoutBordered'));
+    return { radius: radius != null ? `${Math.round(radius)}px` : '—', postureRules: rules };
   }
 
   function firstFamily(fontFamily) {
