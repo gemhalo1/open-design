@@ -247,7 +247,11 @@ export function AmrAccountControl({
                 type="button"
                 className="amr-login-activation__code"
                 onClick={() => {
-                  void navigator.clipboard?.writeText(userCode).then(
+                  // Guard explicitly: in runtimes without the async clipboard
+                  // API, copying is a no-op rather than a thrown click handler.
+                  const clipboard = navigator.clipboard;
+                  if (!clipboard) return;
+                  void clipboard.writeText(userCode).then(
                     () => setCodeCopied(true),
                     () => {},
                   );
