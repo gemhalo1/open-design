@@ -195,6 +195,8 @@ const ONBOARDING_DROPDOWN_OPEN_EVENT = 'open-design:onboarding-dropdown-open';
 const NEWSLETTER_SUBSCRIBE_URL =
   process.env.NEXT_PUBLIC_NEWSLETTER_URL ?? 'https://open-design.ai/subscribe';
 const NEWSLETTER_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ONBOARDING_BYOK_AUTO_FETCH_DELAY_MS = 300;
+const ONBOARDING_BYOK_AUTO_TEST_DELAY_MS = 500;
 
 const ONBOARDING_AMR_MODEL_OPTIONS: NonNullable<AgentInfo['models']> = [
   { id: 'claude-opus-4.8', label: 'Claude Opus 4.8' },
@@ -349,6 +351,7 @@ interface Props {
   onOpenLiveArtifact: (projectId: string, artifactId: string) => void;
   onDeleteProject: (id: string) => Promise<boolean | void> | boolean | void;
   onRenameProject: (id: string, name: string) => void;
+  onProjectsRefresh?: () => Promise<void> | void;
   onChangeDefaultDesignSystem: (id: string) => void;
   onCreateDesignSystem?: () => void;
   // NOTE: first-run onboarding intentionally no longer hosts guided
@@ -447,6 +450,7 @@ export function EntryShell({
   onOpenLiveArtifact,
   onDeleteProject,
   onRenameProject,
+  onProjectsRefresh,
   onChangeDefaultDesignSystem,
   onCreateDesignSystem,
   onOpenDesignSystem,
@@ -590,7 +594,10 @@ export function EntryShell({
   // submits now arrive with the hidden od-default router plugin and
   // projectKind='other', so the agent asks for the exact task type
   // before continuing.
-  function handlePluginLoopSubmit(payload: PluginLoopSubmit) {
+  // Forwards onCreateProject's result so HomeView can hold its sending
+  // state until the creation roundtrip settles, and recover on failure
+  // (#4082).
+  function handlePluginLoopSubmit(payload: PluginLoopSubmit): Promise<boolean> | boolean | void {
     const summarizedName = summarizeProjectNameFromPrompt(payload.prompt);
     const head = payload.prompt.trim().split(/\s+/).slice(0, 8).join(' ');
     const firstAttachmentName = payload.attachments?.[0]?.name ?? '';
@@ -626,7 +633,7 @@ export function EntryShell({
         examplePromptBrief: payload.examplePromptContext.brief,
       } : {}),
     };
-    onCreateProject({
+    return onCreateProject({
       name,
       skillId: payload.skillId ?? null,
       designSystemId: payload.designSystemId ?? null,
@@ -830,6 +837,8 @@ export function EntryShell({
                     onDelete={onDeleteProject}
                     onRename={onRenameProject}
                     onNewProject={() => openNewProject()}
+                    onRefresh={onProjectsRefresh}
+                    isActive={view === 'projects'}
                   />
                 </div>
               )}
@@ -1020,8 +1029,22 @@ function OnboardingView({
   }, [profile]);
   const agentRevealTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const cliScanTokenRef = useRef(0);
+  const cliScanTelemetryRef = useRef<{
+    token: number;
+    startedAt: number;
+    onboardingSessionId: string;
+  } | null>(null);
+  const cliRefreshPendingTokenRef = useRef<number | null>(null);
   const amrLoginPollCancelledRef = useRef(false);
   const amrAgentRefreshAttemptedRef = useRef(false);
+  const providerModelsAutoFetchKeyRef = useRef<string | null>(null);
+  const providerAutoTestKeyRef = useRef<string | null>(null);
+  const providerModelAutoSelectRef = useRef({
+    model: config.model,
+    providerModelsInputKey: '',
+    runtime,
+    step,
+  });
   const apiProtocol = config.apiProtocol ?? 'anthropic';
   const providerTestInputKey = [
     apiProtocol,
@@ -1036,6 +1059,12 @@ function OnboardingView({
     config.apiKey,
     config.apiVersion ?? '',
   );
+  providerModelAutoSelectRef.current = {
+    model: config.model,
+    providerModelsInputKey,
+    runtime,
+    step,
+  };
   const canTestProvider =
     Boolean(config.apiKey.trim()) &&
     Boolean(config.baseUrl.trim()) &&
@@ -1061,9 +1090,8 @@ function OnboardingView({
       provider.protocol === apiProtocol &&
       provider.baseUrl === (config.apiProviderBaseUrl ?? config.baseUrl),
   ) ?? null;
-  const visibleAgents = agents.filter(
-    (agent) => agent.available && agent.id !== 'amr' && visibleAgentIds.includes(agent.id),
-  );
+  const availableCliAgents = agents.filter((agent) => agent.available && agent.id !== 'amr');
+  const visibleAgents = availableCliAgents.filter((agent) => visibleAgentIds.includes(agent.id));
   const amrAgent = agents.find((agent) => agent.id === 'amr' && agent.available) ?? null;
   // AMR availability is still undecided while the cold-start stream runs or
   // the one-shot re-probe is in flight. During that window we show the AMR
@@ -1149,6 +1177,36 @@ function OnboardingView({
     onModeChange('daemon');
     onAgentChange('amr');
   }, [amrAgent, onAgentChange, onModeChange, runtime]);
+
+  useEffect(() => {
+    if (runtime !== 'local') return;
+    const scanToken = cliScanTokenRef.current;
+    if (cliRefreshPendingTokenRef.current === scanToken) return;
+    const currentAvailableAgents = agents.filter(
+      (agent) => agent.available && agent.id !== 'amr',
+    );
+    if (currentAvailableAgents.length > 0) {
+      const selectedCliAgent = selectDefaultCliAgent(currentAvailableAgents);
+      showCliAgents(scanToken, currentAvailableAgents, { stagger: false });
+      setCliScanStatus('done');
+      emitPendingCliScanResult(scanToken, {
+        result: 'success',
+        detected: agents.length,
+        available: currentAvailableAgents.length,
+        selectedCliId: selectedCliAgent ? agentIdToTracking(selectedCliAgent.id) : undefined,
+      });
+      return;
+    }
+    if (!agentsLoading && cliScanStatus === 'scanning') {
+      setCliScanStatus('done');
+      emitPendingCliScanResult(scanToken, {
+        result: 'failed',
+        detected: agents.length,
+        available: 0,
+        errorCode: 'NO_AVAILABLE_CLI',
+      });
+    }
+  }, [agents, agentsLoading, cliScanStatus, config.agentId, runtime]);
 
   useEffect(() => {
     // The cold-start stream finished without AMR. Re-probe once before we
@@ -1359,7 +1417,7 @@ function OnboardingView({
         emitOnboardingClick('local_coding_agent', 'select_runtime', {
           runtime_type: 'local_cli',
         });
-        void scanCliAgents();
+        void scanCliAgents({ preferExisting: true });
       },
     },
     {
@@ -1471,9 +1529,112 @@ function OnboardingView({
     void onConfigPersist(nextConfig);
   }
 
+  function selectFirstProviderModelWhenEmpty(
+    models: readonly ProviderModelOption[],
+    expectedInputKey: string,
+  ) {
+    const firstModel = models[0];
+    const current = providerModelAutoSelectRef.current;
+    if (
+      !firstModel ||
+      current.runtime !== 'byok' ||
+      current.step !== 0 ||
+      current.providerModelsInputKey !== expectedInputKey ||
+      current.model.trim()
+    ) {
+      return;
+    }
+    onApiModelChange(firstModel.id);
+    updateApiConfig({ model: firstModel.id });
+  }
+
   function clearAgentRevealTimers() {
     agentRevealTimersRef.current.forEach((timer) => clearTimeout(timer));
     agentRevealTimersRef.current = [];
+  }
+
+  function selectDefaultCliAgent(availableAgents: AgentInfo[]): AgentInfo | null {
+    const selectedAgent =
+      availableAgents.find((agent) => agent.id === config.agentId) ?? availableAgents[0] ?? null;
+    if (!selectedAgent) return null;
+    if (selectedAgent.id !== config.agentId) {
+      onAgentChange(selectedAgent.id);
+    }
+    return selectedAgent;
+  }
+
+  function emitPendingCliScanResult(
+    token: number,
+    args: {
+      result: 'success' | 'failed';
+      detected: number;
+      available: number;
+      selectedCliId?: TrackingCliProviderId;
+      errorCode?: string;
+    },
+  ): void {
+    const telemetry = cliScanTelemetryRef.current;
+    if (!telemetry || telemetry.token !== token) return;
+    cliScanTelemetryRef.current = null;
+    trackOnboardingRuntimeScanResult(analytics.track, {
+      page_name: 'onboarding',
+      area: 'runtime',
+      runtime_type: 'local_cli',
+      result: args.result,
+      detected_cli_count: args.detected,
+      available_cli_count: args.available,
+      ...(args.selectedCliId ? { selected_cli_id: args.selectedCliId } : {}),
+      ...(args.errorCode ? { error_code: args.errorCode } : {}),
+      duration_ms: Math.max(0, Date.now() - telemetry.startedAt),
+      onboarding_session_id: telemetry.onboardingSessionId,
+    });
+  }
+
+  function beginCliScan(options: { clearVisible: boolean }): number {
+    const scanToken = cliScanTokenRef.current + 1;
+    cliScanTokenRef.current = scanToken;
+    clearAgentRevealTimers();
+    setRuntime('local');
+    onModeChange('daemon');
+    setCliScanStatus('scanning');
+    if (options.clearVisible) setVisibleAgentIds([]);
+    const onboardingSessionId = onboardingSessionIdRef.current;
+    cliScanTelemetryRef.current = onboardingSessionId
+      ? {
+          token: scanToken,
+          startedAt: Date.now(),
+          onboardingSessionId,
+        }
+      : null;
+    return scanToken;
+  }
+
+  function showCliAgents(
+    token: number,
+    availableAgents: AgentInfo[],
+    options: { stagger: boolean },
+  ): void {
+    if (!options.stagger) {
+      const nextIds = availableAgents.map((agent) => agent.id);
+      setVisibleAgentIds((current) =>
+        current.length === nextIds.length && current.every((id, index) => id === nextIds[index])
+          ? current
+          : nextIds,
+      );
+      return;
+    }
+    availableAgents.forEach((agent, index) => {
+      const timer = setTimeout(() => {
+        if (cliScanTokenRef.current !== token) return;
+        setVisibleAgentIds((current) =>
+          current.includes(agent.id) ? current : [...current, agent.id],
+        );
+        if (index === availableAgents.length - 1) {
+          setCliScanStatus('done');
+        }
+      }, 110 * (index + 1));
+      agentRevealTimersRef.current.push(timer);
+    });
   }
 
   function handleBackWithTracking(): void {
@@ -1723,52 +1884,34 @@ function OnboardingView({
     }
   }
 
-  async function scanCliAgents() {
-    const scanToken = cliScanTokenRef.current + 1;
-    cliScanTokenRef.current = scanToken;
-    clearAgentRevealTimers();
-    setRuntime('local');
-    onModeChange('daemon');
-    setCliScanStatus('scanning');
-    setVisibleAgentIds([]);
-    const scanStartedAt = Date.now();
-    const onboardingSessionId = onboardingSessionIdRef.current;
-    const emitScanResult = (
-      args: {
-        result: 'success' | 'failed';
-        detected: number;
-        available: number;
-        selectedCliId?: TrackingCliProviderId;
-        errorCode?: string;
-      },
-    ): void => {
-      if (!onboardingSessionId) return;
-      trackOnboardingRuntimeScanResult(analytics.track, {
-        page_name: 'onboarding',
-        area: 'runtime',
-        runtime_type: 'local_cli',
-        result: args.result,
-        detected_cli_count: args.detected,
-        available_cli_count: args.available,
-        ...(args.selectedCliId ? { selected_cli_id: args.selectedCliId } : {}),
-        ...(args.errorCode ? { error_code: args.errorCode } : {}),
-        duration_ms: Math.max(0, Date.now() - scanStartedAt),
-        onboarding_session_id: onboardingSessionId,
+  async function scanCliAgents(options: { preferExisting?: boolean } = {}) {
+    const scanToken = beginCliScan({ clearVisible: !options.preferExisting });
+    const currentAvailableAgents = agents.filter(
+      (agent) => agent.available && agent.id !== 'amr',
+    );
+    if (options.preferExisting && currentAvailableAgents.length > 0) {
+      const selectedCliAgent = selectDefaultCliAgent(currentAvailableAgents);
+      showCliAgents(scanToken, currentAvailableAgents, { stagger: false });
+      setCliScanStatus('done');
+      emitPendingCliScanResult(scanToken, {
+        result: 'success',
+        detected: agents.length,
+        available: currentAvailableAgents.length,
+        selectedCliId: selectedCliAgent ? agentIdToTracking(selectedCliAgent.id) : undefined,
       });
-    };
+      return currentAvailableAgents;
+    }
+    if (options.preferExisting && agentsLoading) {
+      showCliAgents(scanToken, currentAvailableAgents, { stagger: false });
+      return currentAvailableAgents;
+    }
+    cliRefreshPendingTokenRef.current = scanToken;
     try {
       const nextAgents = await onRefreshAgents();
       if (cliScanTokenRef.current !== scanToken) return;
+      cliRefreshPendingTokenRef.current = null;
       const availableAgents = nextAgents.filter((agent) => agent.available && agent.id !== 'amr');
-      // If the user previously had AMR selected (e.g. it was auto-picked once
-      // we detected vela) and they have now chosen the Local CLI path, the
-      // persisted agentId is still 'amr' and would survive Continue without
-      // an explicit click on a local agent card. Switch the selection to the
-      // first available local agent as soon as we have one, so the runtime
-      // and the persisted agent always agree.
-      if (config.agentId === 'amr' && availableAgents[0]) {
-        onAgentChange(availableAgents[0].id);
-      }
+      const selectedCliAgent = selectDefaultCliAgent(availableAgents);
       // Scan-result semantics: zero available CLIs is a `failed` outcome
       // because the user's runtime path is blocked, even though the
       // detect call itself returned successfully. `detected_cli_count`
@@ -1776,7 +1919,7 @@ function OnboardingView({
       // "user has no CLI installed" from "detect crashed".
       if (availableAgents.length === 0) {
         setCliScanStatus('done');
-        emitScanResult({
+        emitPendingCliScanResult(scanToken, {
           result: 'failed',
           detected: nextAgents.length,
           available: 0,
@@ -1784,30 +1927,20 @@ function OnboardingView({
         });
         return;
       }
-      emitScanResult({
+      emitPendingCliScanResult(scanToken, {
         result: 'success',
         detected: nextAgents.length,
         available: availableAgents.length,
-        ...(availableAgents[0]
-          ? { selectedCliId: agentIdToTracking(availableAgents[0].id) }
+        ...(selectedCliAgent
+          ? { selectedCliId: agentIdToTracking(selectedCliAgent.id) }
           : {}),
       });
-      availableAgents.forEach((agent, index) => {
-        const timer = setTimeout(() => {
-          if (cliScanTokenRef.current !== scanToken) return;
-          setVisibleAgentIds((current) =>
-            current.includes(agent.id) ? current : [...current, agent.id],
-          );
-          if (index === availableAgents.length - 1) {
-            setCliScanStatus('done');
-          }
-        }, 110 * (index + 1));
-        agentRevealTimersRef.current.push(timer);
-      });
+      showCliAgents(scanToken, availableAgents, { stagger: true });
     } catch (err) {
       if (cliScanTokenRef.current === scanToken) {
+        cliRefreshPendingTokenRef.current = null;
         setCliScanStatus('done');
-        emitScanResult({
+        emitPendingCliScanResult(scanToken, {
           result: 'failed',
           detected: 0,
           available: 0,
@@ -1820,6 +1953,7 @@ function OnboardingView({
   async function testProviderInline() {
     if (!canTestProvider || providerTestState.status === 'running') return;
     const inputKey = providerTestInputKey;
+    providerAutoTestKeyRef.current = inputKey;
     setProviderTestState({ status: 'running', inputKey });
     try {
       const result = await testApiProvider({
@@ -1851,8 +1985,10 @@ function OnboardingView({
   async function fetchProviderModelsInline() {
     if (!canFetchProviderModels || providerModelsState.status === 'running') return;
     const inputKey = providerModelsInputKey;
+    providerModelsAutoFetchKeyRef.current = inputKey;
     const cachedModels = activeProviderModelsCache[inputKey];
     if (cachedModels) {
+      selectFirstProviderModelWhenEmpty(cachedModels, inputKey);
       setProviderModelsState({
         status: 'done',
         inputKey,
@@ -1873,6 +2009,7 @@ function OnboardingView({
         apiKey: config.apiKey,
       });
       if (result.ok && result.models?.length) {
+        selectFirstProviderModelWhenEmpty(result.models, inputKey);
         activeSetProviderModelsCache((current) => ({
           ...current,
           [inputKey]: result.models ?? [],
@@ -1892,6 +2029,40 @@ function OnboardingView({
       });
     }
   }
+
+  useEffect(() => {
+    if (runtime !== 'byok' || step !== 0) return;
+    if (!canFetchProviderModels) return;
+    if (providerModelsState.status === 'running') return;
+    if (providerModelsAutoFetchKeyRef.current === providerModelsInputKey) return;
+    const timer = window.setTimeout(() => {
+      void fetchProviderModelsInline();
+    }, ONBOARDING_BYOK_AUTO_FETCH_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    canFetchProviderModels,
+    providerModelsInputKey,
+    providerModelsState.status,
+    runtime,
+    step,
+  ]);
+
+  useEffect(() => {
+    if (runtime !== 'byok' || step !== 0) return;
+    if (!canTestProvider) return;
+    if (providerTestState.status === 'running') return;
+    if (providerAutoTestKeyRef.current === providerTestInputKey) return;
+    const timer = window.setTimeout(() => {
+      void testProviderInline();
+    }, ONBOARDING_BYOK_AUTO_TEST_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    canTestProvider,
+    providerTestInputKey,
+    providerTestState.status,
+    runtime,
+    step,
+  ]);
 
   const onboardingNavigationLocked = newsletterSubmitting;
   const primaryActionLabel = isLastStep && newsletterSubmitting

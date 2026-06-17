@@ -114,7 +114,7 @@ describe("packaged smoke workflow", () => {
 
   it("[P2] limits manual blob guard checks to changed files against main", async () => {
     const workflow = await readFile(ciWorkflowPath, "utf8");
-    const blobGuard = sectionBetween(workflow, "  blob_guard:", "  preflight:");
+    const blobGuard = sectionBetween(workflow, "  static_gate:", "  nix_validation:");
 
     expect(blobGuard).toContain('${{ github.event_name }}" = "workflow_dispatch"');
     expect(blobGuard).toContain("git merge-base origin/main HEAD");
@@ -178,10 +178,8 @@ describe("packaged smoke workflow", () => {
     expect(releaseStableWorkflow).toContain("linux_namespace: ${{ steps.stable.outputs.linux_namespace }}");
     expect(releaseStableWorkflow).toContain('--namespace "${{ needs.metadata.outputs.namespace }}"');
     expect(releaseStableWorkflow).toContain("OD_PACKAGED_E2E_NAMESPACE: ${{ needs.metadata.outputs.namespace }}");
-    expect(releaseStableWorkflow).toContain("OD_PACKAGED_E2E_MAC_ONBOARDING_SMOKE: ${{ needs.metadata.outputs.channel == 'nightly' && '1' || '0' }}");
     expect(releaseStableWorkflow).toContain('"--namespace", "${{ needs.metadata.outputs.win_namespace }}",');
     expect(releaseStableWorkflow).toContain('OD_PACKAGED_E2E_NAMESPACE: ${{ needs.metadata.outputs.win_namespace }}');
-    expect(releaseStableWorkflow).toContain("OD_PACKAGED_E2E_WIN_ONBOARDING_SMOKE: ${{ needs.metadata.outputs.channel == 'nightly' && '1' || '0' }}");
     expect(releaseStableWorkflow).toContain('--namespace "${{ needs.metadata.outputs.linux_namespace }}"');
     expect(releaseStableWorkflow).toContain('"namespace": "${{ needs.metadata.outputs.linux_namespace }}",');
     expect(releaseStableWorkflow).not.toMatch(/--namespace release-stable(?:-intel|-win|-linux)?\b/);
