@@ -1121,7 +1121,67 @@
      top padding so the picker sits ~5px below the card. */
   margin: -13px auto 0;
   display: flex;
+  align-items: center;
   justify-content: flex-start;
+  gap: 4px;
+}
+/* Thin separator between the persistent design-system picker and the
+   working-directory picker when both share the row. */
+.home-hero__workdir-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  opacity: 0.7;
+}
+/* Persistent design-system picker — borderless trigger mirroring the
+   working-directory picker so the two read as one row of leading accessories
+   below the composer. The shared popover (search + preview) is unchanged. */
+.home-hero__ds-row-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.home-hero__ds-row-trigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted, var(--text));
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background-color 140ms var(--ease-out),
+    color 140ms var(--ease-out);
+}
+.home-hero__ds-row-trigger:hover,
+.home-hero__ds-row-trigger:focus-visible {
+  outline: none;
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+}
+.home-hero__ds-row-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.home-hero__ds-row-trigger-icon {
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+.home-hero__ds-row-trigger-label {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-hero__ds-row-trigger-chevron {
+  flex: 0 0 auto;
+  opacity: 0.55;
 }
 .home-hero__active-type-chip {
   appearance: none;
@@ -1170,11 +1230,12 @@
   color: var(--selected);
 }
 .home-hero__active-type-chip-close {
+  /* Always visible so the chip reads as removable at a glance — it brightens
+     to full opacity on hover/focus rather than appearing from nothing. */
   flex: 0 0 auto;
-  width: 0;
-  opacity: 0;
-  transform: translateX(-2px) scale(0.9);
-  transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out), width 120ms var(--ease-out);
+  width: 12px;
+  opacity: 0.55;
+  transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out);
 }
 .home-hero__active-type-chip span {
   min-width: 0;
@@ -1194,9 +1255,7 @@
 }
 .home-hero__active-type-chip:hover .home-hero__active-type-chip-close,
 .home-hero__active-type-chip:focus-visible .home-hero__active-type-chip-close {
-  width: 12px;
   opacity: 1;
-  transform: translateX(0) scale(1);
 }
 .home-hero__footer-options {
   display: contents;

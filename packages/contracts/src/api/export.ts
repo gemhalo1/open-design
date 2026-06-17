@@ -1,10 +1,10 @@
 // Shared DTOs for the programmatic export capability (PDF / PPTX / image).
 //
 // Both surfaces speak this shape: the web UI's Download menu rasterizes
-// client-side (html2canvas + pptxgenjs + jsPDF) and the `od export` CLI calls
-// `POST /api/projects/:id/export`, which delegates rasterization to the desktop
-// Electron renderer. Keep this file pure TypeScript — no Node, DOM, or runtime
-// deps — per the contracts boundary.
+// client-side (SVG-foreignObject snapshot + pptxgenjs + jsPDF) and the
+// `od export` CLI calls `POST /api/projects/:id/export`, which delegates
+// rasterization to the desktop Electron renderer. Keep this file pure
+// TypeScript — no Node, DOM, or runtime deps — per the contracts boundary.
 
 export const EXPORT_FORMATS = ['pdf', 'pptx', 'pptx-editable', 'image'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];

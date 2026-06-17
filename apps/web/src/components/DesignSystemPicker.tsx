@@ -39,8 +39,14 @@ interface Props {
   selectedId: string | null;
   loading?: boolean;
   onChange: (id: string | null) => void;
-  /** Trigger pill styling only; the popover is identical. Defaults to 'project'. */
-  variant?: 'project' | 'footer';
+  /**
+   * Trigger styling only; the popover is identical across variants.
+   *   - 'project' (default): the chrome-header pill (`project-ds-picker-*`).
+   *   - 'footer': the home composer input-card footer pill.
+   *   - 'home': the borderless trigger in the home composer's row below the
+   *     card, sitting flush with the working-directory picker.
+   */
+  variant?: 'project' | 'footer' | 'home';
   /** Footer variant: visually-hidden label for the trigger button. */
   label?: string;
 }
@@ -466,6 +472,38 @@ export function DesignSystemPicker({
           document.body,
         )
       : null;
+
+  if (variant === 'home') {
+    return (
+      <div
+        ref={wrapRef}
+        className="home-hero__ds-row-picker"
+        data-testid="home-hero-design-system-picker"
+      >
+        <button
+          ref={triggerRef}
+          type="button"
+          className="home-hero__ds-row-trigger"
+          data-testid="home-hero-design-system-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          disabled={loading}
+          title={selected?.title ?? t('designSystemPicker.noneTitle')}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <Icon name="palette" size={13} className="home-hero__ds-row-trigger-icon" />
+          <span className="home-hero__ds-row-trigger-label">
+            {loading
+              ? t('designSystemPicker.loading')
+              : selected?.title ?? t('designSystemPicker.noneTitle')}
+          </span>
+          <Icon name="chevron-down" size={11} className="home-hero__ds-row-trigger-chevron" />
+        </button>
+        {popover}
+        {fullscreen}
+      </div>
+    );
+  }
 
   if (variant === 'footer') {
     return (

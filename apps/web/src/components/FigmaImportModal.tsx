@@ -57,11 +57,15 @@ export function FigmaImportModal({ onClose, resolveProjectId, onImported, onFigm
   }, [onClose, status]);
 
   const pickFile = useCallback((files: File[]) => {
-    const fig = files.find((f) => f.name.toLowerCase().endsWith('.fig')) ?? files[0] ?? null;
-    if (fig) {
-      setFile(fig);
-      setError(null);
+    if (files.length === 0) return;
+    const fig = files.find((f) => f.name.toLowerCase().endsWith('.fig'));
+    if (!fig) {
+      setError('That isn’t a .fig file. Export your Figma file as .fig (File → Save local copy) and drop it here.');
+      return;
     }
+    setMode('file');
+    setFile(fig);
+    setError(null);
   }, []);
 
   const runImport = useCallback(async () => {
@@ -102,6 +106,10 @@ export function FigmaImportModal({ onClose, resolveProjectId, onImported, onFigm
     <motion.div
       className={styles.backdrop}
       onClick={() => (importing ? undefined : onClose())}
+      // Swallow drag/drop on the backdrop so a near-miss never makes the
+      // browser navigate to (open) the dropped .fig and lose the dialog.
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
       variants={modalOverlay}
       initial="hidden"
       animate="visible"
@@ -111,6 +119,18 @@ export function FigmaImportModal({ onClose, resolveProjectId, onImported, onFigm
       <motion.div
         className={styles.modal}
         onClick={(e) => e.stopPropagation()}
+        // The whole dialog is a drop target (not just the inner dashed zone),
+        // so dropping a .fig anywhere in the modal captures it.
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (status !== 'done') setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (status !== 'done') pickFile(Array.from(e.dataTransfer.files ?? []));
+        }}
         variants={modalContent}
         initial="hidden"
         animate="visible"
@@ -166,6 +186,7 @@ export function FigmaImportModal({ onClose, resolveProjectId, onImported, onFigm
                 onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
                 onDrop={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   setDragOver(false);
                   pickFile(Array.from(e.dataTransfer.files ?? []));
                 }}

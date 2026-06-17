@@ -282,6 +282,17 @@ export function HomeView({
   // native dialog. Spent on the post-creation working-dir POST so the
   // daemon's desktop-auth gate accepts the path. Null for web picks.
   const [workingDirToken, setWorkingDirToken] = useState<string | null>(null);
+  // Global design-system selection for the home composer. Persistent and
+  // independent of the active plugin / type chip so EVERY product kind (not
+  // just prototype/deck) can pick a design system; the choice is forwarded as
+  // the new project's `designSystemId`. Seeded from the user's published
+  // Personal default and re-seeded if that resolves async, until the user picks
+  // one explicitly (tracked by `designSystemTouchedRef` so a later default
+  // change never clobbers an explicit selection).
+  const [designSystemId, setDesignSystemId] = useState<string | null>(() =>
+    homeDefaultDesignSystemId(designSystems, defaultDesignSystemId),
+  );
+  const designSystemTouchedRef = useRef(false);
   // Global most-recently-used working directories, surfaced in the picker's
   // "Recent folders" submenu. Loaded from the daemon's app-config and bumped
   // whenever the user picks a folder.
@@ -631,9 +642,22 @@ export function HomeView({
     () => selectableHomeDesignSystems(designSystems, defaultDesignSystemId),
     [defaultDesignSystemId, designSystems],
   );
-  const defaultDesignSystemTitle = useMemo(
-    () => homeDefaultDesignSystemTitle(designSystems, defaultDesignSystemId, t),
-    [defaultDesignSystemId, designSystems, t],
+  // Re-seed the default selection when the catalogue or the user's default
+  // resolves after mount (async load), unless the user already picked one.
+  useEffect(() => {
+    if (designSystemTouchedRef.current) return;
+    setDesignSystemId(homeDefaultDesignSystemId(designSystems, defaultDesignSystemId));
+  }, [designSystems, defaultDesignSystemId]);
+  // Title of the globally-selected design system (or the "No design system"
+  // label). Seeds the active plugin's `designSystem` input — the apply-template
+  // hint the rendered brief references — so it mirrors the persistent picker.
+  const selectedDesignSystemTitle = useMemo(
+    () =>
+      designSystemId
+        ? designSystemPickerSystems.find((system) => system.id === designSystemId)?.title
+            ?? t('designSystemPicker.noneTitle')
+        : t('designSystemPicker.noneTitle'),
+    [designSystemId, designSystemPickerSystems, t],
   );
 
   function focusPromptAtEnd() {
@@ -689,7 +713,7 @@ export function HomeView({
     const inputFields = options?.inputFields ?? record.manifest?.od?.inputs ?? [];
     const optimisticInputs = hydratePluginInputs(
       inputFields,
-      withHomeDesignSystemDefault(options?.inputs, inputFields, defaultDesignSystemTitle),
+      withHomeDesignSystemDefault(options?.inputs, inputFields, selectedDesignSystemTitle),
     );
     const inputsValid = pluginInputsAreValid(inputFields, optimisticInputs);
     const queryTemplate =
@@ -858,7 +882,7 @@ export function HomeView({
     },
   ) {
     const replacement = previewPluginReplacement(record, nextPrompt, {
-      inputs: withHomeDesignSystemDefault(options?.inputs, options?.inputFields ?? record.manifest?.od?.inputs ?? [], defaultDesignSystemTitle),
+      inputs: withHomeDesignSystemDefault(options?.inputs, options?.inputFields ?? record.manifest?.od?.inputs ?? [], selectedDesignSystemTitle),
       inputFields: options?.inputFields,
       queryTemplate: options?.queryTemplate,
     });
@@ -1189,6 +1213,22 @@ export function HomeView({
     });
   }
 
+  // Persistent design-system picker change. Records the explicit choice and
+  // keeps the active plugin's `designSystem` input (the apply-template hint) in
+  // sync so the rendered brief references the picked system even after the user
+  // switches design systems mid-compose.
+  function handleDesignSystemChange(id: string | null) {
+    designSystemTouchedRef.current = true;
+    setDesignSystemId(id);
+    if (active && active.inputFields.some((field) => field.name === 'designSystem')) {
+      const title = id
+        ? designSystemPickerSystems.find((system) => system.id === id)?.title
+            ?? t('designSystemPicker.noneTitle')
+        : t('designSystemPicker.noneTitle');
+      updateActiveInputs({ ...active.inputs, designSystem: title });
+    }
+  }
+
   function clearActivePlugin() {
     activePluginApplyRequestRef.current += 1;
     setActive(null);
@@ -1446,7 +1486,7 @@ export function HomeView({
   // the stale (empty) default — showing "No design system" for the brand. We
   // therefore only bump a tick from the listener and consume the chip in a
   // separate effect: by the time that effect runs, the re-render has landed and
-  // `defaultDesignSystemTitle` reflects the freshly-applied brand.
+  // `selectedDesignSystemTitle` reflects the freshly-applied brand.
   const [chipIntentTick, setChipIntentTick] = useState(0);
   useEffect(() => {
     function bumpChipIntent() {
@@ -1464,7 +1504,7 @@ export function HomeView({
     if (!chipId) return;
     const chip = findChip(chipId);
     if (chip) pickChip(chip);
-    // pickChip / defaultDesignSystemTitle are recreated each render; this effect
+    // pickChip / selectedDesignSystemTitle are recreated each render; this effect
     // runs after the commit that bumped the tick, so the closure it captures
     // already reflects the latest default design system.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1496,11 +1536,11 @@ export function HomeView({
       return;
     }
     const defaultInputs = { prompt: trimmed };
-    const submittedDesignSystemId = homeDesignSystemSelectionForInputs(
-      submittedActive?.inputs ?? null,
-      designSystemPickerSystems,
-      t('designSystemPicker.noneTitle'),
-    );
+    // The persistent picker is the single source of truth for the new project's
+    // design system, so every product kind (not just prototype/deck) carries
+    // the user's selection — the plugin's `designSystem` input is only the
+    // apply-template hint and is kept in sync via handleDesignSystemChange.
+    const submittedDesignSystemId = designSystemId;
     // Composer inputs are forwarded as-is; the deferred footer/media fields are
     // stripped from this set just below to form the run-facing inputs.
     const submittedApplyInputs = submittedActive ? submittedActive.inputs : defaultInputs;
@@ -1656,6 +1696,8 @@ export function HomeView({
         inlineEditableInputNames={active?.editableInputNames ?? []}
         footerInputNames={footerInputNamesForChip(active?.chipId ?? null)}
         designSystems={designSystemPickerSystems}
+        selectedDesignSystemId={designSystemId}
+        onDesignSystemChange={handleDesignSystemChange}
         stagedFiles={stagedFiles}
         onAddFiles={stageFiles}
         onRemoveFile={removeStagedFile}
@@ -2006,11 +2048,12 @@ function stripArtifactFooterInputs(
   return next;
 }
 
-function footerInputNamesForChip(chipId: string | null): string[] {
-  if (chipId === 'prototype' || chipId === 'deck') return ['designSystem'];
-  if (chipId === 'image' || chipId === 'video') return ['designSystem'];
-  // hyperframes / audio surface no pre-flight settings — the agent asks for
-  // ratio / duration / model / audio kind via question-form during the run.
+function footerInputNamesForChip(_chipId: string | null): string[] {
+  // The design-system picker moved out of the input-card footer to the
+  // persistent row below the composer (next to the working-directory picker),
+  // so it is selectable for every product kind — not just prototype/deck. No
+  // other setting is surfaced inline: the agent asks for fidelity / ratio /
+  // duration / model / audio kind via the first-turn question-form flow.
   return [];
 }
 
@@ -2062,15 +2105,14 @@ function selectableHomeDesignSystems(
   return [defaultSystem, ...sorted.filter((system) => system.id !== defaultSystem.id)];
 }
 
-// The composer's default selection title. A user-owned ("Personal") default
+// The composer's default selection id. A user-owned ("Personal") default
 // design system stays pre-selected; otherwise the composer defaults to
-// "不指定 / No design system" so nothing is imposed implicitly and the project
-// opens with an empty Design system.
-function homeDefaultDesignSystemTitle(
+// "不指定 / No design system" (null) so nothing is imposed implicitly and the
+// project opens with an empty Design system.
+function homeDefaultDesignSystemId(
   systems: DesignSystemSummary[],
   defaultDesignSystemId: string | null,
-  t: ReturnType<typeof useI18n>['t'],
-): string {
+): string | null {
   const defaultSystem = systems.find(
     (system) =>
       system.id === defaultDesignSystemId &&
@@ -2078,7 +2120,7 @@ function homeDefaultDesignSystemTitle(
       designSystemOptionGroup(system) === 'Personal' &&
       (system.status ?? 'draft') === 'published',
   );
-  return defaultSystem?.title ?? t('designSystemPicker.noneTitle');
+  return defaultSystem?.id ?? null;
 }
 
 function designSystemOptionGroup(
@@ -2113,24 +2155,6 @@ function withHomeDesignSystemDefault(
     designSystem: defaultDesignSystemTitle,
   };
 }
-
-// Resolve the composer's `designSystem` input (a title string) to the
-// designSystemId sent at submit. "不指定 / No design system" (or an unset
-// value) resolves to null so the project is created without a design system.
-function homeDesignSystemSelectionForInputs(
-  inputs: Record<string, unknown> | null,
-  systems: DesignSystemSummary[],
-  noneTitle: string,
-): string | null {
-  const value = inputs?.designSystem;
-  if (typeof value !== 'string') return null;
-  const selectedTitle = value.trim();
-  if (!selectedTitle || selectedTitle === noneTitle || selectedTitle === 'the active project design system') {
-    return null;
-  }
-  return systems.find((system) => system.title === selectedTitle)?.id ?? null;
-}
-
 
 function estimatePluginContextItemCount(
   record: InstalledPluginRecord,

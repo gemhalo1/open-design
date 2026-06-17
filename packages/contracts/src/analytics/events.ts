@@ -1540,6 +1540,7 @@ export interface DesignSystemsCreateClickProps {
   area: 'design_system_create';
   element:
     | 'source_url_add'
+    | 'figma_url_add'
     | 'show_access_methods'
     | 'browse_folder'
     | 'upload_fig'

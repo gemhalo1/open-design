@@ -694,6 +694,13 @@ export function EntryShell({
   if (view === 'onboarding') {
     return (
       <div className="entry-shell entry-shell--no-header entry-shell--onboarding">
+        <div className="entry-onboarding-settings">
+          <EntrySettingsMenu
+            config={config}
+            onThemeChange={onThemeChange}
+            onOpenSettings={onOpenSettings}
+          />
+        </div>
         <main className="entry-onboarding-modal" aria-label={t('settings.welcomeTitle')}>
           <OnboardingView
             config={config}
@@ -2333,6 +2340,19 @@ function OnboardingView({
               <OnboardingPanelHeader
                 title={t('onboarding.brandTitle')}
                 body={t('onboarding.brandSubtitle')}
+                trailing={
+                  <button
+                    type="button"
+                    className="onboarding-view__skip-link"
+                    onClick={() => {
+                      void handlePrimaryAction();
+                    }}
+                    disabled={onboardingNavigationLocked}
+                  >
+                    <span>{t('onboarding.brandSkip')}</span>
+                    <Icon name="chevron-right" size={14} aria-hidden />
+                  </button>
+                }
               />
               <label className="onboarding-view__email-field">
                 <span className="onboarding-view__email-label">
@@ -2937,10 +2957,23 @@ function renderOnboardingProviderModelsMessage(
   }
 }
 
-function OnboardingPanelHeader({ title, body }: { title: string; body: string }) {
+function OnboardingPanelHeader({
+  title,
+  body,
+  trailing,
+}: {
+  title: string;
+  body: string;
+  trailing?: ReactNode;
+}) {
   return (
     <div className="onboarding-view__panel-head">
-      <h2>{title}</h2>
+      <div className="onboarding-view__panel-head-row">
+        <h2>{title}</h2>
+        {trailing ? (
+          <div className="onboarding-view__panel-head-trailing">{trailing}</div>
+        ) : null}
+      </div>
       <p>{body}</p>
     </div>
   );

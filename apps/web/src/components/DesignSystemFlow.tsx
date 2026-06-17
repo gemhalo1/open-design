@@ -188,6 +188,8 @@ interface SetupState {
   company: string;
   sourceUrl: string;
   sourceUrls: string[];
+  figmaUrl: string;
+  figmaUrls: string[];
   codeFiles: string[];
   codeFolders: string[];
   codeFileObjects: File[];
@@ -202,6 +204,8 @@ const EMPTY_SETUP: SetupState = {
   company: '',
   sourceUrl: '',
   sourceUrls: [],
+  figmaUrl: '',
+  figmaUrls: [],
   codeFiles: [],
   codeFolders: [],
   codeFileObjects: [],
@@ -459,6 +463,32 @@ export function DesignSystemCreationFlow({
     void refreshGithubConnector();
   }, [refreshGithubConnector]);
 
+  // Without this, a `.fig` (or any file) dropped anywhere on the create page
+  // OUTSIDE the small drop zones makes the browser navigate to / open the
+  // file, losing the form — the "can't drag the .fig in" symptom. Mirror
+  // FileWorkspace's window-level guard: swallow file drags that don't land on
+  // a real drop target so misses do nothing instead of opening the file.
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const isAllowedDropTarget = (target: EventTarget | null) =>
+      target instanceof Element && Boolean(target.closest('.ds-drop-zone, [data-testid="ds-asset-dropzone"]'));
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e) || isAllowedDropTarget(e.target)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e) || isAllowedDropTarget(e.target)) return;
+      e.preventDefault();
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
   useEffect(() => {
     if (!composioConfigured) return undefined;
     function handleConnectorMessage(event: MessageEvent) {
@@ -547,6 +577,34 @@ export function DesignSystemCreationFlow({
     setState((curr) => ({
       ...curr,
       sourceUrls: curr.sourceUrls.filter((item) => item !== url),
+    }));
+  }
+
+  function handleAddFigmaUrl() {
+    const nextUrl = normalizeFigmaUrl(state.figmaUrl);
+    if (!nextUrl) {
+      setError('Enter a Figma file URL (https://figma.com/file/… or /design/…).');
+      return;
+    }
+    setError(null);
+    emitCreateFormClick('figma_url_add');
+    setState((curr) => ({
+      ...curr,
+      figmaUrl: '',
+      figmaUrls: Array.from(new Set([...curr.figmaUrls, nextUrl])),
+    }));
+  }
+
+  function handleFigmaUrlKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    handleAddFigmaUrl();
+  }
+
+  function handleRemoveFigmaUrl(url: string) {
+    setState((curr) => ({
+      ...curr,
+      figmaUrls: curr.figmaUrls.filter((item) => item !== url),
     }));
   }
 
@@ -988,6 +1046,53 @@ export function DesignSystemCreationFlow({
                 }));
               }}
             />
+            <div className="ds-resource-row">
+              <strong>Figma URL</strong>
+              <div className="ds-resource-inline">
+                <input
+                  value={state.figmaUrl}
+                  onChange={(event) => setState((curr) => ({ ...curr, figmaUrl: event.target.value }))}
+                  onKeyDown={handleFigmaUrlKeyDown}
+                  placeholder="https://figma.com/design/… or /file/…"
+                />
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!state.figmaUrl.trim()}
+                  onClick={handleAddFigmaUrl}
+                >
+                  Add
+                </button>
+              </div>
+              {state.figmaUrls.length > 0 ? (
+                <div className="ds-source-link-list" aria-label="Added Figma URLs">
+                  {state.figmaUrls.map((url) => (
+                    <span className="ds-source-link-chip" key={url}>
+                      <a
+                        className="ds-source-link-preview"
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Open ${figmaUrlLabel(url)}`}
+                        title={`Open ${figmaUrlLabel(url)}`}
+                      >
+                        <Icon name="import" />
+                      </a>
+                      {figmaUrlLabel(url)}
+                      <button
+                        type="button"
+                        className="ds-source-link-remove"
+                        aria-label={`Remove ${figmaUrlLabel(url)}`}
+                        onClick={() => handleRemoveFigmaUrl(url)}
+                      >
+                        x
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <p>Saved as a Figma design source. The agent uses it as the canonical reference; export a .fig above for a full offline decode.</p>
+            </div>
             <div className="ds-resource-row ds-resource-row--assets">
               <strong>Add assets</strong>
               <DesignSystemAssetDropzone
@@ -3753,6 +3858,33 @@ function titleCaseRepositoryWord(word: string): string {
   return `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`;
 }
 
+const FIGMA_FILE_URL_RE = /^https:\/\/(?:www\.)?figma\.com\/(?:file|design|board)\/[A-Za-z0-9]+/i;
+
+// Accept a Figma file/design URL, tolerating a missing protocol. Returns the
+// normalized https URL, or '' when it isn't a recognizable Figma file link.
+function normalizeFigmaUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed.replace(/^\/+/, '')}`;
+  if (!FIGMA_FILE_URL_RE.test(withProtocol)) return '';
+  try {
+    return new URL(withProtocol).toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+// "https://figma.com/design/<key>/My-File-Name" → "Figma · My File Name".
+function figmaUrlLabel(url: string): string {
+  try {
+    const parts = new URL(url).pathname.split('/').filter(Boolean);
+    const name = parts[2] ? decodeURIComponent(parts[2]).replace(/[-_]+/g, ' ').trim() : '';
+    return name ? `Figma · ${name}` : 'Figma file';
+  } catch {
+    return 'Figma file';
+  }
+}
+
 function normalizeSourceUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return '';
@@ -4211,6 +4343,9 @@ function buildCreationAgentPrompt(
     stagedFigma?.skippedCount
       ? `${stagedFigma.skippedCount} .fig files were skipped (duplicate or failed to decode).`
       : '',
+    state.figmaUrls.length
+      ? `Figma file URL(s) provided as the canonical design source: ${state.figmaUrls.join(', ')}. Use them as the reference for layout, tokens, type, and components. If a URL isn't directly reachable, ask the user to export it as a .fig (File → Save local copy) for a full offline decode, or to share a screenshot.`
+      : '',
     stagedAssets?.uploadedPaths.length
       ? `Use uploaded brand assets in \`${ASSET_UPLOAD_ROOT}/\`: ${stagedAssets.uploadedPaths.slice(0, 20).join(', ')}${stagedAssets.uploadedPaths.length > 20 ? `, and ${stagedAssets.uploadedPaths.length - 20} more` : ''}.`
       : '',
@@ -4310,6 +4445,10 @@ function buildSourceContextManifest(
   }
   if (skippedFigma > 0) {
     sections.push(`${skippedFigma} .fig files were skipped (duplicate or failed to decode).`);
+  }
+  if (state.figmaUrls.length > 0) {
+    sections.push('', 'Figma file URLs (canonical design source references):');
+    sections.push(...state.figmaUrls.map((url) => `- ${url}`));
   }
   sections.push(state.assetFiles.length ? `Fonts, logos, and assets selected:\n${state.assetFiles.map((name) => `- ${name}`).join('\n')}` : 'Fonts, logos, and assets selected: none.');
   if (uploadedAssets.length > 0) {

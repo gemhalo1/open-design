@@ -384,7 +384,7 @@ function injectSnapshotBridge(doc: string): string {
 //
 // Protocol:
 //   in:  { type:'od:export-capture', id, mode:'image'|'editable',
-//          deck:boolean, scale:number, delay:number, h2cUrl:string }
+//          deck:boolean, single?:boolean, delay:number }
 //   out: { type:'od:export-capture:slide', id, index, total,
 //          dataUrl?|shapes?, w, h, notes }   (one per slide)
 //   out: { type:'od:export-capture:done',  id, total }
@@ -392,9 +392,9 @@ function injectSnapshotBridge(doc: string): string {
 //
 // Slides are enumerated/navigated through the existing deck bridge
 // (window.__odDeckSlideState + an `od:slide` self-postMessage), so any deck the
-// on-screen preview can drive, the exporter can too. html2canvas is loaded on
-// demand from h2cUrl (a classic cross-origin script is allowed to load and run
-// in an opaque-origin sandboxed frame), keeping it out of normal previews.
+// on-screen preview can drive, the exporter can too. Image capture reuses the
+// shared SVG-foreignObject renderer (window.__odCaptureSnapshot from the
+// snapshot bridge) — fast and free of any external script load or network wait.
 function injectExportCaptureBridge(doc: string): string {
   const script = `<script data-od-export-capture-bridge>(function(){
   function raf(){ return new Promise(function(r){ requestAnimationFrame(function(){ r(); }); }); }
@@ -440,18 +440,14 @@ function injectExportCaptureBridge(doc: string): string {
     var st = deckState();
     return list[Math.max(0, Math.min(list.length-1, st.active))] || null;
   }
-  function toCanvasResult(canvas){ return { dataUrl: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height }; }
-  function captureImage(deck, scale){
-    var h2c = window.html2canvas;
-    var common = { scale: scale, backgroundColor: bg(), useCORS: true, logging: false };
-    if (deck){
-      var el = activeSlideEl();
-      if (el){ return h2c(el, common).then(toCanvasResult); }
-      var w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
-      return h2c(document.body, Object.assign({}, common, { width: w, height: h, windowWidth: w, windowHeight: h, x: window.scrollX, y: window.scrollY })).then(toCanvasResult);
+  function captureImage(deck){
+    // Reuse the shared SVG-foreignObject renderer (injectSnapshotBridge). For a
+    // deck the active slide fills the viewport, so a viewport capture IS the
+    // slide; a non-deck page captures the full document.
+    if (typeof window.__odCaptureSnapshot !== 'function') {
+      return Promise.reject(new Error('snapshot renderer unavailable'));
     }
-    var bodyW = Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, window.innerWidth);
-    return h2c(document.body || document.documentElement, Object.assign({}, common, { windowWidth: bodyW })).then(toCanvasResult);
+    return window.__odCaptureSnapshot({ full: !deck });
   }
   function num(v){ var n = parseFloat(v); return isFinite(n) ? n : 0; }
   function parseRgb(c){
@@ -536,10 +532,8 @@ function injectExportCaptureBridge(doc: string): string {
     var deck = !!req.deck;
     var single = !!req.single;
     var mode = req.mode === 'editable' ? 'editable' : 'image';
-    var scale = req.scale || 1;
     var delay = req.delay || 350;
-    var prep = (mode === 'image' && req.h2cUrl) ? loadH2C(req.h2cUrl) : Promise.resolve();
-    prep.then(function(){
+    Promise.resolve().then(function(){
       var st = deckState();
       var total = (!single && deck && st.count > 1) ? st.count : 1;
       var notesAll = notes();
@@ -557,7 +551,7 @@ function injectExportCaptureBridge(doc: string): string {
               idx++; setTimeout(step, 0);
               return;
             }
-            captureImage(deck, scale).then(function(img){
+            captureImage(deck).then(function(img){
               send({ type:'od:export-capture:slide', id:id, index:i, total:total, dataUrl: img.dataUrl, w: img.w, h: img.h, notes: noteFor(i) });
               idx++; setTimeout(step, 0);
             }).catch(function(err){ send({ type:'od:export-capture:error', id:id, error: String(err && err.message || err) }); });
