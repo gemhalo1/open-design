@@ -18,7 +18,7 @@
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, join, posix } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { createJsonIpcServer, resolveAppIpcPath } from '@open-design/sidecar';
@@ -33,6 +33,10 @@ import {
   waitForStatus,
 } from '../src/sidecars.js';
 import type { PackagedNamespacePaths } from '../src/paths.js';
+
+function slashPath(value: string): string {
+  return value.replaceAll('\\', '/');
+}
 
 describe('resolveDaemonStatusTimeoutMs', () => {
   it('uses the default 35-second budget for normal cold boots', () => {
@@ -107,11 +111,15 @@ describe('packaged child Vite+ environment forwarding', () => {
       HTTPS_PROXY: 'http://127.0.0.1:7891',
       NODE_USE_ENV_PROXY: '1',
       NO_PROXY: 'localhost,127.0.0.1,::1',
-      all_proxy: 'socks5://127.0.0.1:1081',
-      http_proxy: 'http://127.0.0.1:7891',
-      https_proxy: 'http://127.0.0.1:7891',
-      no_proxy: 'localhost,127.0.0.1,::1',
     });
+    if (process.platform !== 'win32') {
+      expect(env).toMatchObject({
+        all_proxy: 'socks5://127.0.0.1:1081',
+        http_proxy: 'http://127.0.0.1:7891',
+        https_proxy: 'http://127.0.0.1:7891',
+        no_proxy: 'localhost,127.0.0.1,::1',
+      });
+    }
     expect(env.RANDOM_INTERNAL_FLAG).toBeUndefined();
   });
 
@@ -219,9 +227,9 @@ describe('resolvePackagedElectronNodeCommand', () => {
   it('uses the hidden Electron helper as the macOS Electron-as-Node command when available', async () => {
     const root = mkdtempSync(join(tmpdir(), 'od-packaged-electron-helper-'));
     try {
-      const appPath = join(root, 'Open Design.app');
-      const execPath = join(appPath, 'Contents', 'MacOS', 'Open Design');
-      const helperPath = join(
+      const appPath = posix.join(root.replaceAll('\\', '/'), 'Open Design.app');
+      const execPath = posix.join(appPath, 'Contents', 'MacOS', 'Open Design');
+      const helperPath = posix.join(
         appPath,
         'Contents',
         'Frameworks',
@@ -231,12 +239,14 @@ describe('resolvePackagedElectronNodeCommand', () => {
         'Open Design Helper',
       );
 
-      mkdirSync(join(appPath, 'Contents', 'MacOS'), { recursive: true });
+      mkdirSync(posix.join(appPath, 'Contents', 'MacOS'), { recursive: true });
       mkdirSync(dirname(helperPath), { recursive: true });
       writeFileSync(execPath, '#!/bin/sh\n', 'utf8');
       writeFileSync(helperPath, '#!/bin/sh\n', 'utf8');
 
-      await expect(resolvePackagedElectronNodeCommand(execPath, 'darwin')).resolves.toBe(helperPath);
+      await expect(resolvePackagedElectronNodeCommand(execPath, 'darwin')).resolves.toSatisfy(
+        (value: string) => slashPath(value) === helperPath,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
