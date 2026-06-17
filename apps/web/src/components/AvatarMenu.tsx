@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n';
 import type { Dict } from '../i18n/types';
+import { getResolvedDeviceId } from '../analytics/client';
+import { amrHandoffDeviceId, attributedAmrUrl, recordAmrEntry } from '../analytics/amr-attribution';
+import { useAnalytics } from '../analytics/provider';
 import { AgentIcon } from './AgentIcon';
 import { RemixIcon } from './RemixIcon';
 import { SearchableModelSelect } from './modelOptions';
@@ -68,6 +71,7 @@ export function AvatarMenu({
   onUseAmrPreflight,
 }: Props) {
   const { locale, t } = useI18n();
+  const analytics = useAnalytics();
   const [open, setOpen] = useState(false);
   // Toggle that reports the closed→open transition (for analytics) without
   // firing on close.
@@ -172,6 +176,22 @@ export function AvatarMenu({
     config.mode === 'daemon' && currentAgent?.id === 'amr' && amrAvailable;
   const amrProfile = config.agentCliEnv?.amr?.OPEN_DESIGN_AMR_PROFILE;
   const amrConsoleUrl = amrConsoleUrlForProfile(amrProfile);
+  const handleAmrConsoleClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    const attribution = recordAmrEntry(analytics.track, 'avatar_amr_console', new Date(), {
+      metricsConsent: config.telemetry?.metrics === true,
+    });
+    const deviceId = amrHandoffDeviceId({
+      metricsConsent: config.telemetry?.metrics === true,
+      resolvedDeviceId: getResolvedDeviceId(),
+      installationId: config.installationId,
+    });
+    event.currentTarget.href = attributedAmrUrl(
+      amrConsoleUrl,
+      attribution,
+      deviceId,
+    );
+    setOpen(false);
+  };
 
   // Resolve the user's model + reasoning pick for the active agent. Falls
   // back to the agent's first declared option (`'default'`) when the user
@@ -187,7 +207,14 @@ export function AvatarMenu({
   )?.label;
 
   const apiProtocol = config.apiProtocol ?? 'openai';
-  const byokProvider = KNOWN_PROVIDERS.find((provider) => provider.protocol === apiProtocol);
+  const byokProvider =
+    KNOWN_PROVIDERS.find(
+      (provider) =>
+        provider.protocol === apiProtocol &&
+        (config.apiProviderBaseUrl
+          ? provider.baseUrl === config.apiProviderBaseUrl
+          : provider.baseUrl === config.baseUrl),
+    ) ?? KNOWN_PROVIDERS.find((provider) => provider.protocol === apiProtocol);
   const byokProviderModelsKey = providerModelsCacheKey(
     apiProtocol,
     config.baseUrl ?? '',
@@ -230,7 +257,9 @@ export function AvatarMenu({
 
   const byokModelOptions = mergeProviderModelOptions(
     fetchedByokModels,
-    SUGGESTED_MODELS_BY_PROTOCOL[apiProtocol] ?? [],
+    byokProvider?.models?.length
+      ? byokProvider.models
+      : SUGGESTED_MODELS_BY_PROTOCOL[apiProtocol] ?? [],
   );
   const hasAmrPreflightWarning = Boolean(amrPreflightIssue);
   // The warning card below the header owns the "what is missing" message, so
@@ -335,7 +364,7 @@ export function AvatarMenu({
               href={amrConsoleUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => setOpen(false)}
+              onClick={handleAmrConsoleClick}
             >
               <span className="avatar-amr-account-link__icon" aria-hidden>
                 <RemixIcon name="wallet-3-line" size={15} />

@@ -136,6 +136,10 @@ export interface Dict {
   'settings.onboardingNewsletterBody': string;
   'settings.onboardingConnectTitle': string;
   'settings.onboardingConnectBody': string;
+  'settings.onboardingGateTooltipNoRuntime': string;
+  'settings.onboardingGateTooltipAmr': string;
+  'settings.onboardingGateTooltipLocal': string;
+  'settings.onboardingGateTooltipByok': string;
   'settings.onboardingRecommended': string;
   'settings.onboardingAmrCloudOfficialBadge': string;
   'settings.onboardingLocalTitle': string;
@@ -1950,6 +1954,8 @@ export interface Dict {
   'socialShare.openDesignText': string;
   'socialShare.openDesignCopyText': string;
   'socialShare.projectSection': string;
+  'socialShare.publishPageTitle': string;
+  'socialShare.publishPageSubtitle': string;
   'socialShare.projectTitle': string;
   'socialShare.projectText': string;
   'socialShare.projectCopyText': string;
@@ -2076,6 +2082,7 @@ export interface Dict {
   'chat.annotationSendDisabledReason': string;
   'chat.annotationPreviewMissing': string;
   'chat.annotationPreviewMissingInk': string;
+  'chat.annotationSentWithoutScreenshot': string;
   'chat.annotationTimeout': string;
   'chat.annotationFailed': string;
   'chat.annotationProjectCreateFailed': string;
