@@ -45,6 +45,16 @@ AMR repays 100-153k uncached tokens every turn because it feeds "history the mod
 2. **daemon flattens history into a new user message every turn** (`buildDaemonTranscript`) → prefixes and the previous turn's native structure do not line up;
 3. **volatile system blocks** (MCP/memory/runContext) are interleaved inside the system prefix → they truncate the cacheable prefix early (for explicit-cache models).
 
+### Why a high reported cache rate does NOT contradict this (within-turn vs cross-turn)
+
+A counter-intuitive fact to pre-empt: AMR's per-turn cache rate can look healthy (~80%) while the cross-turn re-pay above is exactly the problem. They are not in tension — they measure different things:
+
+- vela reports `cachedReadTokens` by **summing `cache.read` across every `step-finish` part within one turn** (`opencode_client.go:140`), and since vela opens a fresh session per turn, `exportSessionUsage` only covers that one turn → the number is a **per-turn aggregate**.
+- One turn is an **agentic loop** = many model calls (plan → tool → observe → tool → … → answer). Calls 2..N reuse the same growing-but-stable within-turn prefix → high hit rate. That is real and already good.
+- But the **first call of each turn** must re-pay the ~153k flattened history from scratch (cross-turn miss: structure destroyed + new session + TTL likely expired). It is one call out of many, so it barely moves the per-turn average — yet it is the entire cross-turn cost and it sits exactly on the TTFT path.
+
+**Consequence**: a high per-turn cache rate ≠ fast TTFT, because TTFT is set by the turn's first call (the cross-turn miss). Measurement must therefore target the **first model call of turn-2+**, not the per-turn aggregate, or the win will be invisible in the averaged metric. (This also corrects the older "AMR reports no token usage" assumption — vela #277/#288 fixed that ~2026-06-10.)
+
 ## Proposed design
 
 Explicit order: measure first, run the cheap gateway/cache experiment second, and only then decide whether ACP session reuse is still justified.
@@ -106,7 +116,7 @@ ACP session reuse must mirror the daemon's existing resume keying (`server.ts:76
 - **Cross-repo vela**: session/load + persistence are vela changes; user owns vela, non-blocking; requires vela tests + open-design daemon integration.
 - **Correctness**: session reuse must not repeat #3380 and lose edit state; model/cwd/agent/cancel changes need session invalidation and fallback.
 - **Slow conversations vs TTL**: 1h extended TTL + keepalive mitigates; very slow conversations may still miss (acceptable).
-- **Instrumentation gap**: AMR `cache_creation` field is empty (possibly Vertex does not report it) → AMR cache accounting may be incomplete; add instrumentation during acceptance.
+- **Instrumentation status (updated)**: vela now forwards usage on the ACP `session/prompt` result (vela #277 `c424931` + #288 `d176c010`, landed ~2026-06-10), so `cachedReadTokens` flows through to `token_count_source=provider_usage` (`acp_runtime.go:607-613` → daemon `acp.ts:154`). `cache_creation` is still likely empty (Vertex may not report write). **Caveat that changes interpretation — see "within-turn vs cross-turn" below**: the reported cache read is a per-turn aggregate, so a healthy AMR cache rate does NOT imply cross-turn reuse.
 - **observability**: Add `cache_efficiency` / follow-up uncached_tokens dashboards to prevent regression.
 
 ## Prior art
@@ -116,7 +126,7 @@ Claude CLI resume already provides the desired host shape for native continuatio
 ## Validation · Acceptance (behavior-level)
 
 - before/after: AMR follow-up `time_to_first_token_ms` p50 drops; `uncached_input_tokens` drops significantly from ~153k; `cache_read_input_tokens/(cache_read_input_tokens+uncached_input_tokens)` efficiency rises (target approaches claude's ~93%).
-- One falsifiable check: send two consecutive turns in the same `conversationId`, assert second-turn `uncached_input_tokens` << first-turn `uncached_input_tokens` (history is no longer repaid after session reuse).
+- One falsifiable check: send two consecutive turns in the same `conversationId`, assert second-turn `uncached_input_tokens` << first-turn `uncached_input_tokens` (history is no longer repaid after session reuse). **Measure the first model call of turn-2+, not the per-turn aggregate** — the per-turn cache rate is within-turn-loop-dominated and hides the cross-turn miss (see "within-turn vs cross-turn").
 - Pure telemetry changes do not need #3545 QA gate. Prefix reordering and session reuse do need state-continuity / quality gates because they change model input: order is part of the input, and the daemon assembles that order at `server.ts:7670-7684`.
 - Session lifecycle acceptance: changing model / cwd / project / MCP+tool contract / prompt hash / memory forces a new ACP session; cancel closes the session; stale-process eviction removes long-lived conversation processes; a new conversation cannot observe prior conversation state.
 
