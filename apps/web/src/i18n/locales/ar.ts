@@ -3142,6 +3142,7 @@ export const ar: Dict = {
   'dsManager.badgeDefault': 'افتراضي',
   'dsManager.rowMetaUpdated': 'أنت · تم التحديث {date}',
   'dsManager.edit': 'تعديل',
+  'dsManager.openSystem': 'فتح',
   'dsManager.makeDefault': 'تعيين كافتراضي',
   'dsManager.statusPublished': 'منشور',
   'dsManager.statusDraft': 'مسودة',

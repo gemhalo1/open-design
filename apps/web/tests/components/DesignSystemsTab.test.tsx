@@ -100,8 +100,8 @@ describe('DesignSystemsTab', () => {
     expect(onCreate).toHaveBeenCalledOnce();
 
     // Acme is the only user system, so it auto-selects into the detail pane,
-    // exposing the Edit action that routes back into the authoring flow.
-    fireEvent.click(screen.getByText('Edit'));
+    // exposing the Open action that routes back into the authoring flow.
+    fireEvent.click(screen.getByText('Open'));
     expect(onOpenSystem).toHaveBeenCalledWith('user:acme');
   });
 

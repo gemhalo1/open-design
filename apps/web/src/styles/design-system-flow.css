@@ -1893,7 +1893,11 @@ a.ds-source-link-open:focus-visible {
   background: var(--bg-subtle);
 }
 .workspace.has-design-system-tab .ws-tab.design-files-tab {
-  left: 148px;
+  /* Stick exactly to the right edge of the sticky Design System tab. The width
+     is measured live (locale-proof) into --ds-system-tab-w by FileWorkspace; the
+     148px fallback only applies before the first measurement. The old hardcoded
+     148px over-shot the ~110px tab and left a visible gap between the two. */
+  left: var(--ds-system-tab-w, 148px);
   z-index: 1;
 }
 

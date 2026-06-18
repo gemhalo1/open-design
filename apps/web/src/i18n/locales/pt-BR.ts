@@ -3142,6 +3142,7 @@ export const ptBR: Dict = {
   'dsManager.badgeDefault': 'Padrão',
   'dsManager.rowMetaUpdated': 'Você · atualizado {date}',
   'dsManager.edit': 'Editar',
+  'dsManager.openSystem': 'Abrir',
   'dsManager.makeDefault': 'Tornar padrão',
   'dsManager.statusPublished': 'Publicado',
   'dsManager.statusDraft': 'Rascunho',

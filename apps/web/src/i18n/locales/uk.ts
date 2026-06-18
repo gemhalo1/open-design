@@ -3142,6 +3142,7 @@ export const uk: Dict = {
   'dsManager.badgeDefault': 'За замовчуванням',
   'dsManager.rowMetaUpdated': 'Ви · оновлено {date}',
   'dsManager.edit': 'Редагувати',
+  'dsManager.openSystem': 'Відкрити',
   'dsManager.makeDefault': 'Зробити за замовчуванням',
   'dsManager.statusPublished': 'Опубліковано',
   'dsManager.statusDraft': 'Чернетка',

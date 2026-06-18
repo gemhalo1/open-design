@@ -3142,6 +3142,7 @@ export const tr: Dict = {
   'dsManager.badgeDefault': 'Varsayılan',
   'dsManager.rowMetaUpdated': 'Siz · güncellendi {date}',
   'dsManager.edit': 'Düzenle',
+  'dsManager.openSystem': 'Aç',
   'dsManager.makeDefault': 'Varsayılan yap',
   'dsManager.statusPublished': 'Yayımlandı',
   'dsManager.statusDraft': 'Taslak',

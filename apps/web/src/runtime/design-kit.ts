@@ -446,33 +446,21 @@ export function useDesignKit(source: DesignKitSource): { kit: DesignKit | null; 
 
     setLoading(true);
     void (async () => {
-      const rawBrand = await fetchProjectFileText(projectId, 'brand.json', {
-        cache: 'no-store',
-        cacheBustKey: reloadKey,
-      });
+      // Fetch brand.json (richest) and DESIGN.md (fallback) together so the kit
+      // resolves in a single async hop — brand.json wins when it is a valid kit.
+      const [rawBrand, rawDesignMd] = await Promise.all([
+        fetchProjectFileText(projectId, 'brand.json', { cache: 'no-store', cacheBustKey: reloadKey }),
+        body != null
+          ? Promise.resolve(body)
+          : fetchProjectFileText(projectId, 'DESIGN.md', { cache: 'no-store', cacheBustKey: reloadKey }),
+      ]);
       if (cancelled) return;
       const brand = tryParseBrand(rawBrand);
       if (brand) {
-        setKit(
-          brandToKit(brand, {
-            designSystemId,
-            projectId,
-            editable,
-            host,
-            showcaseHtml,
-          }),
-        );
-        setLoading(false);
-        return;
+        setKit(brandToKit(brand, { designSystemId, projectId, editable, host, showcaseHtml }));
+      } else {
+        setKit(fromDesignMd(rawDesignMd ?? ''));
       }
-      // No brand.json — use the caller's body, or read DESIGN.md from the project.
-      let designMd = body;
-      if (!designMd) {
-        designMd =
-          (await fetchProjectFileText(projectId, 'DESIGN.md', { cache: 'no-store' })) ?? '';
-        if (cancelled) return;
-      }
-      setKit(fromDesignMd(designMd));
       setLoading(false);
     })();
 

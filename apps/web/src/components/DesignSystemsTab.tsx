@@ -961,7 +961,8 @@ function DesignSystemDetail({
     <>
       {isUser && onEdit ? (
         <Button variant="ghost" onClick={() => onEdit(system.id)} disabled={busy}>
-          {t('dsManager.edit')}
+          <Icon name="external-link" />
+          {t('dsManager.openSystem')}
         </Button>
       ) : null}
       {canBeDefault && !isDefault ? (

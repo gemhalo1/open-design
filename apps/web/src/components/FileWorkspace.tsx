@@ -38,6 +38,9 @@ import { deriveFileOps, type FileOpEntry } from '../runtime/file-ops';
 import { latestTodosFromEvents, type TodoItem } from '../runtime/todos';
 import { deliverableSlideNavForActiveFile, isSlideNavDeliverableNow } from '../runtime/slide-nav';
 import { buildSrcdoc } from '../runtime/srcdoc';
+import { useDesignKit, hostnameOf } from '../runtime/design-kit';
+import { useKitModuleUpload } from '../runtime/kit-upload';
+import { DesignKitView } from './DesignKitView';
 import {
   type AgentEvent,
   type AgentInfo,
@@ -1728,6 +1731,15 @@ export function FileWorkspace({
     const measure = () => {
       frame = 0;
       setTabsOverflowing(tabBar.scrollWidth > tabBar.clientWidth + 1);
+      // Pin the sticky Design Files tab to the exact right edge of the sticky
+      // Design System tab (its real, locale-dependent width + the 2px flex gap),
+      // so the two read as adjacent instead of leaving a hardcoded-offset gap.
+      const systemTab = tabBar.querySelector<HTMLElement>('.ws-tab.design-system-tab');
+      if (systemTab) {
+        tabBar.style.setProperty('--ds-system-tab-w', `${Math.round(systemTab.offsetWidth) + 2}px`);
+      } else {
+        tabBar.style.removeProperty('--ds-system-tab-w');
+      }
     };
     const requestMeasure = () => {
       if (frame) window.cancelAnimationFrame(frame);
@@ -2428,6 +2440,53 @@ function DesignSystemProjectPanel({
     }
     setReviewDecisions(next);
   }, [designSystemReview]);
+
+  // brand.html-style kit for this design system. brand.json drives the modules
+  // when the backing project carries one; otherwise the parsed DESIGN.md does.
+  // DESIGN.md is the one editable module (Visualize / Edit / Source).
+  const [editBody, setEditBody] = useState('');
+  const [savingBody, setSavingBody] = useState(false);
+  const [kitReloadKey, setKitReloadKey] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchProjectFileText(projectId, 'DESIGN.md', { cache: 'no-store' }).then((text) => {
+      if (!cancelled) setEditBody(text ?? '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, kitReloadKey]);
+  const kitHost = system.provenance?.sourceUrls?.[0]
+    ? hostnameOf(system.provenance.sourceUrls[0])
+    : undefined;
+  const { uploading: kitUploading, uploadModule: kitUploadModule } = useKitModuleUpload({
+    projectId,
+    onUploaded: () => {
+      setKitReloadKey((k) => k + 1);
+      void onDesignSystemsRefresh?.();
+    },
+  });
+  const { kit } = useDesignKit({
+    designSystemId: system.id,
+    title: system.title,
+    projectId,
+    swatches: system.swatches,
+    editable: true,
+    host: kitHost,
+    reloadKey: kitReloadKey,
+  });
+  async function saveDesignMd() {
+    setSavingBody(true);
+    try {
+      await updateDesignSystemDraft(system.id, { body: editBody });
+      await writeProjectTextFile(projectId, 'DESIGN.md', editBody);
+      setKitReloadKey((k) => k + 1);
+      await onDesignSystemsRefresh?.();
+    } finally {
+      setSavingBody(false);
+    }
+  }
+
   const allFileNames = files.map((file) => file.name);
   const fileByName = new Map(files.map((file) => [file.name, file]));
   const manifestFile = files.find((file) => normalizeDesignSystemPath(file.name) === '_ds_manifest.json');
@@ -2797,176 +2856,148 @@ function DesignSystemProjectPanel({
     );
   }
 
-  return (
-    <div className="ds-project-panel">
-      <div className="ds-project-review-layout">
-        {reviewTocGroups.length > 0 ? (
-          <nav
-            className="ds-project-toc"
-            aria-label="Design system sections"
-            data-testid="design-system-review-toc"
-          >
-            <div className="ds-project-toc__title">
-              <Icon name="panel-left" size={14} />
-              <span>Contents</span>
-            </div>
-            {reviewTocGroups.map((group) => (
-              <div key={group.title} className="ds-project-toc__group">
-                <strong>{group.title}</strong>
-                {group.items.map((item) => (
-                  <a key={item.id} href={`#${item.id}`}>
-                    <span
-                      className={['ds-project-toc__dot', item.statusClass].join(' ')}
-                      aria-label={item.statusLabel}
-                      title={item.statusLabel}
-                    />
-                    <span>{item.label}</span>
-                  </a>
-                ))}
-              </div>
-            ))}
-          </nav>
-        ) : null}
+  // Scaffolding kept around the brand.html kit: publish / default controls in
+  // the kit header, and the publish card + repo / font / manifest warnings above
+  // the modules. The Looks-good / Needs-work review flow is intentionally gone
+  // here — the kit is the single, on-brand view of the system.
+  const actionsSlot = (
+    <>
+      <span
+        className="ds-project-publish-trigger"
+        title={
+          !published && !githubEvidence.ready
+            ? 'Finish importing your GitHub repo before you can publish.'
+            : undefined
+        }
+      >
+        <button
+          type="button"
+          className={published ? 'ghost compact' : 'primary'}
+          data-testid="design-system-publish"
+          disabled={statusBusy || (!published && !githubEvidence.ready)}
+          onClick={() => void togglePublished(!published)}
+        >
+          {published ? <Icon name="check" size={14} /> : null}
+          {published ? 'Published' : 'Publish'}
+        </button>
+      </span>
+      {published ? (
+        <label className="ds-project-default-toggle">
+          <input
+            type="checkbox"
+            checked={isDefault}
+            disabled={statusBusy}
+            onChange={(event) => {
+              onSetDefaultDesignSystem?.(event.target.checked ? system.id : null);
+            }}
+          />
+          Default
+        </label>
+      ) : null}
+    </>
+  );
 
-        <div className="ds-project-main ds-project-main--review">
-          <div className="ds-project-head ds-project-head--review">
-          <h1>
-            {published
-              ? `${systemDisplayName} design system`
-              : `Review ${systemDisplayName} design system`}
-          </h1>
-          <div className="ds-project-publish-card__toggles">
-            {/* The publish button is disabled until the GitHub import evidence is
-                ready, and a disabled button never fires the hover or focus that
-                surfaces a `title` tooltip. Keep the guidance on this wrapper,
-                which is never disabled, and let pointer events fall through the
-                disabled button to it (see .ds-project-publish-trigger) so the
-                explanation stays reachable exactly when publishing is blocked. */}
-            <span
-              className="ds-project-publish-trigger"
-              title={
-                !published && !githubEvidence.ready
-                  ? 'Finish importing your GitHub repo before you can publish.'
-                  : undefined
-              }
+  const topSlot = (
+    <>
+      <div className="ds-project-publish-card ds-project-publish-card--review">
+        <p>
+          {published
+            ? "Your team's new projects can use this design system as context by default."
+            : 'Your design system is ready, but your feedback will improve it. Publish it when it is ready to use in future projects.'}
+        </p>
+        {published ? (
+          <div className="ds-project-use-row">
+            <span>Use this system</span>
+            <Button
+              variant="ghost"
+              className="compact"
+              onClick={() => onUseDesignSystem?.(system.id, system.title)}
             >
-              <button
-                type="button"
-                className={published ? 'ghost compact' : 'primary'}
-                data-testid="design-system-publish"
-                disabled={statusBusy || (!published && !githubEvidence.ready)}
-                onClick={() => void togglePublished(!published)}
-              >
-                {published ? <Icon name="check" size={14} /> : null}
-                {published ? 'Published' : 'Publish'}
-              </button>
-            </span>
-            {published ? (
-              <label>
-                <input
-                  type="checkbox"
-                  checked={isDefault}
-                  disabled={statusBusy}
-                  onChange={(event) => {
-                    onSetDefaultDesignSystem?.(event.target.checked ? system.id : null);
-                  }}
-                />
-                Default
-              </label>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="ds-project-publish-card ds-project-publish-card--review">
-          <p>
-            {published
-              ? "Your team's new projects can use this design system as context by default."
-              : 'Your design system is ready, but your feedback will improve it. Publish it when it is ready to use in future projects.'}
-          </p>
-          {published ? (
-            <div className="ds-project-use-row">
-              <span>Use this system</span>
-              <Button
-                variant="ghost"
-                className="compact"
-                onClick={() => onUseDesignSystem?.(system.id, system.title)}
-              >
-                <Icon name="external-link" size={13} />
-                New design
-              </Button>
-            </div>
-          ) : null}
-        </div>
-
-        {!githubEvidence.ready ? (
-          <div className="ds-project-warning-card">
-            <Icon name="github" size={16} />
-            <span>
-              <strong>{repoConnectCopy(githubConnected).bannerTitle}</strong>
-              <small>{repoConnectCopy(githubConnected).bannerBody}</small>
-            </span>
-            {onConnectRepo ? (
-              <Button
-                variant="ghost"
-                className="compact"
-                disabled={githubConnected === undefined}
-                onClick={onConnectRepo}
-              >
-                <Icon name="github" size={13} />
-                {repoConnectCopy(githubConnected).buttonLabel}
-              </Button>
-            ) : githubEvidence.hasSourceManifest ? (
-              <Button variant="ghost" className="compact" onClick={() => onOpenFile('context/source-context.md')}>
-                <Icon name="file" size={13} />
-                Open source context
-              </Button>
-            ) : null}
+              <Icon name="external-link" size={13} />
+              New design
+            </Button>
           </div>
         ) : null}
-
-        {fontFiles.length === 0 ? (
-          <MissingBrandFontsBanner projectId={projectId} onUploadAssets={onUploadAssets} />
-        ) : null}
-
-        {cardManifestError ? (
-          <div
-            className="ds-project-warning-card ds-project-warning-card--error"
-            data-testid="design-system-manifest-error"
-            role="alert"
-          >
-            <Icon name="alert-triangle" size={16} />
-            <span>
-              <strong>Design manifest needs attention</strong>
-              <small>{cardManifestError}</small>
-            </span>
-            {manifestFileName ? (
-              <Button variant="ghost" className="compact" onClick={() => onOpenFile(manifestFileName)}>
-                <Icon name="file" size={13} />
-                Open manifest
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className="ds-project-sections">
-          {groupedSectionReviews.map((group) => (
-            <div key={group.title} className="ds-project-section-group">
-              <h2>{group.title}</h2>
-              {group.items.map((item) =>
-                renderReviewCard(item, `${group.title}:${item.section.title}`, Boolean(item.previewFile)),
-              )}
-            </div>
-          ))}
-
-          {visibleSectionReviews.length === 0 ? (
-            <div className="ds-project-empty-review">
-              <Icon name="sparkles" size={18} />
-              <span>Preview cards will appear here as the agent creates them.</span>
-            </div>
-          ) : null}
-          </div>
-        </div>
       </div>
+
+      {!githubEvidence.ready ? (
+        <div className="ds-project-warning-card">
+          <Icon name="github" size={16} />
+          <span>
+            <strong>{repoConnectCopy(githubConnected).bannerTitle}</strong>
+            <small>{repoConnectCopy(githubConnected).bannerBody}</small>
+          </span>
+          {onConnectRepo ? (
+            <Button
+              variant="ghost"
+              className="compact"
+              disabled={githubConnected === undefined}
+              onClick={onConnectRepo}
+            >
+              <Icon name="github" size={13} />
+              {repoConnectCopy(githubConnected).buttonLabel}
+            </Button>
+          ) : githubEvidence.hasSourceManifest ? (
+            <Button variant="ghost" className="compact" onClick={() => onOpenFile('context/source-context.md')}>
+              <Icon name="file" size={13} />
+              Open source context
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {fontFiles.length === 0 ? (
+        <MissingBrandFontsBanner projectId={projectId} onUploadAssets={onUploadAssets} />
+      ) : null}
+
+      {cardManifestError ? (
+        <div
+          className="ds-project-warning-card ds-project-warning-card--error"
+          data-testid="design-system-manifest-error"
+          role="alert"
+        >
+          <Icon name="alert-triangle" size={16} />
+          <span>
+            <strong>Design manifest needs attention</strong>
+            <small>{cardManifestError}</small>
+          </span>
+          {manifestFileName ? (
+            <Button variant="ghost" className="compact" onClick={() => onOpenFile(manifestFileName)}>
+              <Icon name="file" size={13} />
+              Open manifest
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className="ds-project-panel ds-project-panel--kit" data-testid="design-system-project-tab-panel">
+      {kit ? (
+        <DesignKitView
+          kit={kit}
+          actionsSlot={actionsSlot}
+          topSlot={topSlot}
+          editor={{
+            body: editBody,
+            onChange: setEditBody,
+            onSave: saveDesignMd,
+            saving: savingBody,
+            canEdit: true,
+          }}
+          onUploadModule={kitUploadModule}
+          uploading={kitUploading}
+          dataTestId="design-system-project-kit"
+        />
+      ) : (
+        <div className="ds-project-generation-stage">
+          <span className="ds-project-generation-mark">
+            <Icon name="blocks" size={24} />
+          </span>
+          <h1>{systemDisplayName}</h1>
+        </div>
+      )}
     </div>
   );
 }

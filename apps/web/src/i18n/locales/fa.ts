@@ -3137,6 +3137,7 @@ export const fa: Dict = {
   'dsManager.badgeDefault': 'پیش‌فرض',
   'dsManager.rowMetaUpdated': 'شما · به‌روزرسانی {date}',
   'dsManager.edit': 'ویرایش',
+  'dsManager.openSystem': 'باز کردن',
   'dsManager.makeDefault': 'تنظیم به‌عنوان پیش‌فرض',
   'dsManager.statusPublished': 'منتشرشده',
   'dsManager.statusDraft': 'پیش‌نویس',

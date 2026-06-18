@@ -3142,6 +3142,7 @@ export const hu: Dict = {
   'dsManager.badgeDefault': 'Alapértelmezett',
   'dsManager.rowMetaUpdated': 'Te · frissítve {date}',
   'dsManager.edit': 'Szerkesztés',
+  'dsManager.openSystem': 'Megnyitás',
   'dsManager.makeDefault': 'Beállítás alapértelmezettként',
   'dsManager.statusPublished': 'Közzétett',
   'dsManager.statusDraft': 'Vázlat',

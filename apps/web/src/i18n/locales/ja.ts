@@ -3142,6 +3142,7 @@ export const ja: Dict = {
   'dsManager.badgeDefault': 'デフォルト',
   'dsManager.rowMetaUpdated': 'あなた · 更新 {date}',
   'dsManager.edit': '編集',
+  'dsManager.openSystem': '開く',
   'dsManager.makeDefault': 'デフォルトに設定',
   'dsManager.statusPublished': '公開済み',
   'dsManager.statusDraft': '下書き',

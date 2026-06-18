@@ -3143,6 +3143,7 @@ export const zhTW: Dict = {
   'dsManager.badgeDefault': '預設',
   'dsManager.rowMetaUpdated': '你 · 更新於 {date}',
   'dsManager.edit': '編輯',
+  'dsManager.openSystem': '開啟',
   'dsManager.makeDefault': '設為預設',
   'dsManager.statusPublished': '已發佈',
   'dsManager.statusDraft': '草稿',

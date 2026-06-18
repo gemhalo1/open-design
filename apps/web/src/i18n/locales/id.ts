@@ -3142,6 +3142,7 @@ export const id: Dict = {
   'dsManager.badgeDefault': 'Default',
   'dsManager.rowMetaUpdated': 'Anda · diperbarui {date}',
   'dsManager.edit': 'Edit',
+  'dsManager.openSystem': 'Buka',
   'dsManager.makeDefault': 'Jadikan default',
   'dsManager.statusPublished': 'Diterbitkan',
   'dsManager.statusDraft': 'Draf',

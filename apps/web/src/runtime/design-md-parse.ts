@@ -264,9 +264,15 @@ function parseTypography(section: Section | undefined): ParsedDesignMd['typograp
     const family = familyFromLine(line);
     if (!family) continue;
     const weights = parseWeights(line);
+    // Fallbacks come either as a `fallbacks: a, b` clause (brand emitter) or a
+    // backtick CSS stack `'Family', Georgia, serif` (preset specimens).
+    const fallbacksClause = line.match(/fallbacks?:\s*([^—–()]+)/i);
+    const fallbacks = fallbacksClause
+      ? splitList(fallbacksClause[1] ?? '').filter((f) => f.toLowerCase() !== family.toLowerCase())
+      : fallbacksFromStack(line, family);
     out[role] = {
       family,
-      fallbacks: fallbacksFromStack(line, family),
+      fallbacks,
       weights: weights.length > 0 ? weights : sharedWeights,
     };
   }

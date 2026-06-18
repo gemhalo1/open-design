@@ -1603,6 +1603,7 @@ export interface Dict {
   'dsManager.badgeDefault': string;
   'dsManager.rowMetaUpdated': string;
   'dsManager.edit': string;
+  'dsManager.openSystem': string;
   'dsManager.makeDefault': string;
   'dsManager.statusPublished': string;
   'dsManager.statusDraft': string;

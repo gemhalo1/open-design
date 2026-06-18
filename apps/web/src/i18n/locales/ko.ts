@@ -3142,6 +3142,7 @@ export const ko: Dict = {
   'dsManager.badgeDefault': '기본값',
   'dsManager.rowMetaUpdated': '나 · {date} 업데이트됨',
   'dsManager.edit': '편집',
+  'dsManager.openSystem': '열기',
   'dsManager.makeDefault': '기본값으로 설정',
   'dsManager.statusPublished': '게시됨',
   'dsManager.statusDraft': '초안',

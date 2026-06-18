@@ -3142,6 +3142,7 @@ export const de: Dict = {
   'dsManager.badgeDefault': 'Standard',
   'dsManager.rowMetaUpdated': 'Sie · aktualisiert {date}',
   'dsManager.edit': 'Bearbeiten',
+  'dsManager.openSystem': 'Öffnen',
   'dsManager.makeDefault': 'Als Standard festlegen',
   'dsManager.statusPublished': 'Veröffentlicht',
   'dsManager.statusDraft': 'Entwurf',

@@ -3142,6 +3142,7 @@ export const th: Dict = {
   'dsManager.badgeDefault': 'ค่าเริ่มต้น',
   'dsManager.rowMetaUpdated': 'คุณ · อัปเดต {date}',
   'dsManager.edit': 'แก้ไข',
+  'dsManager.openSystem': 'เปิด',
   'dsManager.makeDefault': 'ตั้งเป็นค่าเริ่มต้น',
   'dsManager.statusPublished': 'เผยแพร่แล้ว',
   'dsManager.statusDraft': 'ฉบับร่าง',

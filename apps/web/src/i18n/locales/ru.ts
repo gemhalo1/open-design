@@ -3142,6 +3142,7 @@ export const ru: Dict = {
   'dsManager.badgeDefault': 'По умолчанию',
   'dsManager.rowMetaUpdated': 'Вы · обновлено {date}',
   'dsManager.edit': 'Изменить',
+  'dsManager.openSystem': 'Открыть',
   'dsManager.makeDefault': 'Сделать по умолчанию',
   'dsManager.statusPublished': 'Опубликовано',
   'dsManager.statusDraft': 'Черновик',

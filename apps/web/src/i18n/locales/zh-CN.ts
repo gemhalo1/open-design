@@ -3143,6 +3143,7 @@ export const zhCN: Dict = {
   'dsManager.badgeDefault': '默认',
   'dsManager.rowMetaUpdated': '你 · 更新于 {date}',
   'dsManager.edit': '编辑',
+  'dsManager.openSystem': '打开',
   'dsManager.makeDefault': '设为默认',
   'dsManager.statusPublished': '已发布',
   'dsManager.statusDraft': '草稿',
