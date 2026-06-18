@@ -19,12 +19,17 @@ import {
 } from '../i18n/content';
 import {
   deleteDesignSystemDraft,
+  fetchDesignSystem,
   fetchDesignSystemShowcase,
   updateDesignSystemDraft,
+  writeProjectTextFile,
 } from '../providers/registry';
-import { buildSrcdoc } from '../runtime/srcdoc';
+import { useDesignKit } from '../runtime/design-kit';
+import { useKitModuleUpload } from '../runtime/kit-upload';
+import { DesignKitView } from './DesignKitView';
+import { BrandLogo, hostnameOf } from './BrandPreviewCard';
 import { Icon } from './Icon';
-import type { DesignSystemSummary, ProjectTemplate, Surface } from '../types';
+import type { DesignSystemDetail, DesignSystemSummary, ProjectTemplate, Surface } from '../types';
 import styles from './DesignSystemsTab.module.css';
 
 interface Props {
@@ -737,6 +742,7 @@ export function DesignSystemsTab({
           onTogglePublished={togglePublished}
           onDelete={deleteSystem}
           onPreviewFull={handlePreviewSystem}
+          onSystemsRefresh={onSystemsRefresh}
         />
       );
     }
@@ -789,9 +795,37 @@ interface SystemRowProps {
   onSelect: () => void;
 }
 
+// Row thumbnail: prefer the brand's logo (favicon for systems that recorded a
+// source URL), otherwise a monogram tile tinted with the primary swatch — a
+// brand-led identity instead of an anonymous strip of colour bars.
+function SystemRowLogo({ system }: { system: DesignSystemSummary }) {
+  const sourceUrl = system.provenance?.sourceUrls?.[0];
+  const host = sourceUrl ? hostnameOf(sourceUrl) : '';
+  const tint = system.swatches?.[0];
+  if (!host) {
+    return (
+      <span
+        className={styles.itemThumbFallback}
+        style={tint ? { background: `color-mix(in srgb, ${tint} 20%, var(--bg))`, color: tint } : undefined}
+        aria-hidden
+      >
+        {(system.title || '?').charAt(0).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <BrandLogo
+      host={host}
+      name={system.title}
+      faviconSize={64}
+      className={styles.itemLogo}
+      fallbackClassName={styles.itemThumbFallback}
+    />
+  );
+}
+
 function SystemRow({ system, active, isDefault, categoryLabel, statusLabel, onSelect }: SystemRowProps) {
   const { t } = useI18n();
-  const swatches = system.swatches ?? [];
   const status = system.status ?? 'draft';
   const isUser = isUserSystem(system);
   return (
@@ -803,17 +837,7 @@ function SystemRow({ system, active, isDefault, categoryLabel, statusLabel, onSe
       onClick={onSelect}
     >
       <span className={styles.itemThumb}>
-        {swatches.length > 0 ? (
-          <span className={styles.itemSwatches} aria-hidden>
-            {swatches.slice(0, 4).map((c, i) => (
-              <span key={i} style={{ background: c }} />
-            ))}
-          </span>
-        ) : (
-          <span className={styles.itemThumbFallback} aria-hidden>
-            {(system.title || '?').charAt(0).toUpperCase()}
-          </span>
-        )}
+        <SystemRowLogo system={system} />
       </span>
       <span className={styles.itemMeta}>
         <span className={styles.itemNameRow}>
@@ -847,6 +871,7 @@ interface DetailProps {
   onTogglePublished: (system: DesignSystemSummary) => void | Promise<void>;
   onDelete: (system: DesignSystemSummary) => void | Promise<void>;
   onPreviewFull: (system: DesignSystemSummary) => void;
+  onSystemsRefresh?: () => Promise<void> | void;
 }
 
 function DesignSystemDetail({
@@ -854,15 +879,13 @@ function DesignSystemDetail({
   isDefault,
   showcaseHtml,
   busy,
-  categoryLabel,
-  surfaceLabel,
-  summary,
   t,
   onEdit,
   onMakeDefault,
   onTogglePublished,
   onDelete,
   onPreviewFull,
+  onSystemsRefresh,
 }: DetailProps) {
   const isUser = isUserSystem(system);
   const status = system.status ?? 'draft';
@@ -870,115 +893,147 @@ function DesignSystemDetail({
   // A built-in preset can always be picked as the global default; a user
   // system must be published first (mirrors the old "Make default" gate).
   const canBeDefault = !isUser || published;
-  const swatches = system.swatches ?? [];
+
+  // The summary lacks the DESIGN.md body + packageInfo the kit needs, so fetch
+  // the full detail. The kit view derives every module from brand.json (when a
+  // backing project carries one) or the parsed DESIGN.md (presets).
+  const [detail, setDetail] = useState<DesignSystemDetail | null>(null);
+  const [editBody, setEditBody] = useState('');
+  const [savingBody, setSavingBody] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(null);
+    setEditBody('');
+    void fetchDesignSystem(system.id).then((d) => {
+      if (cancelled) return;
+      setDetail(d);
+      setEditBody(d?.body ?? '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [system.id]);
+
+  const sourceUrl = system.provenance?.sourceUrls?.[0];
+  const host = sourceUrl ? hostnameOf(sourceUrl) : undefined;
+  const projectId = detail?.projectId ?? system.projectId;
+
+  const { uploading, uploadModule } = useKitModuleUpload({
+    projectId,
+    onUploaded: () => {
+      setReloadKey((k) => k + 1);
+      void onSystemsRefresh?.();
+    },
+  });
+
+  const { kit } = useDesignKit({
+    designSystemId: system.id,
+    title: system.title,
+    projectId,
+    body: detail?.body,
+    packageInfo: detail?.packageInfo,
+    swatches: system.swatches,
+    showcaseHtml: showcaseHtml ?? null,
+    editable: isUser,
+    host,
+    reloadKey,
+  });
+
+  async function saveDesignMd() {
+    setSavingBody(true);
+    try {
+      await updateDesignSystemDraft(system.id, { body: editBody });
+      if (projectId) await writeProjectTextFile(projectId, 'DESIGN.md', editBody);
+      setReloadKey((k) => k + 1);
+      await onSystemsRefresh?.();
+    } finally {
+      setSavingBody(false);
+    }
+  }
+
+  const badgeSlot = isDefault ? (
+    <span className={styles.badgeDefault}>{t('dsManager.badgeDefault')}</span>
+  ) : null;
+
+  const actionsSlot = (
+    <>
+      {isUser && onEdit ? (
+        <Button variant="ghost" onClick={() => onEdit(system.id)} disabled={busy}>
+          {t('dsManager.edit')}
+        </Button>
+      ) : null}
+      {canBeDefault && !isDefault ? (
+        <Button
+          variant="primary"
+          data-testid={`design-system-select-${system.id}`}
+          onClick={() => onMakeDefault(system)}
+          disabled={busy}
+        >
+          {t('dsManager.makeDefault')}
+        </Button>
+      ) : null}
+      <Button
+        variant="ghost"
+        data-testid={`design-system-preview-${system.id}`}
+        onClick={() => onPreviewFull(system)}
+        disabled={busy}
+      >
+        <Icon name="external-link" />
+        {t('ds.preview')}
+      </Button>
+      {isUser ? (
+        <button
+          type="button"
+          className={`${styles.statusToggle} ${published ? styles.statusToggleOn : ''}`}
+          aria-pressed={published}
+          onClick={() => void onTogglePublished(system)}
+          disabled={busy}
+        >
+          <span>{published ? t('dsManager.statusPublished') : t('dsManager.statusDraft')}</span>
+          <span className={styles.statusToggleTrack} aria-hidden />
+        </button>
+      ) : null}
+      {isUser ? (
+        <Button
+          size="icon"
+          className={styles.dangerBtn}
+          aria-label={t('dsManager.deleteSystemAria', { title: system.title })}
+          onClick={() => void onDelete(system)}
+          disabled={busy}
+        >
+          <Icon name="close" />
+        </Button>
+      ) : null}
+    </>
+  );
 
   return (
     <div className={styles.detail} data-testid={`design-system-detail-${system.id}`}>
-      <div className={styles.cover}>
-        {showcaseHtml ? (
-          <iframe
-            className={styles.coverFrame}
-            title={`${system.title} preview`}
-            sandbox="allow-scripts"
-            srcDoc={buildSrcdoc(showcaseHtml)}
-            tabIndex={-1}
-            aria-hidden
-          />
-        ) : swatches.length > 0 ? (
-          <div className={styles.coverSwatches} aria-hidden>
-            {swatches.map((c, i) => (
-              <span key={i} style={{ background: c }} />
-            ))}
-          </div>
-        ) : (
-          <div className={styles.coverFallback}>{system.title}</div>
-        )}
-      </div>
-
-      <div className={styles.head}>
-        <div className={styles.headText}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.title}>{system.title}</h2>
-            {isDefault ? <span className={styles.badgeDefault}>{t('dsManager.badgeDefault')}</span> : null}
-          </div>
-          <div className={styles.metaRow}>
-            <span>{categoryLabel}</span>
-            <span className={styles.metaDot}>·</span>
-            <span>{surfaceLabel}</span>
-            {isUser ? (
-              <>
-                <span className={styles.metaDot}>·</span>
-                <span className={`${styles.statusBadge} ${published ? styles.statusBadgePublished : ''}`}>
-                  {published ? t('dsManager.statusPublished') : t('dsManager.statusDraft')}
-                </span>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      {summary ? <p className={styles.summary}>{summary}</p> : null}
-
-      {swatches.length > 0 ? (
-        <div className={styles.swatchStrip}>
-          {swatches.map((c, i) => (
-            <span key={i} className={styles.swatchChip}>
-              <span className={styles.swatchDot} style={{ background: c }} />
-              <span className={styles.swatchHex}>{c}</span>
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      <div className={styles.actions}>
-        {isUser && onEdit ? (
-          <Button onClick={() => onEdit(system.id)} disabled={busy}>
-            {t('dsManager.edit')}
-          </Button>
-        ) : null}
-        {canBeDefault && !isDefault ? (
-          <Button
-            variant="primary"
-            data-testid={`design-system-select-${system.id}`}
-            onClick={() => onMakeDefault(system)}
-            disabled={busy}
-          >
-            {t('dsManager.makeDefault')}
-          </Button>
-        ) : null}
-        <Button
-          data-testid={`design-system-preview-${system.id}`}
-          onClick={() => onPreviewFull(system)}
-          disabled={busy}
-        >
-          <Icon name="external-link" />
-          {t('ds.preview')}
-        </Button>
-        <span className={styles.actionsSpacer} />
-        {isUser ? (
-          <button
-            type="button"
-            className={`${styles.statusToggle} ${published ? styles.statusToggleOn : ''}`}
-            aria-pressed={published}
-            onClick={() => void onTogglePublished(system)}
-            disabled={busy}
-          >
-            <span>{published ? t('dsManager.statusPublished') : t('dsManager.statusDraft')}</span>
-            <span className={styles.statusToggleTrack} aria-hidden />
-          </button>
-        ) : null}
-        {isUser ? (
-          <Button
-            size="icon"
-            className={styles.dangerBtn}
-            aria-label={t('dsManager.deleteSystemAria', { title: system.title })}
-            onClick={() => void onDelete(system)}
-            disabled={busy}
-          >
-            <Icon name="close" />
-          </Button>
-        ) : null}
-      </div>
+      {kit ? (
+        <DesignKitView
+          kit={kit}
+          badgeSlot={badgeSlot}
+          actionsSlot={actionsSlot}
+          editor={
+            isUser
+              ? {
+                  body: editBody,
+                  onChange: setEditBody,
+                  onSave: saveDesignMd,
+                  saving: savingBody,
+                  canEdit: true,
+                }
+              : undefined
+          }
+          onUploadModule={uploadModule}
+          uploading={uploading}
+          dataTestId={`design-kit-view-${system.id}`}
+        />
+      ) : (
+        <div className={styles.cover} aria-hidden />
+      )}
     </div>
   );
 }

@@ -104,13 +104,17 @@
   color: var(--text-strong);
 }
 
-/* The picker fills the remaining modal height and owns its own gallery scroll
-   (fillHeight), so the header stays pinned while only the gallery scrolls. */
+/* The whole picker (popular brands, search, filters, and gallery) flows and
+   scrolls together here, so the modal reads as one scrolling surface rather
+   than a pinned head over a separately-scrolling list. Only the dialog header
+   (title/close) stays pinned above. Horizontal padding gives the cards' hover
+   lift + shadow breathing room against the scrollbar. */
 .pickerWrap {
   flex: 1 1 auto;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding-top: 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  padding: 16px 4px 4px 2px;
   border-top: 1px solid var(--border);
 }

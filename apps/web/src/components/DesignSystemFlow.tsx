@@ -41,6 +41,7 @@ import {
 } from '../runtime/design-system-package-audit';
 import { deriveFileOps } from '../runtime/file-ops';
 import { latestTodosFromEvents } from '../runtime/todos';
+import { brandFaviconUrl } from '../runtime/brand-references';
 import { useBrandExtract } from '../runtime/useBrandExtract';
 import {
   createFileSystemReadError,
@@ -938,7 +939,7 @@ export function DesignSystemCreationFlow({
 
         <section className="ds-resource-section">
           <h2>Extract from a website</h2>
-          <p>Paste a link (or pick a brand) and add any images that show your style. Open Design measures it into a complete design system.</p>
+          <p>Paste a link (or pick a brand) and add any files that show your style — images, fonts, logos, PDF, slides or HTML. Open Design measures it into a complete design system.</p>
           <div className="ds-resource-card">
             <div className="ds-resource-row">
               <strong>Website</strong>
@@ -974,6 +975,8 @@ export function DesignSystemCreationFlow({
                 onPick={(brand) => handlePickBrandReference(brand.domain)}
                 title="Start from a brand"
                 subtitle="Search hundreds of brands — pick one and we'll add its site as a style reference."
+                actionLabel="Add"
+                quickPicksLabel="Popular brands — click to add"
               />
               {state.sourceUrls.length > 0 ? (
                 <div className="ds-source-link-list" aria-label="Added source links">
@@ -984,19 +987,22 @@ export function DesignSystemCreationFlow({
                       <span className="ds-source-link-chip" key={url}>
                         {href ? (
                           <a
-                            className="ds-source-link-preview"
+                            className="ds-source-link-open"
                             href={href}
                             target="_blank"
                             rel="noreferrer"
                             aria-label={`Open ${label}`}
                             title={`Open ${label}`}
                           >
-                            <Icon name={sourceUrlIcon(url)} />
+                            <SourceLinkFavicon url={url} />
+                            <span className="ds-source-link-label">{label}</span>
                           </a>
                         ) : (
-                          <Icon name={sourceUrlIcon(url)} />
+                          <span className="ds-source-link-open ds-source-link-open--static" title={label}>
+                            <SourceLinkFavicon url={url} />
+                            <span className="ds-source-link-label">{label}</span>
+                          </span>
                         )}
-                        {label}
                         <button
                           type="button"
                           className="ds-source-link-remove"
@@ -1012,7 +1018,7 @@ export function DesignSystemCreationFlow({
               ) : null}
             </div>
             <div className="ds-resource-row ds-resource-row--assets">
-              <strong>Add images</strong>
+              <strong>Add files</strong>
               <DesignSystemAssetDropzone
                 files={state.assetFileObjects}
                 onAddFiles={handleAssetUpload}
@@ -1118,16 +1124,18 @@ export function DesignSystemCreationFlow({
                         {state.figmaUrls.map((url) => (
                           <span className="ds-source-link-chip" key={url}>
                             <a
-                              className="ds-source-link-preview"
+                              className="ds-source-link-open"
                               href={url}
                               target="_blank"
                               rel="noreferrer"
                               aria-label={`Open ${figmaUrlLabel(url)}`}
                               title={`Open ${figmaUrlLabel(url)}`}
                             >
-                              <Icon name="import" />
+                              <span className="ds-source-link-favicon ds-source-link-favicon--glyph" aria-hidden>
+                                <Icon name="import" size={14} />
+                              </span>
+                              <span className="ds-source-link-label">{figmaUrlLabel(url)}</span>
                             </a>
-                            {figmaUrlLabel(url)}
                             <button
                               type="button"
                               className="ds-source-link-remove"
@@ -3974,6 +3982,48 @@ function sourceUrlHref(url: string): string | null {
 function sourceUrlIcon(url: string): IconName {
   if (isGithubRepositoryUrl(url)) return 'github';
   return sourceUrlHref(url) ? 'external-link' : 'link';
+}
+
+// Favicon for a source-link chip. GitHub repos keep their mark glyph; anything
+// that doesn't resolve to an http(s) origin has no favicon, so the chip falls
+// back to the `sourceUrlIcon` glyph.
+function sourceUrlFaviconUrl(url: string): string | null {
+  if (isGithubRepositoryUrl(url)) return null;
+  const href = sourceUrlHref(url);
+  if (!href) return null;
+  try {
+    return brandFaviconUrl(new URL(href).hostname, 64);
+  } catch {
+    return null;
+  }
+}
+
+function SourceLinkFavicon({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
+  const faviconUrl = failed ? null : sourceUrlFaviconUrl(url);
+  if (!faviconUrl) {
+    return (
+      <span className="ds-source-link-favicon ds-source-link-favicon--glyph" aria-hidden>
+        <Icon name={sourceUrlIcon(url)} size={14} />
+      </span>
+    );
+  }
+  return (
+    <img
+      className="ds-source-link-favicon"
+      src={faviconUrl}
+      alt=""
+      width={16}
+      height={16}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 function githubRepoLabel(url: string): string {

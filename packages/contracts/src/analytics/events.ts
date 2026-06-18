@@ -1168,6 +1168,11 @@ export interface HomeChatComposerClickProps {
     // task type; for plugin-preset cards `plugin_id` / `plugin_type` identify
     // the preset. The raw prompt text is never sent (free text / PII rule).
     | 'example_prompt'
+    // The "Open as project" action on an example card — one-click remix that
+    // creates and enters a project seeded from the example instead of only
+    // loading it into the composer. Same `chip_id` / `plugin_id` / `plugin_type`
+    // attribution as `example_prompt`.
+    | 'example_open_project'
     // The "+" menu on the home composer (same control as the in-project
     // composer's `plus_*` events): opening it, inserting a
     // connector/plugin/mcp mention (`resource_kind` + `resource_id`), or

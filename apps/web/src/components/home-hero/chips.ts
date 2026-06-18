@@ -69,6 +69,12 @@ export interface HomeHeroChip {
   icon: IconName;
   group: ChipGroup;
   hint?: string;
+  // Scenario subtitle shown under the title on the illustrated card rail
+  // (e.g. "Interactive app mockups"). English inline fallback only — the
+  // rendered copy is localized through the `homeHero.chip.<id>Desc` Dict key
+  // (see `homeHeroChipDescription` in HomeHero.tsx). Kept on the data table so
+  // the catalog reads as a self-contained scenario taxonomy.
+  description?: string;
   action: ChipAction;
 }
 
@@ -82,6 +88,7 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Create Brand Kit',
     icon: 'swatchbook',
     group: 'create',
+    description: 'Extract a brand design system',
     hint: 'Extract a brand kit from a website, then apply it in any chat.',
     // Distinct from the plugin-bound create chips: this dispatches straight
     // into the Brand Kit tab's extraction flow instead of binding a scenario
@@ -93,6 +100,7 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Prototype',
     icon: 'palette',
     group: 'create',
+    description: 'Interactive app mockups',
     // Prototype now binds to the bundled `example-web-prototype` plugin,
     // which ships `assets/template.html` (single-file HTML prototype
     // seed), `references/layouts.md` (paste-ready section layouts), and
@@ -109,10 +117,51 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     },
   },
   {
+    id: 'wireframe',
+    label: 'Wireframe',
+    icon: 'layout',
+    group: 'create',
+    description: 'Lo-fi screens & flows',
+    hint: 'Sketch lo-fi screens and flows to validate structure before visual design.',
+    // Wireframe reuses the battle-tested web-prototype seed but stamps a
+    // lo-fi fidelity so the agent stays in structural/greybox territory
+    // instead of jumping to high-fidelity styling.
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'example-web-prototype',
+      projectKind: 'prototype',
+      projectMetadata: {
+        kind: 'prototype',
+        fidelity: 'wireframe',
+      },
+    },
+  },
+  {
+    id: 'mobile',
+    label: 'Mobile app',
+    icon: 'smartphone',
+    group: 'create',
+    description: 'iOS & Android screens',
+    hint: 'Lay out mobile screens for iOS and Android.',
+    // Mobile reuses the web-prototype seed but records mobile platform
+    // targets so the agent frames screens for handheld viewports.
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'example-web-prototype',
+      projectKind: 'prototype',
+      projectMetadata: {
+        kind: 'prototype',
+        platform: 'auto',
+        platformTargets: ['mobile-ios', 'mobile-android'],
+      },
+    },
+  },
+  {
     id: 'deck',
     label: 'Slide deck',
     icon: 'present',
     group: 'create',
+    description: 'Presentations & pitch decks',
     // Slide deck binds to `example-simple-deck`, which ships a 353-line
     // `assets/template.html` (the 1920×1080 + scale-to-fit + nav + print
     // framework paired with proven slide CSS), 8 paste-ready layouts in
@@ -130,10 +179,31 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     },
   },
   {
+    id: 'document',
+    label: 'Document',
+    icon: 'file-text',
+    group: 'create',
+    description: 'Resumes, reports & PDFs',
+    hint: 'Draft a polished document — resume, report, or PDF — you can export.',
+    // Documents (resumes / reports / PDFs) route through the generic
+    // od-new-generation scenario under the `other` kind; there is no
+    // dedicated bundled document seed yet, so the agent composes the
+    // document layout from the brief.
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-new-generation',
+      projectKind: 'other',
+      projectMetadata: {
+        kind: 'other',
+      },
+    },
+  },
+  {
     id: 'hyperframes',
     label: 'HyperFrames',
     icon: 'orbit',
     group: 'create',
+    description: 'Motion graphics & loops',
     hint: 'Author HTML-based motion: captions, audio-reactive visuals, scene transitions.',
     // HyperFrames is its own bundled scenario (motion-graphics
     // specialisation of Video). It surfaces in PluginsHomeSection's
@@ -146,6 +216,7 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Live artifact',
     icon: 'refresh',
     group: 'create',
+    description: 'Data-backed live dashboards',
     hint: 'Build a refreshable artifact backed by connector or local data.',
     action: {
       kind: 'apply-scenario',
@@ -163,6 +234,7 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Image',
     icon: 'image',
     group: 'create',
+    description: 'Posters, graphics & art',
     action: {
       kind: 'apply-scenario',
       pluginId: 'od-media-generation',
@@ -180,6 +252,7 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Video',
     icon: 'play',
     group: 'create',
+    description: 'Clips, reels & promos',
     action: {
       kind: 'apply-scenario',
       pluginId: 'od-media-generation',
@@ -197,6 +270,7 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Audio',
     icon: 'mic',
     group: 'create',
+    description: 'Voiceovers, music & SFX',
     action: {
       kind: 'apply-scenario',
       pluginId: 'od-media-generation',

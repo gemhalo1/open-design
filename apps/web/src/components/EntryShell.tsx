@@ -144,9 +144,6 @@ import {
   amrLoginPollOutcome,
   notifyAmrLoginStatusChanged,
 } from './amrLoginPolling';
-import { useBrandExtract } from '../runtime/useBrandExtract';
-import type { BrandReference } from '../runtime/brand-references';
-import { BrandReferencePicker } from './BrandReferencePicker';
 import { closeAmrActivationWindowBestEffort } from './AmrLoginPill';
 import { AnimatePresence } from 'motion/react';
 import { smoothScrollToTop } from '../utils/smoothScrollToTop';
@@ -717,6 +714,10 @@ export function EntryShell({
             onConfigPersist={onConfigPersist}
             onRefreshAgents={onRefreshAgents}
             onFinish={finishOnboarding}
+            onGoBuild={() => {
+              onCompleteOnboarding();
+              navigate({ kind: 'design-system-create' });
+            }}
           />
         </main>
       </div>
@@ -972,6 +973,7 @@ function OnboardingView({
   onConfigPersist,
   onRefreshAgents,
   onFinish,
+  onGoBuild,
 }: {
   config: AppConfig;
   providerModelsCache?: ProviderModelsCache;
@@ -990,6 +992,7 @@ function OnboardingView({
   onConfigPersist: (cfg: AppConfig) => Promise<void> | void;
   onRefreshAgents: () => Promise<AgentInfo[]> | AgentInfo[];
   onFinish: () => void;
+  onGoBuild: () => void;
 }) {
   const t = useT();
   const analytics = useAnalytics();
@@ -1016,67 +1019,6 @@ function OnboardingView({
   const [amrLoginPending, setAmrLoginPending] = useState(false);
   const [amrLoginCancelPending, setAmrLoginCancelPending] = useState(false);
   const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
-  // Optional brand extraction on the final onboarding step. The hook
-  // drives a 3-stage SSE progress model against POST /api/brands; the
-  // local URL string is the only extra state the panel needs. Extraction
-  // is entirely optional — it never blocks the Finish/Continue button
-  // (see handlePrimaryAction, which has no brand awareness).
-  const [brandUrl, setBrandUrl] = useState('');
-  const {
-    state: brandExtractState,
-    run: runBrandExtract,
-  } = useBrandExtract();
-  const brandExtractActive = brandExtractState.phase === 'starting';
-  // `done` only counts as a success once the programmatic-first pass actually
-  // produced a finished design system (status 'ready'). A 'done' phase with a
-  // non-ready status means the site was blocked / too slow to harvest, so we do
-  // NOT navigate into a skeleton — we surface that and let the user try another.
-  const brandExtractReady =
-    brandExtractState.phase === 'done' && brandExtractState.extractStatus === 'ready';
-  const brandExtractNotReady =
-    brandExtractState.phase === 'done' && brandExtractState.extractStatus !== 'ready';
-  const brandExtractDone = brandExtractReady;
-  const brandExtractFailed = brandExtractState.phase === 'error';
-  // The programmatic-first extraction runs server-side and finishes BEFORE the
-  // POST /api/brands response resolves, so by the time `run` returns the design
-  // system is already harvested, synthesized, finalized and registered. We only
-  // navigate once it is actually `ready` — landing the user on a finished brand
-  // page, never a still-"Extracting…" skeleton. Crucially we do NOT set
-  // `od:auto-send-first`: the AI agent never runs automatically here. The
-  // in-project "Continue with AI optimization" banner is the opt-in path to
-  // refine the design system with curated design-system skills.
-  const handleOnboardingBrandExtract = useCallback(
-    async (explicitUrl?: string) => {
-      // An explicit URL (a picked reference brand) wins over the input, whose
-      // state update may not have committed yet when the picker fires.
-      const trimmed = (explicitUrl ?? brandUrl).trim();
-      if (!trimmed || brandExtractActive) return;
-      const result = await runBrandExtract(trimmed);
-      if (!result) return;
-      // Blocked / slow origin → the programmatic pass could not finish. Keep the
-      // user on the step (the hook's state surfaces the not-ready message) so
-      // they can try another site rather than dropping into a skeleton project.
-      if (result.status !== 'ready') return;
-      onFinish();
-      navigate({
-        kind: 'project',
-        projectId: result.projectId,
-        fileName: null,
-        conversationId: result.conversationId,
-      });
-    },
-    [brandUrl, brandExtractActive, runBrandExtract, onFinish],
-  );
-
-  // The onboarding picker fills the URL field and immediately starts extraction.
-  const handleOnboardingPickReference = useCallback(
-    (brand: BrandReference) => {
-      if (brandExtractActive) return;
-      setBrandUrl(brand.domain);
-      void handleOnboardingBrandExtract(brand.domain);
-    },
-    [brandExtractActive, handleOnboardingBrandExtract],
-  );
   const [amrLoginError, setAmrLoginError] = useState<string | null>(null);
   const [visibleAgentIds, setVisibleAgentIds] = useState<string[]>([]);
   const [providerTestState, setProviderTestState] = useState<
@@ -1639,33 +1581,7 @@ function OnboardingView({
       return;
     }
     if (isLastStep) {
-      // Emit the About-you survey snapshot on the completion path, before
-      // the continue/complete pair. Reading `profileRef` captures the
-      // user's final role / org size / use case / discovery source picks
-      // even on a fast Finish. Gating it here — rather than when the user
-      // leaves the About-you step — keeps it exactly-once no matter how the
-      // final step was reached: primary CTA, Back-then-Continue, or a
-      // forward jump via the clickable stepper. `emitAboutYouSubmit` is
-      // additionally idempotent per session (see its `aboutYouReportedRef`
-      // guard). The snapshot click + the survey fields on
-      // `onboarding_complete_result` give the funnel two independent
-      // carriers for the same data.
-      emitAboutYouSubmit();
-      void persistOnboardingProfileToMemory();
-      const newsletterEmail = profileRef.current.email;
-      const shouldSubmitNewsletter =
-        NEWSLETTER_EMAIL_RE.test(newsletterEmail.trim().toLowerCase());
-      if (shouldSubmitNewsletter) {
-        setNewsletterSubmitting(true);
-        await submitNewsletterEmail(newsletterEmail);
-      }
-      emitOnboardingClick('continue', 'continue');
-      // Last-step Continue without a DS generation = "completed
-      // without design system". The Generate path inside the
-      // embedded DesignSystemCreationFlow takes a different route
-      // (navigation to project) and emits its own completion.
-      emitOnboardingComplete('completed', 'completed_without_design_system');
-      clearOnboardingSessionId();
+      await runOnboardingCompletion();
       onFinish();
       return;
     }
@@ -1674,6 +1590,40 @@ function OnboardingView({
       void persistOnboardingProfileToMemory();
     }
     setStep((current) => current + 1);
+  }
+
+  // Shared finish work for the final step, independent of where the user lands
+  // next. Emits the About-you snapshot + completion analytics exactly once
+  // (both are idempotent per session), submits the newsletter if an email was
+  // entered, then clears the session. Reading `profileRef` captures the user's
+  // final picks even on a fast click before React commits the latest state.
+  // Callers pick the destination: home (`onFinish`) or the design-system
+  // create flow (`onGoBuild`).
+  async function runOnboardingCompletion(): Promise<void> {
+    emitAboutYouSubmit();
+    void persistOnboardingProfileToMemory();
+    const newsletterEmail = profileRef.current.email;
+    const shouldSubmitNewsletter =
+      NEWSLETTER_EMAIL_RE.test(newsletterEmail.trim().toLowerCase());
+    if (shouldSubmitNewsletter) {
+      setNewsletterSubmitting(true);
+      await submitNewsletterEmail(newsletterEmail);
+    }
+    emitOnboardingClick('continue', 'continue');
+    emitOnboardingComplete('completed', 'completed_without_design_system');
+    clearOnboardingSessionId();
+  }
+
+  async function handleFinishToHome(): Promise<void> {
+    if (newsletterSubmitting) return;
+    await runOnboardingCompletion();
+    onFinish();
+  }
+
+  async function handleFinishToBuild(): Promise<void> {
+    if (newsletterSubmitting) return;
+    await runOnboardingCompletion();
+    onGoBuild();
   }
 
   async function handleAmrSignInToContinue(
@@ -2348,117 +2298,54 @@ function OnboardingView({
           ) : null}
 
           {step === 3 ? (
-            <div className="onboarding-view__panel onboarding-view__panel--newsletter">
-              <OnboardingPanelHeader
-                title={t('onboarding.brandTitle')}
-                body={t('onboarding.brandSubtitle')}
-              />
-              <div className="onboarding-view__actions onboarding-view__actions--top">
+            <div className="onboarding-view__panel onboarding-view__build">
+              <span className="onboarding-view__build-badge">
+                <Icon name="sparkles" size={13} aria-hidden />
+                <span>{t('settings.onboardingDesignTitle')}</span>
+              </span>
+              <div className="onboarding-view__build-head">
+                <h2>{t('onboarding.buildTitle')}</h2>
+                <p>{t('onboarding.buildBody')}</p>
+              </div>
+              <ul className="onboarding-view__build-chips">
+                {t('onboarding.buildArtifacts')
+                  .split('·')
+                  .map((label) => label.trim())
+                  .filter(Boolean)
+                  .map((label) => (
+                    <li key={label}>{label}</li>
+                  ))}
+              </ul>
+              <div className="onboarding-view__build-actions">
+                <button
+                  type="button"
+                  className="onboarding-view__ghost onboarding-view__build-back"
+                  onClick={handleBackWithTracking}
+                  disabled={onboardingNavigationLocked}
+                >
+                  {t('settings.onboardingBack')}
+                </button>
+                <button
+                  type="button"
+                  className="onboarding-view__secondary"
+                  onClick={() => {
+                    void handleFinishToHome();
+                  }}
+                  disabled={newsletterSubmitting}
+                >
+                  {t('onboarding.buildHome')}
+                </button>
                 <button
                   type="button"
                   className="onboarding-view__primary"
-                  onClick={handlePrimaryAction}
+                  onClick={() => {
+                    void handleFinishToBuild();
+                  }}
                   disabled={newsletterSubmitting}
                   aria-busy={newsletterSubmitting ? true : undefined}
                 >
-                  <span>{primaryActionLabel}</span>
+                  <span>{t('onboarding.buildStart')}</span>
                 </button>
-              </div>
-              <label className="onboarding-view__email-field">
-                <span className="onboarding-view__email-label">
-                  {t('newBrand.urlLabel')}
-                </span>
-                <input
-                  className="onboarding-view__brand-url-input"
-                  type="url"
-                  autoComplete="url"
-                  inputMode="url"
-                  placeholder={t('newBrand.urlPlaceholder')}
-                  value={brandUrl}
-                  disabled={brandExtractActive}
-                  onChange={(event) => setBrandUrl(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Enter' &&
-                      brandUrl.trim() &&
-                      !brandExtractActive
-                    ) {
-                      event.preventDefault();
-                      void handleOnboardingBrandExtract();
-                    }
-                  }}
-                />
-              </label>
-              <div className="onboarding-view__email-field">
-                <div className="onboarding-view__extract-row">
-                  <button
-                    type="button"
-                    className="onboarding-view__secondary onboarding-view__extract-back"
-                    onClick={handleBackWithTracking}
-                    disabled={onboardingNavigationLocked}
-                  >
-                    {t('settings.onboardingBack')}
-                  </button>
-                  <button
-                    type="button"
-                    className={`onboarding-view__mini-button${brandExtractActive ? ' is-loading' : ''}`}
-                    onClick={() => {
-                      void handleOnboardingBrandExtract();
-                    }}
-                    disabled={!brandUrl.trim() || brandExtractActive}
-                  >
-                    {brandExtractActive
-                      ? t('brand.extracting')
-                      : t('newBrand.extract')}
-                  </button>
-                </div>
-                {brandExtractActive ? (
-                  <span
-                    className="onboarding-view__action-status"
-                    role="status"
-                  >
-                    {t('brand.extracting')}
-                  </span>
-                ) : null}
-                {brandExtractDone ? (
-                  <span className="onboarding-view__action-status" role="status">
-                    {t('onboarding.brandDone')}
-                  </span>
-                ) : null}
-                {brandExtractFailed ? (
-                  <span
-                    className="onboarding-view__action-status is-error"
-                    role="alert"
-                  >
-                    {brandExtractState.error || t('brand.failed')}
-                  </span>
-                ) : null}
-                {brandExtractNotReady ? (
-                  <span
-                    className="onboarding-view__action-status is-error"
-                    role="alert"
-                  >
-                    {t('brand.failed')}
-                  </span>
-                ) : null}
-              </div>
-              <div
-                style={{
-                  marginTop: 22,
-                  paddingTop: 18,
-                  borderTop: '1px solid var(--border)',
-                }}
-              >
-                <BrandReferencePicker
-                  variant="compact"
-                  busy={brandExtractActive}
-                  error={
-                    brandExtractFailed
-                      ? brandExtractState.error || t('brand.failed')
-                      : null
-                  }
-                  onPick={handleOnboardingPickReference}
-                />
               </div>
             </div>
           ) : null}

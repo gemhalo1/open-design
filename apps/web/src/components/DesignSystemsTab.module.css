@@ -320,6 +320,13 @@
   font-weight: 650;
 }
 
+.itemLogo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 6px;
+}
+
 .itemMeta {
   display: flex;
   flex-direction: column;

@@ -7,7 +7,7 @@
 // drops the brand's domain into its source-URL list rather than extracting
 // immediately.
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { BrandReference } from '../runtime/brand-references';
 import { BrandReferencePicker } from './BrandReferencePicker';
@@ -21,9 +21,23 @@ interface Props {
   onPick: (brand: BrandReference) => void;
   title?: string;
   subtitle?: string;
+  /** Forwarded to the picker's hover affordance + quick-pick row so the label
+   *  matches what picking does here (e.g. "Add" when the host only adds the
+   *  brand's site as a style reference rather than extracting immediately). */
+  actionLabel?: string;
+  quickPicksLabel?: string;
 }
 
-export function BrandPickerModal({ open, onClose, onPick, title, subtitle }: Props) {
+export function BrandPickerModal({
+  open,
+  onClose,
+  onPick,
+  title,
+  subtitle,
+  actionLabel,
+  quickPicksLabel,
+}: Props) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => {
@@ -73,8 +87,14 @@ export function BrandPickerModal({ open, onClose, onPick, title, subtitle }: Pro
             <Icon name="close" size={16} />
           </button>
         </header>
-        <div className={styles.pickerWrap}>
-          <BrandReferencePicker variant="compact" fillHeight onPick={handlePick} />
+        <div className={styles.pickerWrap} ref={scrollRef}>
+          <BrandReferencePicker
+            variant="compact"
+            onPick={handlePick}
+            actionLabel={actionLabel}
+            quickPicksLabel={quickPicksLabel}
+            scrollRootRef={scrollRef}
+          />
         </div>
       </div>
     </div>,

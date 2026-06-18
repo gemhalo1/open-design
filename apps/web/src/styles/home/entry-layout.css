@@ -2031,26 +2031,79 @@
   margin-top: 4px;
 }
 
-/* On the design-system step the completion CTA sits at the top, right under the
-   header, so the user sees it immediately instead of scrolling past the brand
-   gallery. */
-.onboarding-view__actions--top {
-  margin-top: 0;
+/* Final onboarding step: a short, illustrative invitation to build with the
+   brand + design system instead of an inline extraction surface. The two CTAs
+   route to either the home view or the design-system create flow, so onboarding
+   no longer carries the extraction logic. */
+.onboarding-view__build {
+  gap: 20px;
+  max-width: 680px;
 }
 
-/* "Back" lives down beside the URL "Extract design system" action rather than
-   competing with the top CTA. The extract button keeps the remaining width. */
-.onboarding-view__extract-row {
-  display: flex;
-  align-items: stretch;
+.onboarding-view__build-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: start;
+  padding: 5px 11px 5px 9px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.onboarding-view__build-head {
+  display: grid;
   gap: 10px;
-  width: 100%;
 }
-.onboarding-view__extract-row .onboarding-view__mini-button {
-  flex: 1 1 auto;
+.onboarding-view__build-head h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
-.onboarding-view__extract-back {
-  flex: none;
+.onboarding-view__build-head p {
+  margin: 0;
+  max-width: 56ch;
+  color: var(--text-muted);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+/* Artifact examples — the visual "indicator" of what stays on-brand. */
+.onboarding-view__build-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.onboarding-view__build-chips li {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-panel) 94%, var(--accent) 6%);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.onboarding-view__build-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+/* Back stays quiet and pushed to the far left; the two finish choices group on
+   the right (Finish/home secondary, Build primary). */
+.onboarding-view__build-back {
+  margin-inline-end: auto;
 }
 
 .onboarding-view__action-status {
