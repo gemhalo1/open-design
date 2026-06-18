@@ -284,6 +284,7 @@ function isUiP0RelevantFile(file: string): boolean {
       "e2e/lib/",
       "e2e/resources/",
       "e2e/scripts/",
+      ".github/actions/setup-bundles/",
       ".github/actions/setup-playwright/",
       ".github/actions/setup-workspace/",
     ]) ||
@@ -304,6 +305,7 @@ function isVisualRelevantFile(file: string): boolean {
     startsWithAny(file, [
       "apps/web/",
       "e2e/lib/playwright/",
+      ".github/actions/setup-bundles/",
       ".github/actions/setup-playwright/",
       ".github/actions/setup-workspace/",
     ]) ||

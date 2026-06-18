@@ -291,11 +291,8 @@ jobs:
       #     `@open-design/web/sidecar`
       # If postinstall grows a targeted app type-generation phase covering these
       # three exports without broad app builds, this CI prebuild can be removed.
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/daemon build
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
+      - name: Setup bundles
+        uses: ./.github/actions/setup-bundles
 
       - name: Typecheck workspaces
         run: |
@@ -413,11 +410,8 @@ jobs:
           package-json-path: e2e/package.json
           install-command: pnpm -C e2e exec playwright install --with-deps chromium
 
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/daemon build
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
+      - name: Setup bundles
+        uses: ./.github/actions/setup-bundles
 
       - name: E2E Vitest
         run: pnpm --filter @open-design/e2e test
@@ -450,11 +444,8 @@ jobs:
           package-json-path: e2e/package.json
           install-command: pnpm -C e2e exec playwright install --with-deps chromium
 
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/daemon build
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
+      - name: Setup bundles
+        uses: ./.github/actions/setup-bundles
 
       - name: Clean Playwright state
         run: pnpm -C e2e exec tsx scripts/playwright.ts clean
@@ -485,11 +476,8 @@ jobs:
           package-json-path: e2e/package.json
           install-command: pnpm -C e2e exec playwright install --with-deps chromium
 
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/daemon build
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
+      - name: Setup bundles
+        uses: ./.github/actions/setup-bundles
 
       - name: Clean Playwright state
         run: pnpm -C e2e exec tsx scripts/playwright.ts clean
@@ -536,11 +524,8 @@ jobs:
           package-json-path: e2e/package.json
           install-command: pnpm -C e2e exec playwright install --with-deps chromium
 
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/daemon build
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
+      - name: Setup bundles
+        uses: ./.github/actions/setup-bundles
 
       - name: Clean Playwright state
         run: pnpm -C e2e exec tsx scripts/playwright.ts clean
@@ -589,11 +574,11 @@ jobs:
           package-json-path: e2e/package.json
           install-command: pnpm -C e2e exec playwright install --with-deps chromium
 
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/daemon build
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
+      - name: Setup bundles
+        uses: ./.github/actions/setup-bundles
+
+      - name: Clean Playwright state
+        run: pnpm -C e2e exec tsx scripts/playwright.ts clean
 
       - name: Run strict visual Playwright suite
         id: visual
@@ -602,9 +587,7 @@ jobs:
           OD_VISUAL_OUTPUT_DIR: ui/reports/visual-screenshots
           OD_PLAYWRIGHT_WORKERS: "4"
           OD_PLAYWRIGHT_FULLY_PARALLEL: "1"
-        run: |
-          pnpm -C e2e exec tsx scripts/playwright.ts clean
-          pnpm -C e2e exec playwright test -c playwright.visual.config.ts ${{ matrix.files }}
+        run: pnpm -C e2e exec playwright test -c playwright.visual.config.ts ${{ matrix.files }}
 
       - name: Write capture manifest
         if: ${{ always() && github.event_name == 'pull_request' }}
