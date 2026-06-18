@@ -16,6 +16,8 @@ import type { Brand, BrandMeta } from '@open-design/contracts';
 
 const ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 
+type BrandMetaPatch = Partial<Omit<BrandMeta, 'error'>> & { error?: string | undefined };
+
 /** True when `id` is a safe single-segment brand directory name. */
 export function isValidBrandId(id: string): boolean {
   return ID_RE.test(id) && !id.includes('..');
@@ -107,11 +109,19 @@ export function writeMeta(brandsRoot: string, id: string, meta: BrandMeta): void
 export function patchMeta(
   brandsRoot: string,
   id: string,
-  patch: Partial<BrandMeta>,
+  patch: BrandMetaPatch,
 ): BrandMeta | null {
   const current = readMeta(brandsRoot, id);
   if (!current) return null;
-  const next: BrandMeta = { ...current, ...patch, updatedAt: Date.now() };
+  const { error: patchError, ...rest } = patch;
+  const next: BrandMeta = { ...current, ...rest, updatedAt: Date.now() };
+  if (Object.prototype.hasOwnProperty.call(patch, 'error')) {
+    if (patchError === undefined) {
+      delete next.error;
+    } else {
+      next.error = patchError;
+    }
+  }
   writeMeta(brandsRoot, id, next);
   return next;
 }
