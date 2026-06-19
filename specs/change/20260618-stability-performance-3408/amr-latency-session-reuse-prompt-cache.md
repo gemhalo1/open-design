@@ -36,12 +36,12 @@ Status: proposed · Parent: #3408 · Sibling: agent-startup-latency-profiling.md
 
 ## Goals / Non-goals
 
-- **Goals**: Cut the 100-153k uncached input AMR repays every turn down to "only the new content for this turn", reducing TTFT + token cost.
+- **Goals**: Cut the cache-cold portion of the turn-2+ **first** upstream call (production: ~21% hit, ~24.5k uncached, ~12s) toward the within-turn hit level (~80%), so the prior conversation reuses cache instead of re-paying — reducing TTFT + token cost on the critical path.
 - **Non-goals**: claude (already resumes); provider-side first-token floor (~3s, network hops + model itself); opencode direct 31s anomaly (separate investigation).
 
 ## Root cause
 
-AMR repays 100-153k uncached tokens every turn because it feeds "history the model already processed in the previous turn, byte-for-byte identical" again and recomputes it. Root causes:
+On the turn-2+ **first** upstream call, AMR re-pays the conversation as cache-cold input (production: only ~21% hit, ~24.5k uncached) — it feeds history the model already processed in the previous turn, but in a form that no longer matches what was cached, so it recomputes it. Root causes:
 1. **vela does not support session reuse** (`loadSession:false` + single session + no `session/load`) → every turn starts from `session/new`;
 2. **daemon flattens history into a new user message every turn** (`buildDaemonTranscript`) → prefixes and the previous turn's native structure do not line up;
 3. **volatile system blocks** (MCP/memory/runContext) are interleaved inside the system prefix → they truncate the cacheable prefix early (for explicit-cache models).
@@ -87,7 +87,7 @@ Explicit order: measure first, run the cheap gateway/cache experiment second, an
 ### Step 2 — ACP session reuse only if uncached follow-up remains dominant
 - If Step 1 shows turn-2+ `uncached_input_tokens` still dominates TTFT/cost, implement session reuse: ① change vela `initialize` to `loadSession=true`; ② add `case "session/load"` in `handleRequest`; ③ persist the opencode session (the current session id only lives in memory).
 - Daemon coordination should reuse the existing centralized resume detection (`server.ts:7578-7595`) instead of duplicating an ACP-specific path. The behavior is "one long-lived ACP connection per conversation, `session/prompt` per turn", with flattened-history resend removed only after state-continuity gates pass.
-- Effect to verify: turn-2+ uncached input drops from 153k → only new content for the current turn.
+- Effect to verify: turn-2+ first-call uncached drops from ~24.5k → only the new content for the current turn, and first-call cache hit rises from ~21% toward the within-turn ~80%.
 
 ### Cache model classification (for implementers)
 | Model | Cache | Read discount | TTL | Needs cache_control |
@@ -144,7 +144,7 @@ Claude CLI resume already provides the desired host shape for native continuatio
 
 ## Validation · Acceptance (behavior-level)
 
-- before/after: AMR follow-up `time_to_first_token_ms` p50 drops; `uncached_input_tokens` drops significantly from ~153k; `cache_read_input_tokens/(cache_read_input_tokens+uncached_input_tokens)` efficiency rises (target approaches claude's ~93%).
+- before/after, **measured on the first model call of turn-2+** (not the per-turn aggregate): `time_to_first_token_ms` p50 drops; first-call `uncached_input_tokens` drops from the ~24.5k production baseline; first-call cache hit `cache_read/(cache_read+uncached)` rises from ~21% toward the within-turn ~80%.
 - One falsifiable check: send two consecutive turns in the same `conversationId`, assert second-turn `uncached_input_tokens` << first-turn `uncached_input_tokens` (history is no longer repaid after session reuse). **Measure the first model call of turn-2+, not the per-turn aggregate** — the per-turn cache rate is within-turn-loop-dominated and hides the cross-turn miss (see "within-turn vs cross-turn").
 - Pure telemetry changes do not need #3545 QA gate. Prefix reordering and session reuse do need state-continuity / quality gates because they change model input: order is part of the input, and the daemon assembles that order at `server.ts:7670-7684`.
 - Session lifecycle acceptance: changing model / cwd / project / MCP+tool contract / prompt hash / memory forces a new ACP session; cancel closes the session; stale-process eviction removes long-lived conversation processes; a new conversation cannot observe prior conversation state.
@@ -168,7 +168,7 @@ This feasibility was checked premise by premise by codex, with material correcti
 **Therefore, reorder into Step 0/1/2 (after correcting difficulty/feasibility):**
 - **Step 0 (measure first)**: Add uncached/cache-field dashboards and confirm the dominant cohort before changing behavior.
 - **Step 1 (small, more feasible, first)**: Change Vela Link ephemeral to **1h TTL** where supported + ensure the cacheable prefix is stable. Helps explicit-cache models only (Claude/Gemini); DeepSeek automatic-cache TTL cannot be set — partial benefit.
-- **Step 2 (large, conditional project)**: session reuse (stop temp deletion + persist + verify opencode reload + one daemon connection per conversation) **only if uncached follow-up remains dominant after Step 1**. This captures the large turn-2+ 153k item, but needs a project.
+- **Step 2 (large, conditional project)**: session reuse (stop temp deletion + persist + verify opencode reload + one daemon connection per conversation) **only if first-call uncached remains dominant after Step 1**. This captures the turn-2+ first-call re-pay (~24.5k uncached, ~21% hit), but needs a project.
 
 > Therefore, this optimization is **not low-hanging fruit; it is a vela cross-repo project that needs to be planned**. Step 1 is comparatively small, but its benefit is limited by "AMR's lead models are automatic-cache models (DeepSeek/GLM)".
 

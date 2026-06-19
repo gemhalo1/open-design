@@ -2,7 +2,7 @@
 
 Design doc (human/reviewer-facing). Implementation runbooks per slice are written separately at build time.
 
-Status: proposed · Parent: #3408 · Upstream background: stability-performance-state-and-plan.md · Spec format: spec-battle
+Status: proposed · Parent: #3408 · Upstream background: spec.md · Spec format: spec-battle
 
 ## Why · Why this matters
 
