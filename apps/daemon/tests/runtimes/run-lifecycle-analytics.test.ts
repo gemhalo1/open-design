@@ -170,6 +170,7 @@ describe('run retry analytics helpers', () => {
       { event: 'stderr', data: { chunk: 'HTTP 503' } },
     ])).toEqual({
       userVisibleOutputSeen: false,
+      resumableTextOutputSeen: false,
       toolCallSeen: false,
       artifactWriteSeen: false,
       liveArtifactSeen: false,
@@ -181,20 +182,40 @@ describe('run retry analytics helpers', () => {
       { event: 'agent', data: { type: 'live_artifact' } },
     ])).toMatchObject({
       userVisibleOutputSeen: true,
+      resumableTextOutputSeen: true,
       toolCallSeen: true,
       liveArtifactSeen: true,
     });
+
+    expect(__forTestScanRunEventsForRetrySideEffects([
+      { event: 'agent', data: { type: 'thinking_delta', delta: 'private plan' } },
+    ])).toMatchObject({
+      userVisibleOutputSeen: true,
+      resumableTextOutputSeen: false,
+      toolCallSeen: false,
+      artifactWriteSeen: false,
+      liveArtifactSeen: false,
+    });
   });
 
-  it('treats visible output as a resumable work boundary', () => {
+  it('treats only resumable text output as a text-only resumable work boundary', () => {
     expect(__forTestRunHasResumableWorkBoundary({
       userVisibleOutputSeen: true,
+      resumableTextOutputSeen: true,
       toolCallSeen: false,
       artifactWriteSeen: false,
       liveArtifactSeen: false,
     })).toBe(true);
     expect(__forTestRunHasResumableWorkBoundary({
+      userVisibleOutputSeen: true,
+      resumableTextOutputSeen: false,
+      toolCallSeen: false,
+      artifactWriteSeen: false,
+      liveArtifactSeen: false,
+    })).toBe(false);
+    expect(__forTestRunHasResumableWorkBoundary({
       userVisibleOutputSeen: false,
+      resumableTextOutputSeen: false,
       toolCallSeen: false,
       artifactWriteSeen: false,
       liveArtifactSeen: false,

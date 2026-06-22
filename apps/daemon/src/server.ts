@@ -2165,6 +2165,7 @@ export function __forTestScanRunEventsForFinishedProps(events, reqBodyModel) {
 function scanRunEventsForRetrySideEffects(events) {
   const sideEffects = {
     userVisibleOutputSeen: false,
+    resumableTextOutputSeen: false,
     toolCallSeen: false,
     artifactWriteSeen: false,
     liveArtifactSeen: false,
@@ -2174,13 +2175,17 @@ function scanRunEventsForRetrySideEffects(events) {
       const chunk = rec.data?.chunk;
       if (typeof chunk === 'string' ? chunk.length > 0 : chunk !== undefined) {
         sideEffects.userVisibleOutputSeen = true;
+        sideEffects.resumableTextOutputSeen = true;
       }
     }
     const data = rec?.data;
     if (!data || typeof data !== 'object') continue;
     if (data.type === 'text_delta' || data.type === 'thinking_delta') {
       const delta = typeof data.delta === 'string' ? data.delta : '';
-      if (delta.length > 0) sideEffects.userVisibleOutputSeen = true;
+      if (delta.length > 0) {
+        sideEffects.userVisibleOutputSeen = true;
+        if (data.type === 'text_delta') sideEffects.resumableTextOutputSeen = true;
+      }
     }
     if (data.type === 'tool_use') sideEffects.toolCallSeen = true;
     if (data.type === 'artifact') sideEffects.artifactWriteSeen = true;
@@ -2204,7 +2209,7 @@ export function __forTestScanRunEventsForRetrySideEffects(events) {
 
 function runHasResumableWorkBoundary(sideEffects) {
   return !!(
-    sideEffects?.userVisibleOutputSeen ||
+    sideEffects?.resumableTextOutputSeen ||
     sideEffects?.toolCallSeen ||
     sideEffects?.artifactWriteSeen ||
     sideEffects?.liveArtifactSeen

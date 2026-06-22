@@ -187,6 +187,40 @@ describe('resume-on-failure runtime', () => {
     const resumedSessionId = flagValue(attempts[1] ?? [], '--resume');
     expect(resumedSessionId).toBe(firstSessionId);
   });
+
+  it('does not treat a thinking-only upstream drop as resumable', async () => {
+    binDir = await mkdtemp(path.join(os.tmpdir(), 'od-resume-thinkingonly-bin-'));
+    const { bin: fakeClaude, argsLogPath } = await writeThinkingOnlyUpstreamClaude(
+      binDir,
+      'claude-thinkingonly',
+    );
+
+    delete process.env.POSTHOG_KEY;
+    delete process.env.POSTHOG_HOST;
+    delete process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_SECRET_KEY;
+    delete process.env.LANGFUSE_BASE_URL;
+    delete process.env.OPEN_DESIGN_TELEMETRY_RELAY_URL;
+
+    started = await startServer({ port: 0, returnServer: true }) as StartedServer;
+    await putConfig(started.url, {
+      agentId: 'claude',
+      agentCliEnv: { claude: { CLAUDE_BIN: fakeClaude } },
+      telemetry: { metrics: true, content: false, artifactManifest: false },
+      privacyDecisionAt: Date.now(),
+    });
+
+    const conversationId = await createConversation(started.url);
+    const failed = await sendRunAndWait(started.url, conversationId);
+    expect(failed.status).toBe('failed');
+    expect(failed.resumable).not.toBe(true);
+
+    const attempts = (await readArgs(argsLogPath)).filter(
+      (args) => args.includes('--session-id') || args.includes('--resume'),
+    );
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).not.toContain('--resume');
+  });
 });
 
 function snapshotEnv(): Record<string, string | undefined> {
@@ -327,6 +361,29 @@ if (attempts === 0) {
   }));
   setTimeout(() => process.exit(0), 20);
 }
+`, 'utf8');
+  await chmod(bin, 0o755);
+  return { bin, argsLogPath };
+}
+
+async function writeThinkingOnlyUpstreamClaude(
+  dir: string,
+  name: string,
+): Promise<{ bin: string; argsLogPath: string }> {
+  const bin = path.join(dir, name);
+  const argsLogPath = path.join(dir, `${name}-args.jsonl`);
+  await writeFile(bin, `#!/usr/bin/env node
+const fs = require('node:fs');
+const argsLogPath = ${JSON.stringify(argsLogPath)};
+if (process.argv.includes('--version')) { console.log('claude-code 1.0.0-resume-thinkingonly'); process.exit(0); }
+if (process.argv.includes('--help')) { console.log('Usage: claude -p [--include-partial-messages]'); process.exit(0); }
+fs.appendFileSync(argsLogPath, JSON.stringify(process.argv.slice(2)) + '\\n');
+console.log(JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-resume-test' }));
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'message_start', message: { id: 'msg-thinkingonly' }, ttft_ms: 10 } }));
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } } }));
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Plan before the drop.' } } }));
+process.stderr.write('Upstream request failed: HTTP 503 stream disconnected before completion.\\n');
+setTimeout(() => process.exit(1), 20);
 `, 'utf8');
   await chmod(bin, 0o755);
   return { bin, argsLogPath };
