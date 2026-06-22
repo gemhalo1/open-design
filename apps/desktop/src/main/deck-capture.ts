@@ -149,7 +149,7 @@ export async function renderDeckSlides(
     if (input.deck === true && !hasSlides) {
       return finish({ ok: false, error: "no slide surfaces found in this deck" });
     }
-    const wantsDeck = hasSlides && input.deck !== false;
+    const wantsDeck = shouldCaptureAsDeck(hasSlides, input.deck);
     if (!wantsDeck) {
       // Page mode: capture the original, unmodified document.
       return finish(await capturePage(window, input.pageImageFormat === "jpeg", input.outputDir));
@@ -675,6 +675,15 @@ function escapeHtmlAttribute(value: string): string {
 }
 
 // --- Functions serialized into the page (kept dependency-free) ---
+
+// Page-vs-deck decision (exported for tests). Deck capture requires real slide
+// surfaces AND the caller not having explicitly said `deck: false`. So an
+// ordinary page with carousel/testimonial `.slide` markup, exported with
+// `deck: false`, is captured as a full page — never per-slide. When the caller
+// omits the signal, the `.slide` count heuristic decides (CLI back-compat).
+export function shouldCaptureAsDeck(hasSlides: boolean, deckSignal: boolean | undefined): boolean {
+  return hasSlides && deckSignal !== false;
+}
 
 // Non-mutating: count the real slide surfaces (presenter clones excluded). Used
 // to decide page-vs-deck BEFORE any deck-only DOM mutation, so page-mode exports

@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest';
 
-import { scrollStitchGeometry, scrollStitchRowOffset } from '../../src/main/deck-capture.js';
+import {
+  scrollStitchGeometry,
+  scrollStitchRowOffset,
+  shouldCaptureAsDeck,
+} from '../../src/main/deck-capture.js';
 
 // Full-page scroll-stitch geometry must use the REAL captured device width and
 // its true (possibly fractional) pixel ratio. A previous version rounded the
@@ -35,6 +39,24 @@ describe('scrollStitchGeometry', () => {
     expect(g.dpr).toBe(1);
     expect(g.width).toBe(1440);
     expect(g.height).toBe(3000);
+  });
+});
+
+describe('shouldCaptureAsDeck', () => {
+  test('an ordinary page with .slide markup but deck:false captures as a page', () => {
+    // The regression: a non-deck HTML page (carousel/testimonial `.slide`) sent
+    // with an explicit deck:false must NOT be captured per-slide.
+    expect(shouldCaptureAsDeck(true, false)).toBe(false);
+  });
+  test('an explicit deck with slides captures as a deck', () => {
+    expect(shouldCaptureAsDeck(true, true)).toBe(true);
+  });
+  test('no slides is never a deck', () => {
+    expect(shouldCaptureAsDeck(false, true)).toBe(false);
+    expect(shouldCaptureAsDeck(false, undefined)).toBe(false);
+  });
+  test('no signal falls back to the slide-count heuristic', () => {
+    expect(shouldCaptureAsDeck(true, undefined)).toBe(true);
   });
 });
 

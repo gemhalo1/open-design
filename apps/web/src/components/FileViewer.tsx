@@ -7696,13 +7696,16 @@ function HtmlViewer({
       // just because od:slide-state hasn't arrived yet (fresh open, or a deck
       // detected only from `.slide` markup that never emits slide-state). Default
       // to the first slide.
-      const deckIndex = effectiveDeck
+      // Drive deck-vs-page off the EXPLICIT deck signal, not the `.slide` regex:
+      // an ordinary page with carousel/testimonial `.slide` markup must export
+      // as a full page, not as "the current card". (Same reasoning as PPTX.)
+      const deckIndex = isDeckArtifact
         ? slideState?.active ?? htmlPreviewSlideState.get(previewStateKey)?.active ?? 0
         : undefined;
       const rendered = await exportProjectImageDataUrl({
         projectId,
         fileName: file.name,
-        deck: effectiveDeck,
+        deck: isDeckArtifact,
         ...(deckIndex != null ? { index: deckIndex } : {}),
       });
       if (rendered.ok) return rendered.snapshot;
@@ -7761,7 +7764,7 @@ function HtmlViewer({
     srcDocShellReady,
     useLazySrcDocTransport,
     useUrlLoadPreview,
-    effectiveDeck,
+    isDeckArtifact,
     slideState?.active,
     previewStateKey,
     projectId,
@@ -8895,7 +8898,9 @@ function HtmlViewer({
                             projectId,
                             fileName: file.name,
                             title: exportTitle,
-                            deck: effectiveDeck,
+                            // Explicit deck signal — a page with carousel `.slide`
+                            // markup must export as a full page, not per-slide.
+                            deck: isDeckArtifact,
                           });
                           if (res.ok) return;
                         }
