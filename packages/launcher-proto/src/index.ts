@@ -187,12 +187,6 @@ export function compareLauncherVersions(a: string, b: string): number {
   return 0;
 }
 
-export function hasCountedLauncherPrerelease(version: string): boolean {
-  const parsed = parseComparableLauncherVersion(version);
-  const last = parsed.pre.at(-1);
-  return parsed.pre.length >= 2 && last != null && /^[0-9]+$/.test(last);
-}
-
 export function normalizeLauncherChannel(value: unknown): LauncherChannel {
   if (typeof value !== "string") throw new LauncherProtocolError("launcher channel must be a string");
   const channel = value.trim();

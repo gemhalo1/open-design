@@ -29,7 +29,6 @@ import {
   LAUNCHER_SCHEMA_VERSION,
   buildLauncherAfterQuitArgs,
   compareLauncherVersions,
-  hasCountedLauncherPrerelease,
   resolveLauncherPaths,
   resolveLauncherVersionPaths,
   validateLauncherCleanupDescriptor,
@@ -810,8 +809,7 @@ async function ensureOwnedUpdateRoot(
 
 function defaultChannelForVersion(version: string): DesktopUpdateChannel {
   const channel = releaseChannelFromVersion(version);
-  if (channel != null) return channel;
-  return hasCountedLauncherPrerelease(version) ? DESKTOP_UPDATE_CHANNELS.BETA : DESKTOP_UPDATE_CHANNELS.STABLE;
+  return channel ?? DESKTOP_UPDATE_CHANNELS.STABLE;
 }
 
 export function compareVersions(a: string, b: string): number {
