@@ -1,4 +1,6 @@
-import { BrowserWindow } from "electron";
+import zlib from "node:zlib";
+
+import { BrowserWindow, nativeImage } from "electron";
 import type { DesktopRenderSlidesInput, DesktopRenderSlidesResult } from "@open-design/sidecar-proto";
 
 import { waitForPrintableContent } from "./pdf-export.js";
@@ -109,26 +111,294 @@ export async function renderDeckSlides(
   }
 }
 
-// Ordinary (non-deck) page: capture the whole document at a fixed desktop width
-// and its full natural height, so the image is viewport-independent and shows
-// the entire page (not just the visible fold). Capped so we never exceed
-// Chromium's max capture texture.
+// Ordinary (non-deck) page: capture the WHOLE document as one long image at a
+// fixed desktop width, viewport-independent.
 const PAGE_W = 1440;
-const PAGE_MAX_H = 8000;
+// Logical viewport height used for the scroll-segment fallback.
+const PAGE_VIEW_H = 1000;
+// RAM budget for the stitched output buffer (~RGBA). Bounds the worst-case
+// output height regardless of how tall the page is.
+const PAGE_RAM_BUDGET_BYTES = 320 * 1024 * 1024;
+// Conservative floor for the per-machine GPU texture limit if we cannot query
+// it (older/integrated GPUs can be as low as this).
+const FALLBACK_MAX_TEXTURE = 8192;
 
+/**
+ * Captures an ordinary page as one long, viewport-independent image. Picks the
+ * technique automatically (the caller and the user only ever see "full page"):
+ *  1) Chromium's `captureBeyondViewport` — one clean off-screen pass; fixed
+ *     elements are NOT duplicated. Used when the output fits the machine's real
+ *     GPU texture limit AND below-the-fold content actually rendered.
+ *  2) scroll-segment stitch — when (1) would exceed the texture limit, errors,
+ *     or comes back blank below the fold (scroll-driven pages). RAM-bound, so it
+ *     handles arbitrarily long pages; capped by a memory budget.
+ */
 async function capturePage(window: BrowserWindow): Promise<DesktopRenderSlidesResult> {
-  window.setContentSize(PAGE_W, 1080);
+  // Lay the document out at a desktop width first so width-dependent content
+  // (responsive layouts) renders the way a desktop visitor sees it.
+  window.setContentSize(PAGE_W, PAGE_VIEW_H);
   await nextFrames(window);
+
+  const maxTexture = await queryMaxTextureSize(window);
+  // The window's device-pixel-ratio already scales the capture (2 on retina),
+  // exactly like the deck path's capturePage. Report real px via it.
+  const dpr = await queryDevicePixelRatio(window);
+  const outW = PAGE_W * dpr;
+  const ramMaxOutH = Math.floor(PAGE_RAM_BUDGET_BYTES / (outW * 4));
+
+  const dbg = window.webContents.debugger;
+  let attached = false;
+  try {
+    dbg.attach("1.3");
+    attached = true;
+  } catch {
+    // already attached or unavailable — scroll-segment fallback below
+  }
+
+  try {
+    if (attached) {
+      await dbg.sendCommand("Page.enable");
+      // Measure the document height in CSS px directly (CDP contentSize is in
+      // device px in this Electron, which would double-scale). Clip width to the
+      // desktop viewport we laid out at — horizontal overflow is rare and a
+      // desktop-width capture is what we want.
+      const measuredH = (await window.webContents.executeJavaScript(
+        "Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0))",
+        true,
+      )) as number;
+      const docW = PAGE_W;
+      const docH = Math.max(1, Number.isFinite(measuredH) ? measuredH : PAGE_VIEW_H);
+      const outWpx = docW * dpr;
+      const outHpx = docH * dpr;
+
+      // captureBeyondViewport is viable only when the single output texture fits
+      // the machine's real limit on BOTH axes and within the RAM budget.
+      const fitsSinglePass =
+        outWpx <= maxTexture && outHpx <= maxTexture && outHpx <= ramMaxOutH;
+      if (fitsSinglePass && !(await isBelowFoldBlank(dbg, docW, docH))) {
+        // scale:1 — the window DPR already provides the pixel scale, so this
+        // avoids double-scaling (DPR x clip.scale).
+        const shot = (await dbg.sendCommand("Page.captureScreenshot", {
+          format: "png",
+          captureBeyondViewport: true,
+          clip: { x: 0, y: 0, width: docW, height: docH, scale: 1 },
+        })) as { data: string };
+        return {
+          ok: true,
+          slides: [`data:image/png;base64,${shot.data}`],
+          width: outWpx,
+          height: outHpx,
+          mode: "page",
+        };
+      }
+      // Otherwise fall through to scroll-segment (too tall, or blank below fold).
+      const cappedLogicalH = Math.min(docH, Math.floor(ramMaxOutH / dpr));
+      return await scrollSegmentStitch(window, cappedLogicalH);
+    }
+  } catch {
+    // CDP path failed — fall through to scroll-segment.
+  } finally {
+    if (attached) {
+      try {
+        dbg.detach();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // No debugger available: measure + scroll-segment.
   const measured = (await window.webContents.executeJavaScript(
     "Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0))",
     true,
   )) as number;
-  const height = Math.max(1, Math.min(Number.isFinite(measured) ? measured : 1080, PAGE_MAX_H));
-  window.setContentSize(PAGE_W, height);
+  const totalLogical = Math.max(
+    PAGE_VIEW_H,
+    Math.min(Number.isFinite(measured) ? measured : PAGE_VIEW_H, Math.floor(ramMaxOutH / dpr)),
+  );
+  return await scrollSegmentStitch(window, totalLogical);
+}
+
+// Window device-pixel-ratio (2 on retina). capturePage / captureScreenshot both
+// scale the output by it, so we use it to compute real output pixel sizes.
+async function queryDevicePixelRatio(window: BrowserWindow): Promise<number> {
+  try {
+    const v = (await window.webContents.executeJavaScript("window.devicePixelRatio || 1", true)) as number;
+    return Number.isFinite(v) && v > 0 ? v : 1;
+  } catch {
+    return 1;
+  }
+}
+
+// Reads the GPU's real max texture size so the single-pass/stitch threshold
+// adapts to the user's hardware instead of a hard-coded guess.
+async function queryMaxTextureSize(window: BrowserWindow): Promise<number> {
+  try {
+    const v = (await window.webContents.executeJavaScript(
+      `(function(){try{var c=document.createElement('canvas');var gl=c.getContext('webgl2')||c.getContext('webgl');return gl?gl.getParameter(gl.MAX_TEXTURE_SIZE):0}catch(e){return 0}})()`,
+      true,
+    )) as number;
+    return Number.isFinite(v) && v > 0 ? v : FALLBACK_MAX_TEXTURE;
+  } catch {
+    return FALLBACK_MAX_TEXTURE;
+  }
+}
+
+// Probes whether everything below the first viewport came back as one flat
+// (near-)uniform color — the signature of a scroll-driven page that renders
+// blank below the fold under captureBeyondViewport. Uses a tiny low-res capture
+// so we never decode the full image.
+async function isBelowFoldBlank(
+  dbg: Electron.Debugger,
+  docW: number,
+  docH: number,
+): Promise<boolean> {
+  const fold = PAGE_VIEW_H;
+  if (docH <= fold * 2) return false; // too short for below-fold blanking to matter
+  try {
+    const probeScale = 0.05;
+    const shot = (await dbg.sendCommand("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      clip: { x: 0, y: fold, width: docW, height: docH - fold, scale: probeScale },
+    })) as { data: string };
+    // Decode the tiny probe with Electron's native decoder (well within Skia
+    // limits at this size); toBitmap() returns BGRA — channel order is irrelevant
+    // for a uniformity check.
+    const data = nativeImage.createFromBuffer(Buffer.from(shot.data, "base64")).toBitmap();
+    if (data.length < 16) return false;
+    const c0 = data[0]!;
+    const c1 = data[1]!;
+    const c2 = data[2]!;
+    let uniform = 0;
+    const total = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      if (
+        Math.abs(data[i]! - c0) <= 6 &&
+        Math.abs(data[i + 1]! - c1) <= 6 &&
+        Math.abs(data[i + 2]! - c2) <= 6
+      ) {
+        uniform++;
+      }
+    }
+    // >92% of the below-fold area is one flat color => it did not render.
+    return uniform / total > 0.92;
+  } catch {
+    return false;
+  }
+}
+
+// Scrolls the page one viewport at a time, captures each frame, and stitches
+// them into one tall PNG by real scroll offset (overlaps overwrite identically).
+// RAM-bound (a plain RGBA buffer, not a GPU texture), so it is not subject to
+// the texture limit and supports very long pages up to the memory budget.
+async function scrollSegmentStitch(
+  window: BrowserWindow,
+  totalLogical: number,
+): Promise<DesktopRenderSlidesResult> {
+  window.setContentSize(PAGE_W, PAGE_VIEW_H);
   await nextFrames(window);
-  const image = await window.webContents.capturePage({ x: 0, y: 0, width: PAGE_W, height });
-  const size = image.getSize();
-  return { ok: true, slides: [image.toDataURL()], width: size.width, height: size.height, mode: "page" };
+  const maxScroll = Math.max(0, totalLogical - PAGE_VIEW_H);
+
+  // Scale (DPR) is derived from the first captured chunk so placement is correct
+  // regardless of the display's pixel ratio.
+  let scale = 0;
+  let W = 0;
+  let H = 0;
+  let rgba: Buffer | null = null;
+
+  for (let y = 0; ; y += PAGE_VIEW_H) {
+    const target = Math.min(y, maxScroll);
+    const actualY = (await window.webContents.executeJavaScript(
+      `(function(){window.scrollTo(0, ${target});return new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){r(Math.round(window.scrollY||window.pageYOffset||0))},180)})})})})()`,
+      true,
+    )) as number;
+    const image = await window.webContents.capturePage({ x: 0, y: 0, width: PAGE_W, height: PAGE_VIEW_H });
+    const bmp = image.toBitmap(); // BGRA
+    const size = image.getSize();
+    if (!rgba) {
+      scale = Math.max(1, Math.round(size.width / PAGE_W));
+      W = PAGE_W * scale;
+      H = totalLogical * scale;
+      rgba = Buffer.alloc(W * H * 4);
+    }
+    const destY = actualY * scale;
+    const rows = Math.min(size.height, H - destY);
+    for (let r = 0; r < rows; r++) {
+      const src = r * size.width * 4;
+      const dst = (destY + r) * W * 4;
+      for (let x = 0; x < size.width && x < W; x++) {
+        const s = src + x * 4;
+        const d = dst + x * 4;
+        rgba[d] = bmp[s + 2]!; // R <- B
+        rgba[d + 1] = bmp[s + 1]!; // G
+        rgba[d + 2] = bmp[s]!; // B <- R
+        rgba[d + 3] = bmp[s + 3]!; // A
+      }
+    }
+    if (target >= maxScroll) break;
+  }
+
+  const buf = encodePngRgba(rgba ?? Buffer.alloc(0), W, H);
+  return {
+    ok: true,
+    slides: [`data:image/png;base64,${buf.toString("base64")}`],
+    width: W,
+    height: H,
+    mode: "page",
+  };
+}
+
+// Minimal PNG encoder (8-bit RGBA) using node:zlib. Pure ESM — avoids a CJS
+// image dependency (which breaks the ESM-bundled packaged main) and the Skia
+// dimension cap, so the stitched long image is bounded only by RAM.
+function encodePngRgba(rgba: Buffer, width: number, height: number): Buffer {
+  const stride = width * 4;
+  const raw = Buffer.allocUnsafe((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (stride + 1)] = 0; // filter type 0 (none)
+    rgba.copy(raw, y * (stride + 1) + 1, y * stride, y * stride + stride);
+  }
+  const idat = zlib.deflateSync(raw, { level: 6 });
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type RGBA
+  ihdr[10] = 0; // compression
+  ihdr[11] = 0; // filter
+  ihdr[12] = 0; // interlace
+  const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return Buffer.concat([
+    SIGNATURE,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", idat),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBuf = Buffer.from(type, "ascii");
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length, 0);
+  const crcBuf = Buffer.alloc(4);
+  crcBuf.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])) >>> 0, 0);
+  return Buffer.concat([len, typeBuf, data, crcBuf]);
+}
+
+let CRC_TABLE: Uint32Array | null = null;
+function crc32(buf: Buffer): number {
+  if (!CRC_TABLE) {
+    CRC_TABLE = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      CRC_TABLE[n] = c >>> 0;
+    }
+  }
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) crc = CRC_TABLE[(crc ^ buf[i]!) & 0xff]! ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function range(n: number): number[] {

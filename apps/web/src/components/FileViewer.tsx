@@ -70,7 +70,6 @@ import {
   exportAsPdf,
   exportProjectAsHtml,
   exportProjectAsPdf,
-  exportProjectAsPptx,
   exportProjectAsZip,
   exportProjectImageDataUrl,
   copyImageDataUrlToClipboard,
@@ -8748,27 +8747,17 @@ function HtmlViewer({
                     role="menuitem"
                     onClick={() => {
                       setDownloadMenuOpen(false);
-                      fireShareExport('pdf', async () => {
-                        // Desktop: pixel-perfect screenshot PDF (matches the
-                        // preview, same renderer as PPTX/image). Fall back to
-                        // the vector print path on web or on failure.
-                        if (isOpenDesignHostAvailable()) {
-                          const res = await exportProjectAsPptx({
-                            projectId,
-                            fileName: file.name,
-                            title: exportTitle,
-                            format: 'pdf',
-                          });
-                          if (res.ok) return;
-                        }
-                        await exportProjectAsPdf({
-                          deck: effectiveDeck,
-                          fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
-                          filePath: file.name,
-                          projectId,
-                          title: exportTitle,
-                        });
-                      });
+                      // Print-ready vector PDF (instant): the artifact's print
+                      // layout via Chromium's print engine — selectable text,
+                      // true pagination, no server-side render. The pixel-perfect
+                      // screenshot PDF is available via `od export pdf`.
+                      fireShareExport('pdf', () => exportProjectAsPdf({
+                        deck: effectiveDeck,
+                        fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
+                        filePath: file.name,
+                        projectId,
+                        title: exportTitle,
+                      }));
                     }}
                   >
                     <span className="share-menu-icon"><RemixIcon name="file-line" size={15} /></span>
