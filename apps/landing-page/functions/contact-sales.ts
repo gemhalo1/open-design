@@ -37,6 +37,7 @@ type ContactLead = {
   email: string;
   company: string;
   teamSize: string;
+  budget: string;
   useCases: string[];
   role: string;
   message: string;
@@ -65,6 +66,22 @@ const MAX_SHORT = 200;
 const MAX_MESSAGE = 4000;
 const ALLOWED_SOURCES = new Set(["enterprise", "client"]);
 const ALLOWED_TEAM_SIZES = new Set(["1-10", "11-50", "51-200", "200+"]);
+const ALLOWED_BUDGETS = new Set([
+  "lt_50",
+  "usd_50_200",
+  "usd_200_1k",
+  "usd_1k_5k",
+  "usd_5k_plus",
+  "unsure",
+]);
+const BUDGET_LABELS: Record<string, string> = {
+  lt_50: "Under $50 / mo",
+  usd_50_200: "$50 – $200 / mo",
+  usd_200_1k: "$200 – $1,000 / mo",
+  usd_1k_5k: "$1,000 – $5,000 / mo",
+  usd_5k_plus: "$5,000+ / mo",
+  unsure: "Not sure yet",
+};
 const ALLOWED_USE_CASES = new Set([
   "product_design",
   "design_system",
@@ -172,6 +189,7 @@ function buildFeishuCard(lead: ContactLead): Record<string, unknown> {
           fieldRow("Email", lead.email),
           fieldRow("Company", lead.company),
           fieldRow("Team size", lead.teamSize),
+          fieldRow("Budget", BUDGET_LABELS[lead.budget] ?? lead.budget),
           fieldRow("Use case", lead.useCases.map((v) => USE_CASE_LABELS[v] ?? v).join(", ")),
           fieldRow("Role", lead.role),
           fieldRow("Locale", lead.locale),
@@ -285,11 +303,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const name = readString(payload.name, MAX_SHORT);
   const company = readString(payload.company, MAX_SHORT);
   const teamSize = readString(payload.teamSize, MAX_SHORT);
+  const budget = readString(payload.budget, MAX_SHORT);
   const useCases = readUseCases(payload.useCases);
   if (
     !name ||
     !company ||
     !ALLOWED_TEAM_SIZES.has(teamSize) ||
+    !ALLOWED_BUDGETS.has(budget) ||
     useCases.length === 0
   ) {
     return json({ ok: false, error: "missing_fields" }, 400, origin);
@@ -306,6 +326,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     email,
     company,
     teamSize,
+    budget,
     useCases,
     role: readString(payload.role, MAX_SHORT),
     message: readString(payload.message, MAX_MESSAGE),

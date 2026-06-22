@@ -13,7 +13,7 @@
  * back to en. Localized routes are produced by `[locale]/enterprise/`.
  */
 import Layout from '../../_components/sub-page-layout.astro';
-import { localeFromPath } from '../../i18n';
+import { localeFromPath, localePath } from '../../i18n';
 
 const locale = localeFromPath(Astro.url.pathname);
 
@@ -26,6 +26,10 @@ type EnterpriseCopy = {
   lead: string;
   perks: string[];
   logosTitle: string;
+  demosTitle: string;
+  demosLead: string;
+  incentiveTitle: string;
+  incentiveBody: string;
   formHeading: string;
   nameLabel: string;
   namePlaceholder: string;
@@ -36,6 +40,10 @@ type EnterpriseCopy = {
   teamSizeLabel: string;
   teamSizePlaceholder: string;
   teamSizeOptions: TeamSizeOption[];
+  budgetLabel: string;
+  budgetHint: string;
+  budgetPlaceholder: string;
+  budgetOptions: TeamSizeOption[];
   useCaseLabel: string;
   useCaseHint: string;
   useCaseError: string;
@@ -44,6 +52,8 @@ type EnterpriseCopy = {
   rolePlaceholder: string;
   messageLabel: string;
   messagePlaceholder: string;
+  discordLabel: string;
+  discordLinkText: string;
   submitLabel: string;
   submittingLabel: string;
   successTitle: string;
@@ -68,6 +78,11 @@ const COPY = {
       'Centralized billing and organization admin',
     ],
     logosTitle: 'Teams already building with Open Design',
+    demosTitle: 'See what teams ship',
+    demosLead: 'From a single prompt to a finished artifact — here is the kind of work your team can ship together.',
+    incentiveTitle: 'Get early access',
+    incentiveBody:
+      'Submit this form to claim priority access to the Workspace for Teams beta — plus free testing credits for your team.',
     formHeading: 'Talk to us',
     nameLabel: 'Name',
     namePlaceholder: 'Your name',
@@ -82,6 +97,17 @@ const COPY = {
       { value: '11-50', label: '11–50' },
       { value: '51-200', label: '51–200' },
       { value: '200+', label: '200+' },
+    ],
+    budgetLabel: 'Monthly budget',
+    budgetHint: 'per team, on design tools',
+    budgetPlaceholder: 'Select a range',
+    budgetOptions: [
+      { value: 'lt_50', label: 'Under $50 / mo' },
+      { value: 'usd_50_200', label: '$50 – $200 / mo' },
+      { value: 'usd_200_1k', label: '$200 – $1,000 / mo' },
+      { value: 'usd_1k_5k', label: '$1,000 – $5,000 / mo' },
+      { value: 'usd_5k_plus', label: '$5,000+ / mo' },
+      { value: 'unsure', label: 'Not sure yet' },
     ],
     useCaseLabel: 'What will you use it for?',
     useCaseHint: 'select all that apply',
@@ -99,6 +125,8 @@ const COPY = {
     rolePlaceholder: 'Your role',
     messageLabel: 'How can we help?',
     messagePlaceholder: "We're considering Open Design for our team. We'd like to know…",
+    discordLabel: 'Join our Discord to talk through Workspace edition perks with the team.',
+    discordLinkText: 'Join the chat',
     submitLabel: 'Submit request',
     submittingLabel: 'Submitting…',
     successTitle: 'Thanks — we got it.',
@@ -121,6 +149,11 @@ const COPY = {
       '统一的组织账单与成员管理',
     ],
     logosTitle: '正在使用 Open Design 的团队',
+    demosTitle: '看看团队能做出什么',
+    demosLead: '从一句话到成品交付物——这些就是你的团队可以一起做出来的东西。',
+    incentiveTitle: '抢先体验',
+    incentiveBody:
+      '提交申请即可优先获得 Workspace 团队版内测资格,以及一份团队专属的免费测试额度。',
     formHeading: '联系我们',
     nameLabel: '姓名',
     namePlaceholder: '请输入您的姓名',
@@ -135,6 +168,17 @@ const COPY = {
       { value: '11-50', label: '11–50 人' },
       { value: '51-200', label: '51–200 人' },
       { value: '200+', label: '200 人以上' },
+    ],
+    budgetLabel: '每月预算',
+    budgetHint: '每个团队在设计工具上的投入',
+    budgetPlaceholder: '请选择金额区间',
+    budgetOptions: [
+      { value: 'lt_50', label: '$50 以下 / 月' },
+      { value: 'usd_50_200', label: '$50 – $200 / 月' },
+      { value: 'usd_200_1k', label: '$200 – $1,000 / 月' },
+      { value: 'usd_1k_5k', label: '$1,000 – $5,000 / 月' },
+      { value: 'usd_5k_plus', label: '$5,000 以上 / 月' },
+      { value: 'unsure', label: '还不确定' },
     ],
     useCaseLabel: '你们主要用它做什么?',
     useCaseHint: '可多选',
@@ -152,6 +196,8 @@ const COPY = {
     rolePlaceholder: '请输入您的职位',
     messageLabel: '我们能提供什么帮助?',
     messagePlaceholder: '我正在考虑为团队引入 Open Design,我想了解……',
+    discordLabel: '欢迎加入 Discord 群聊,和团队一起讨论 Workspace 版本的权益。',
+    discordLinkText: '加入群聊',
     submitLabel: '提交申请',
     submittingLabel: '提交中……',
     successTitle: '收到,谢谢你!',
@@ -174,6 +220,11 @@ const COPY = {
       '統一的組織帳單與成員管理',
     ],
     logosTitle: '正在使用 Open Design 的團隊',
+    demosTitle: '看看團隊能做出什麼',
+    demosLead: '從一句話到成品交付物——這些就是你的團隊可以一起做出來的東西。',
+    incentiveTitle: '搶先體驗',
+    incentiveBody:
+      '提交申請即可優先取得 Workspace 團隊版內測資格,以及一份團隊專屬的免費測試額度。',
     formHeading: '聯絡我們',
     nameLabel: '姓名',
     namePlaceholder: '請輸入您的姓名',
@@ -188,6 +239,17 @@ const COPY = {
       { value: '11-50', label: '11–50 人' },
       { value: '51-200', label: '51–200 人' },
       { value: '200+', label: '200 人以上' },
+    ],
+    budgetLabel: '每月預算',
+    budgetHint: '每個團隊在設計工具上的投入',
+    budgetPlaceholder: '請選擇金額區間',
+    budgetOptions: [
+      { value: 'lt_50', label: '$50 以下 / 月' },
+      { value: 'usd_50_200', label: '$50 – $200 / 月' },
+      { value: 'usd_200_1k', label: '$200 – $1,000 / 月' },
+      { value: 'usd_1k_5k', label: '$1,000 – $5,000 / 月' },
+      { value: 'usd_5k_plus', label: '$5,000 以上 / 月' },
+      { value: 'unsure', label: '還不確定' },
     ],
     useCaseLabel: '你們主要用它做什麼?',
     useCaseHint: '可多選',
@@ -205,6 +267,8 @@ const COPY = {
     rolePlaceholder: '請輸入您的職位',
     messageLabel: '我們能提供什麼幫助?',
     messagePlaceholder: '我正在考慮為團隊引入 Open Design,我想了解……',
+    discordLabel: '歡迎加入 Discord 群聊,和團隊一起討論 Workspace 版本的權益。',
+    discordLinkText: '加入群聊',
     submitLabel: '提交申請',
     submittingLabel: '提交中……',
     successTitle: '收到,謝謝你!',
@@ -219,9 +283,56 @@ const COPY = {
 
 const c = COPY[locale as keyof typeof COPY] ?? COPY.en;
 
-// Social-proof wordmark wall. Plain text wordmarks (no third-party brand SVGs)
-// keep the page asset-free and on-brand with the site's typographic style.
-const LOGOS = ['Canva', 'ByteDance', 'Google', 'Xiaomi', 'Apple', 'Tencent', 'Spotify', 'Shopify'];
+const DISCORD_URL = 'https://discord.gg/egq3p2Wx8';
+
+// Social-proof logo wall. Monochrome brand marks pulled at render time from the
+// Simple Icons CDN (`cdn.simpleicons.org/<slug>/<hex>`) — no committed assets,
+// and the single grey tint keeps the wall on-brand with the muted Atelier Zero
+// palette (it warms to full ink on hover). Every slug below is verified to
+// resolve on the CDN (Canva / Tencent / Figma are absent or unwanted here, so
+// the set leans on design- and product-forward brands that do resolve). Kept
+// dense (12 marks) so the wall reads full rather than sparse.
+const LOGO_TINT = '8c8c8c';
+const LOGOS: { name: string; slug: string }[] = [
+  { name: 'Google', slug: 'google' },
+  { name: 'Apple', slug: 'apple' },
+  { name: 'Xiaomi', slug: 'xiaomi' },
+  { name: 'ByteDance', slug: 'bytedance' },
+  { name: 'Spotify', slug: 'spotify' },
+  { name: 'Shopify', slug: 'shopify' },
+  { name: 'Notion', slug: 'notion' },
+  { name: 'Stripe', slug: 'stripe' },
+  { name: 'Framer', slug: 'framer' },
+  { name: 'Linear', slug: 'linear' },
+  { name: 'Vercel', slug: 'vercel' },
+  { name: 'Airbnb', slug: 'airbnb' },
+];
+const logoSrc = (slug: string) => `https://cdn.simpleicons.org/${slug}/${LOGO_TINT}`;
+
+// Use-case demos — the homepage Labs showcase, lifted wholesale: the painting
+// stage (`/lab-stage-art.webp`) with a magnifying mode Dock that swaps a
+// floating artifact card / looping video in place. CSS lives in the shared
+// `globals.css` (`.lab-stage` / `.lab-dock` / `.lab-artifact`); the interaction
+// is driven by the ported `enhanceLabDock` / `enhanceLabSwitch` enhancers in
+// the inline script below (mirrors `app/pages/index.astro`). Only 图片 / 视频
+// are localized, matching the homepage; the rest keep their English labels.
+const demoHref = (path: string) => localePath(locale, path);
+const imageLabel = locale === 'zh' ? '图片' : locale === 'zh-tw' ? '圖片' : 'Image';
+const videoLabel = locale === 'zh' ? '视频' : locale === 'zh-tw' ? '影片' : 'Video';
+const DEMO_DOCK: {
+  label: string;
+  href: string;
+  preview?: string;
+  video?: string;
+  wide?: boolean;
+}[] = [
+  { label: 'Prototype', href: demoHref('/plugins/templates/prototype/'), preview: '/lab-cards/prototype.webp?v=5' },
+  { label: 'Live Artifact', href: demoHref('/plugins/templates/live-artifact/'), preview: '/lab-cards/live-artifact.webp?v=3' },
+  { label: 'Slides', href: demoHref('/plugins/templates/deck/'), preview: '/lab-cards/slides.png?v=5' },
+  { label: imageLabel, href: demoHref('/plugins/templates/image/'), preview: '/lab-cards/quest.webp?v=1', wide: true },
+  { label: 'HyperFrames', href: demoHref('/plugins/templates/hyperframes/'), video: '/lab-hyperframes.mp4' },
+  { label: videoLabel, href: demoHref('/plugins/templates/video/'), video: '/lab-video.mp4' },
+];
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -250,17 +361,49 @@ const jsonLd = {
         ))}
       </ul>
 
+      {/* Discord community nudge — a friendly invite card (not a form field),
+          the whole card links to the server. */}
+      <a class="ent-discord" href={DISCORD_URL} target="_blank" rel="noopener noreferrer">
+        <span class="ent-discord__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19.27 5.33A16.6 16.6 0 0 0 15.1 4l-.2.4a14.5 14.5 0 0 1 3.7 1.19 12.7 12.7 0 0 0-10.95 0A14.6 14.6 0 0 1 11.36 4.4L11.16 4a16.6 16.6 0 0 0-4.18 1.33C4.1 9.61 3.32 13.78 3.71 17.9a16.7 16.7 0 0 0 5.06 2.56l.4-.56a9.8 9.8 0 0 1-1.6-.77l.39-.31a11.9 11.9 0 0 0 10.17 0l.4.31a9.8 9.8 0 0 1-1.61.77l.4.56a16.7 16.7 0 0 0 5.07-2.56c.46-4.78-.79-8.92-3.51-12.57ZM9.55 15.42c-.99 0-1.8-.92-1.8-2.05 0-1.12.8-2.04 1.8-2.04 1 0 1.82.93 1.8 2.04 0 1.13-.8 2.05-1.8 2.05Zm4.91 0c-.99 0-1.8-.92-1.8-2.05 0-1.12.8-2.04 1.8-2.04 1 0 1.82.93 1.8 2.04 0 1.13-.8 2.05-1.8 2.05Z"/></svg>
+        </span>
+        <span class="ent-discord__text">{c.discordLabel}</span>
+        <span class="ent-discord__cta">
+          {c.discordLinkText}
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true"><path d="M5 3h8v8M13 3 3.5 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </span>
+      </a>
+
       <div class="ent-logos">
         <span class="ent-logos__title">{c.logosTitle}</span>
         <div class="ent-logos__grid">
-          {LOGOS.map((name) => (
-            <span class="ent-logos__item">{name}</span>
+          {LOGOS.map((logo) => (
+            <span class="ent-logos__item">
+              <img
+                class="ent-logos__img"
+                src={logoSrc(logo.slug)}
+                alt={logo.name}
+                width="88"
+                height="26"
+                loading="lazy"
+                decoding="async"
+              />
+            </span>
           ))}
         </div>
       </div>
     </div>
 
     <div class="ent-card">
+      <div class="ent-incentive">
+        <span class="ent-incentive__badge" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M8 1.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.3 4.3 13.3l.7-4.3-3.1-3 4.3-.6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /></svg>
+        </span>
+        <div class="ent-incentive__text">
+          <span class="ent-incentive__title">{c.incentiveTitle}</span>
+          <span class="ent-incentive__body">{c.incentiveBody}</span>
+        </div>
+      </div>
       <h2 class="ent-form-heading">{c.formHeading}</h2>
       <form class="ent-form" id="ent-form" novalidate>
         <div class="ent-field">
@@ -282,20 +425,52 @@ const jsonLd = {
             <p class="ent-field-error" id="ent-company-error" role="alert" hidden>{c.requiredError}</p>
           </div>
           <div class="ent-field">
-            <label class="ent-label" for="ent-team-size">{c.teamSizeLabel} <span class="ent-req">*</span></label>
-            <div class="ent-select-wrap">
-              <select class="ent-input ent-select" id="ent-team-size" name="teamSize" required>
+            <span class="ent-label" id="ent-team-size-label">{c.teamSizeLabel} <span class="ent-req">*</span></span>
+            <div class="ent-cselect" data-cselect>
+              <select class="ent-cselect__native" id="ent-team-size" name="teamSize" required tabindex="-1" aria-hidden="true">
                 <option value="" disabled selected>{c.teamSizePlaceholder}</option>
                 {c.teamSizeOptions.map((opt) => (
                   <option value={opt.value}>{opt.label}</option>
                 ))}
               </select>
-              <span class="ent-select-chevron" aria-hidden="true">
-                <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
-              </span>
+              <button type="button" class="ent-cselect__trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="ent-team-size-label">
+                <span class="ent-cselect__value is-placeholder" data-placeholder>{c.teamSizePlaceholder}</span>
+                <span class="ent-select-chevron" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </span>
+              </button>
+              <ul class="ent-cselect__menu" role="listbox" aria-label={c.teamSizeLabel} hidden>
+                {c.teamSizeOptions.map((opt) => (
+                  <li class="ent-cselect__opt" role="option" data-value={opt.value} aria-selected="false" tabindex="-1">{opt.label}</li>
+                ))}
+              </ul>
             </div>
             <p class="ent-field-error" id="ent-team-size-error" role="alert" hidden>{c.requiredError}</p>
           </div>
+        </div>
+
+        <div class="ent-field">
+          <span class="ent-label" id="ent-budget-label">{c.budgetLabel} <span class="ent-req">*</span> <span class="ent-optional">({c.budgetHint})</span></span>
+          <div class="ent-cselect" data-cselect>
+            <select class="ent-cselect__native" id="ent-budget" name="budget" required tabindex="-1" aria-hidden="true">
+              <option value="" disabled selected>{c.budgetPlaceholder}</option>
+              {c.budgetOptions.map((opt) => (
+                <option value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <button type="button" class="ent-cselect__trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="ent-budget-label">
+              <span class="ent-cselect__value is-placeholder" data-placeholder>{c.budgetPlaceholder}</span>
+              <span class="ent-select-chevron" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </span>
+            </button>
+            <ul class="ent-cselect__menu" role="listbox" aria-label={c.budgetLabel} hidden>
+              {c.budgetOptions.map((opt) => (
+                <li class="ent-cselect__opt" role="option" data-value={opt.value} aria-selected="false" tabindex="-1">{opt.label}</li>
+              ))}
+            </ul>
+          </div>
+          <p class="ent-field-error" id="ent-budget-error" role="alert" hidden>{c.requiredError}</p>
         </div>
 
         <div class="ent-field">
@@ -321,6 +496,7 @@ const jsonLd = {
         <button class="btn btn-primary ent-submit" type="submit" data-default-label={c.submitLabel} data-submitting-label={c.submittingLabel}>
           {c.submitLabel}
         </button>
+
         <p class="ent-privacy">{c.privacyNote}</p>
         <p class="ent-error" id="ent-error" role="alert" hidden>{c.errorMessage}</p>
       </form>
@@ -331,6 +507,53 @@ const jsonLd = {
         </span>
         <h2 class="ent-success__title">{c.successTitle}</h2>
         <p class="ent-success__body">{c.successBody}</p>
+      </div>
+    </div>
+  </section>
+
+  {/* Use-case showcase — the homepage Labs stage lifted wholesale: a painting
+      canvas with a magnifying mode Dock that swaps the floating artifact card /
+      looping video in place. Full-bleed `.lab-stage` (its centering math reads
+      50% of the enclosing `.sub-main.container` content box, same as the
+      homepage `.labs > .container`), so it must stay an unconstrained block. */}
+  <section class="ent-demos" id="labs">
+    <div class="ent-demos__head">
+      <span class="ent-demos__title">{c.demosTitle}</span>
+      <p class="ent-demos__lead">{c.demosLead}</p>
+    </div>
+    <div class="lab-stage">
+      {/* Floating artifact card, layered over the painting; the dock swaps its
+          src and toggles `.is-visible` (see `enhanceLabSwitch`). */}
+      <img class="lab-artifact" data-lab-artifact alt="" decoding="async" />
+      {/* Video mode: the HyperFrames / 视频 tiles play this looping clip
+          instead of a still card. */}
+      <video
+        class="lab-artifact lab-artifact-video"
+        data-lab-video
+        muted
+        loop
+        playsinline
+        preload="metadata"
+        aria-hidden="true"
+      ></video>
+      {/* macOS-style magnifying Dock — proximity magnify + click/auto-cycle
+          preview swap, driven by the enhancers in the inline script. */}
+      <div class="lab-dock" data-lab-dock>
+        {DEMO_DOCK.map((item) => (
+          <a
+            class={item.wide ? 'lab-dock-item active' : 'lab-dock-item'}
+            href={item.href}
+            data-dock-item
+            data-preview-src={item.video ? undefined : item.preview}
+            data-preview-video={item.video}
+            data-preview-wide={item.wide ? '' : undefined}
+            data-preview-title={item.label}
+            aria-label={item.label}
+          >
+            <span class="lab-dock-icon" aria-hidden="true"></span>
+            <span class="lab-dock-label">{item.label}</span>
+          </a>
+        ))}
       </div>
     </div>
   </section>
@@ -346,6 +569,68 @@ const jsonLd = {
       const submittingLabel = submitBtn?.getAttribute('data-submitting-label') || defaultLabel;
       const useCaseError = document.getElementById('ent-use-case-error');
       const chips = Array.from(form.querySelectorAll('.ent-chip'));
+
+      // Custom selects — a fully styled dropdown so we don't render the OS-native
+      // popup. The real <select> stays in the DOM (hidden) as the form value and
+      // validation source of truth; the listbox below just drives it and fires a
+      // `change` so the existing per-field validation clears on pick.
+      form.querySelectorAll('[data-cselect]').forEach((root) => {
+        const native = root.querySelector('.ent-cselect__native');
+        const trigger = root.querySelector('.ent-cselect__trigger');
+        const valueEl = root.querySelector('.ent-cselect__value');
+        const menu = root.querySelector('.ent-cselect__menu');
+        const opts = Array.from(menu.querySelectorAll('.ent-cselect__opt'));
+        if (!native || !trigger || !valueEl || !menu) return;
+
+        const close = () => {
+          menu.hidden = true;
+          trigger.setAttribute('aria-expanded', 'false');
+        };
+        const open = () => {
+          menu.hidden = false;
+          trigger.setAttribute('aria-expanded', 'true');
+          const current = opts.find((o) => o.getAttribute('aria-selected') === 'true');
+          (current || opts[0])?.focus();
+        };
+        const pick = (opt) => {
+          native.value = opt.getAttribute('data-value');
+          valueEl.textContent = opt.textContent;
+          valueEl.classList.remove('is-placeholder');
+          opts.forEach((o) => o.setAttribute('aria-selected', o === opt ? 'true' : 'false'));
+          native.dispatchEvent(new Event('change', { bubbles: true }));
+          close();
+          trigger.focus();
+        };
+
+        trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
+        trigger.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open();
+          }
+        });
+        opts.forEach((opt, i) => {
+          opt.addEventListener('click', () => pick(opt));
+          opt.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              pick(opt);
+            } else if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              (opts[i + 1] || opts[0]).focus();
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              (opts[i - 1] || opts[opts.length - 1]).focus();
+            } else if (e.key === 'Escape' || e.key === 'Tab') {
+              close();
+              if (e.key === 'Escape') trigger.focus();
+            }
+          });
+        });
+        document.addEventListener('click', (e) => {
+          if (!root.contains(e.target)) close();
+        });
+      });
 
       // Inline validation — the form is `novalidate`, so we never trigger the
       // browser's native validation bubble; we show our own styled messages.
@@ -371,8 +656,10 @@ const jsonLd = {
         const input = fieldInput(id);
         if (input) input.addEventListener('input', () => setInvalid(id, false));
       });
-      const teamSizeSel = fieldInput('team-size');
-      if (teamSizeSel) teamSizeSel.addEventListener('change', () => setInvalid('team-size', false));
+      ['team-size', 'budget'].forEach((id) => {
+        const sel = fieldInput(id);
+        if (sel) sel.addEventListener('change', () => setInvalid(id, false));
+      });
 
       chips.forEach((chip) => {
         chip.addEventListener('click', () => {
@@ -388,7 +675,7 @@ const jsonLd = {
         if (useCaseError) useCaseError.hidden = true;
 
         let firstInvalid = null;
-        ['name', 'email', 'company', 'team-size'].forEach((id) => {
+        ['name', 'email', 'company', 'team-size', 'budget'].forEach((id) => {
           if (!validateField(id) && !firstInvalid) firstInvalid = fieldInput(id);
         });
 
@@ -401,7 +688,11 @@ const jsonLd = {
         }
 
         if (firstInvalid) {
-          if (typeof firstInvalid.focus === 'function') firstInvalid.focus();
+          // A custom-select's real <select> is hidden, so focus its trigger.
+          const focusTarget = firstInvalid.classList?.contains('ent-cselect__native')
+            ? firstInvalid.parentElement.querySelector('.ent-cselect__trigger')
+            : firstInvalid;
+          if (focusTarget && typeof focusTarget.focus === 'function') focusTarget.focus();
           return;
         }
 
@@ -412,6 +703,7 @@ const jsonLd = {
           email: String(data.get('email') || '').trim(),
           company: String(data.get('company') || '').trim(),
           teamSize: String(data.get('teamSize') || '').trim(),
+          budget: String(data.get('budget') || '').trim(),
           useCases,
           role: String(data.get('role') || '').trim(),
           message: String(data.get('message') || '').trim(),
@@ -444,6 +736,183 @@ const jsonLd = {
           }
         }
       });
+    })();
+
+    /* Labs showcase — ported wholesale from `app/pages/index.astro` so the
+       enterprise demo band behaves exactly like the homepage: a magnifying
+       mode Dock that swaps the floating artifact card / looping video in place,
+       auto-cycling while on screen and pausing on hover. Self-contained IIFE so
+       it runs independently of the lead form above. */
+    (() => {
+      const labPrefersWebm = (() => {
+        try {
+          const v = document.createElement('video');
+          return !!(v.canPlayType && v.canPlayType('video/webm; codecs="vp9"'));
+        } catch (e) {
+          return false;
+        }
+      })();
+      const labClipSrc = (src) =>
+        labPrefersWebm && /\.mp4$/i.test(src || '') ? src.replace(/\.mp4$/i, '.webm') : src;
+
+      // Proximity-magnify dock (macOS-style) + lazy prefetch of the video clips.
+      const enhanceLabDock = () => {
+        const dock = document.querySelector('[data-lab-dock]');
+        if (!dock) return;
+        (function prefetchLabVideos() {
+          const srcs = Array.from(dock.querySelectorAll('[data-preview-video]'))
+            .map((el) => el.getAttribute('data-preview-video'))
+            .filter(Boolean)
+            .map(labClipSrc);
+          if (srcs.length === 0) return;
+          let done = false;
+          const run = () => {
+            if (done) return;
+            done = true;
+            srcs.forEach((src) => { try { fetch(src).catch(() => {}); } catch (e) {} });
+          };
+          if ('IntersectionObserver' in window) {
+            const io = new IntersectionObserver((entries) => {
+              if (entries.some((entry) => entry.isIntersecting)) {
+                io.disconnect();
+                run();
+              }
+            }, { rootMargin: '0px 0px 100% 0px' });
+            io.observe(dock);
+          } else if ('requestIdleCallback' in window) {
+            requestIdleCallback(run, { timeout: 4000 });
+          } else {
+            setTimeout(run, 2500);
+          }
+        })();
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const items = Array.from(dock.querySelectorAll('[data-dock-item]'));
+        if (items.length === 0) return;
+        const MAX = 1.08;
+        const DIST = 104;
+        let ticking = false;
+        const apply = (cursorX) => {
+          const dockLeft = dock.getBoundingClientRect().left;
+          const x = cursorX - dockLeft;
+          for (const it of items) {
+            const center = it.offsetLeft + it.offsetWidth / 2;
+            const t = Math.max(0, 1 - Math.abs(x - center) / DIST);
+            const lift = it.classList.contains('active') ? 'translateY(-20px) ' : '';
+            it.style.transform = `${lift}scale(${(1 + (MAX - 1) * t).toFixed(3)})`;
+          }
+        };
+        dock.addEventListener('mousemove', (event) => {
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(() => {
+            apply(event.clientX);
+            ticking = false;
+          });
+        }, { passive: true });
+        dock.addEventListener('mouseleave', () => {
+          for (const it of items) it.style.transform = '';
+        });
+      };
+
+      // The painting is the background; each dock tile floats its artifact
+      // (`data-preview-src`) or plays its clip (`data-preview-video`) centered
+      // over it. Auto-cycles 1→6 (10s each) while the stage is on screen.
+      const enhanceLabSwitch = () => {
+        const stage = document.querySelector('.lab-stage');
+        const dock = document.querySelector('[data-lab-dock]');
+        const artifact = document.querySelector('[data-lab-artifact]');
+        const video = document.querySelector('[data-lab-video]');
+        if (!stage || !dock || !artifact) return;
+        const items = Array.from(dock.querySelectorAll('[data-dock-item]'));
+        if (items.length === 0) return;
+        const isBare = (src) => !src || src.indexOf('lab-stage-art') !== -1;
+
+        for (const it of items) {
+          const src = it.getAttribute('data-preview-src');
+          if (!isBare(src)) {
+            const pre = new Image();
+            pre.src = src;
+          }
+        }
+
+        const show = (it) => {
+          const src = it.getAttribute('data-preview-src');
+          const vsrc = it.getAttribute('data-preview-video');
+          items.forEach((x) => x.classList.toggle('active', x === it));
+          if (vsrc && video) {
+            artifact.classList.remove('is-visible');
+            const clip = labClipSrc(vsrc);
+            if (video.getAttribute('src') !== clip) video.setAttribute('src', clip);
+            video.classList.add('is-visible');
+            try {
+              video.currentTime = 0;
+              const pr = video.play();
+              if (pr && pr.catch) pr.catch(() => {});
+            } catch (_) {}
+            return;
+          }
+          if (video) {
+            video.classList.remove('is-visible');
+            try { video.pause(); } catch (_) {}
+          }
+          if (isBare(src)) {
+            artifact.classList.remove('is-visible');
+            return;
+          }
+          artifact.classList.toggle('is-wide', it.hasAttribute('data-preview-wide'));
+          artifact.setAttribute('src', src);
+          artifact.classList.add('is-visible');
+        };
+
+        const INTERVAL = 10000;
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        let idx = 0;
+        let timer = null;
+        const stop = () => {
+          if (timer) {
+            clearInterval(timer);
+            timer = null;
+          }
+        };
+        const start = () => {
+          if (reduceMotion) return;
+          stop();
+          timer = setInterval(() => {
+            idx = (idx + 1) % items.length;
+            show(items[idx]);
+          }, INTERVAL);
+        };
+
+        for (const it of items) {
+          it.addEventListener('click', (event) => {
+            event.preventDefault();
+            idx = items.indexOf(it);
+            show(it);
+            start();
+          });
+        }
+
+        show(items[0]);
+        if (!reduceMotion) {
+          stage.addEventListener('mouseenter', stop);
+          stage.addEventListener('mouseleave', start);
+          const io = new IntersectionObserver((entries) => {
+            for (const e of entries) {
+              if (e.isIntersecting) {
+                idx = 0;
+                show(items[0]);
+                start();
+              } else {
+                stop();
+              }
+            }
+          }, { threshold: 0.3 });
+          io.observe(stage);
+        }
+      };
+
+      enhanceLabDock();
+      enhanceLabSwitch();
     })();
   </script>
 
@@ -516,24 +985,60 @@ const jsonLd = {
     .ent-logos__grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 22px 14px;
+      gap: 26px 16px;
     }
     .ent-logos__item {
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 26px;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      color: var(--ink-faint, #8c8c8c);
-      opacity: 0.9;
-      transition: color 0.16s ease, opacity 0.16s ease;
-      white-space: nowrap;
+      height: 34px;
     }
-    .ent-logos__item:hover {
-      color: var(--ink, #262626);
+    .ent-logos__img {
+      max-height: 30px;
+      max-width: 100%;
+      width: auto;
+      object-fit: contain;
+      opacity: 0.75;
+      transition: opacity 0.16s ease, filter 0.16s ease;
+    }
+    .ent-logos__item:hover .ent-logos__img {
       opacity: 1;
+      filter: brightness(0.7);
+    }
+
+    /* ---------- use-case demos (homepage Labs stage, full-bleed below the
+       form). `.ent-demos` stays an unconstrained block so the `.lab-stage`
+       full-bleed centering math reads the `.sub-main.container` content box
+       (same reference the homepage `.labs > .container` gives it). Only the
+       heading is constrained + centered. */
+    .ent-demos {
+      margin: 72px 0 24px;
+      padding-top: 48px;
+      border-top: 1px solid var(--line-soft, #f0f0f0);
+    }
+    .ent-demos__head {
+      text-align: center;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    .ent-demos__title {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-faint, #8c8c8c);
+    }
+    .ent-demos__lead {
+      margin: 12px 0 0;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--ink-soft, #434343);
+    }
+    /* Pull the stage's own 40px top margin down a touch so it sits closer to
+       the heading than it does on the homepage (no labs-head there). */
+    .ent-demos .lab-stage {
+      margin-top: 24px;
     }
 
     /* ---------- form card ---------- */
@@ -550,6 +1055,96 @@ const jsonLd = {
       font-weight: 700;
       letter-spacing: -0.01em;
       color: var(--ink, #262626);
+    }
+
+    /* ---------- early-access incentive ---------- */
+    .ent-incentive {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 22px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid color-mix(in oklab, var(--line), var(--olive) 32%);
+      background: color-mix(in oklab, var(--bone), var(--coral) 12%);
+    }
+    .ent-incentive__badge {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      margin-top: 1px;
+      border-radius: 999px;
+      background: color-mix(in oklab, var(--bone), var(--coral) 26%);
+      color: var(--olive, #218c00);
+    }
+    .ent-incentive__text {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .ent-incentive__title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ink, #262626);
+    }
+    .ent-incentive__body {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink-soft, #434343);
+    }
+
+    /* ---------- Discord opt-in ---------- */
+    /* Left-column Discord invite — a friendly nudge card (not a form field),
+       sits between the perks list and the logo wall. The whole card links to
+       the server. */
+    .ent-discord {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 24px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--line, #d9d9d9);
+      background: var(--bone, #fff);
+      text-decoration: none;
+      transition: border-color 0.16s ease, background 0.16s ease,
+        transform 0.16s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.16s ease;
+    }
+    .ent-discord:hover {
+      border-color: color-mix(in oklab, var(--line), #5865f2 55%);
+      background: color-mix(in oklab, var(--bone), #5865f2 6%);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px -14px rgba(88, 101, 242, 0.55);
+    }
+    .ent-discord__icon {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: #5865f2;
+      color: #fff;
+    }
+    .ent-discord__text {
+      flex: 1 1 auto;
+      font-size: 13.5px;
+      line-height: 1.5;
+      color: var(--ink-soft, #434343);
+    }
+    .ent-discord__cta {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      color: #5865f2;
     }
     .ent-form {
       flex-direction: column;
@@ -653,24 +1248,115 @@ const jsonLd = {
       min-height: 96px;
       line-height: 1.5;
     }
-    .ent-select-wrap {
+    /* ---------- custom select (no native popup) ---------- */
+    .ent-cselect {
       position: relative;
     }
-    .ent-select {
-      padding-right: 38px;
-      cursor: pointer;
+    /* The real <select> stays in the DOM as form value + validation source, but
+       is fully hidden so the OS-native dropdown never appears. */
+    .ent-cselect__native {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
     }
-    .ent-select:invalid {
+    .ent-cselect__trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-family: var(--body);
+      font-size: 15px;
+      color: var(--ink, #262626);
+      text-align: left;
+      background: var(--paper, #fafafa);
+      border: 1px solid var(--line, #d9d9d9);
+      border-radius: 10px;
+      padding: 11px 14px;
+      cursor: pointer;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+    }
+    .ent-cselect__trigger:hover {
+      border-color: var(--line-hover, #bfbfbf);
+    }
+    .ent-cselect__trigger:focus-visible,
+    .ent-cselect__trigger[aria-expanded='true'] {
+      outline: none;
+      background: var(--bone, #fff);
+      border-color: var(--olive, #218c00);
+      box-shadow: 0 0 0 3px color-mix(in oklab, var(--bone), var(--coral) 26%);
+    }
+    .ent-cselect__native.is-invalid ~ .ent-cselect__trigger {
+      border-color: #c0392b;
+      background: var(--bone, #fff);
+    }
+    .ent-cselect__native.is-invalid ~ .ent-cselect__trigger:focus-visible,
+    .ent-cselect__native.is-invalid ~ .ent-cselect__trigger[aria-expanded='true'] {
+      border-color: #c0392b;
+      box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.14);
+    }
+    .ent-cselect__value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ent-cselect__value.is-placeholder {
       color: var(--ink-faint, #8c8c8c);
     }
-    .ent-select-chevron {
-      position: absolute;
-      top: 50%;
-      right: 14px;
-      transform: translateY(-50%);
+    .ent-cselect .ent-select-chevron {
+      flex: 0 0 auto;
+      display: inline-flex;
       pointer-events: none;
       color: var(--ink-mute, #595959);
-      display: inline-flex;
+      transition: transform 0.18s cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .ent-cselect__trigger[aria-expanded='true'] .ent-select-chevron {
+      transform: rotate(180deg);
+    }
+    .ent-cselect__menu {
+      position: absolute;
+      z-index: 30;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+      background: var(--bone, #fff);
+      border: 1px solid var(--line, #d9d9d9);
+      border-radius: 12px;
+      box-shadow: 0 20px 40px -20px rgba(38, 38, 38, 0.28);
+      max-height: 264px;
+      overflow-y: auto;
+    }
+    .ent-cselect__menu[hidden] {
+      display: none;
+    }
+    .ent-cselect__opt {
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.4;
+      color: var(--ink-soft, #434343);
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .ent-cselect__opt:hover,
+    .ent-cselect__opt:focus-visible {
+      outline: none;
+      background: var(--paper, #fafafa);
+      color: var(--ink, #262626);
+    }
+    .ent-cselect__opt[aria-selected='true'] {
+      color: var(--olive, #218c00);
+      font-weight: 600;
+      background: color-mix(in oklab, var(--bone), var(--coral) 14%);
     }
     .ent-submit {
       margin-top: 4px;
@@ -742,14 +1428,18 @@ const jsonLd = {
       .ent-lead {
         font-size: 16px;
       }
+      .ent-demos {
+        margin-top: 56px;
+        padding-top: 40px;
+      }
     }
     @media (max-width: 480px) {
       .ent-row {
         grid-template-columns: 1fr;
       }
       .ent-logos__grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px 12px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 22px 12px;
       }
       .ent-card {
         padding: 24px;
