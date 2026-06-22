@@ -383,9 +383,16 @@ async function capturePage(
           mode: "page",
         };
       }
-      // Otherwise fall through to scroll-segment (too tall, or blank below fold).
-      const cappedLogicalH = Math.min(docH, Math.floor(ramMaxOutH / dpr));
-      return await scrollSegmentStitch(window, cappedLogicalH, jpeg, outputDir);
+      // Otherwise stitch by scrolling (too tall for one texture, or blank below
+      // the fold). Refuse rather than silently truncate a page taller than the
+      // single-image RAM budget — point the user at PDF, which paginates.
+      if (outHpx > ramMaxOutH) {
+        return {
+          ok: false,
+          error: `page is too tall to export as one image (~${docH}px) — export as PDF instead`,
+        };
+      }
+      return await scrollSegmentStitch(window, docH, jpeg, outputDir);
     }
   } catch {
     // CDP path failed — fall through to scroll-segment.
@@ -404,10 +411,14 @@ async function capturePage(
     "Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0))",
     true,
   )) as number;
-  const totalLogical = Math.max(
-    PAGE_VIEW_H,
-    Math.min(Number.isFinite(measured) ? measured : PAGE_VIEW_H, Math.floor(ramMaxOutH / dpr)),
-  );
+  const totalLogical = Math.max(PAGE_VIEW_H, Number.isFinite(measured) ? measured : PAGE_VIEW_H);
+  // Same budget guard as the debugger path: refuse rather than truncate.
+  if (totalLogical * dpr > ramMaxOutH) {
+    return {
+      ok: false,
+      error: `page is too tall to export as one image (~${totalLogical}px) — export as PDF instead`,
+    };
+  }
   return await scrollSegmentStitch(window, totalLogical, jpeg, outputDir);
 }
 

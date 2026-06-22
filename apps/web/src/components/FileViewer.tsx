@@ -7688,8 +7688,14 @@ function HtmlViewer({
     // ordinary page becomes its full-page capture. Stitching the whole deck into
     // one long image is reserved for an explicit action.
     if (isOpenDesignHostAvailable() && projectId && file.name) {
-      const deckIndex =
-        effectiveDeck && typeof slideState?.active === 'number' ? slideState.active : undefined;
+      // For a deck, ALWAYS send a concrete slide index so /export/image captures
+      // the current slide — never fall through to the stitch-whole-deck branch
+      // just because od:slide-state hasn't arrived yet (fresh open, or a deck
+      // detected only from `.slide` markup that never emits slide-state). Default
+      // to the first slide.
+      const deckIndex = effectiveDeck
+        ? slideState?.active ?? htmlPreviewSlideState.get(previewStateKey)?.active ?? 0
+        : undefined;
       const rendered = await exportProjectImageDataUrl({
         projectId,
         fileName: file.name,
@@ -7749,6 +7755,7 @@ function HtmlViewer({
     useUrlLoadPreview,
     effectiveDeck,
     slideState?.active,
+    previewStateKey,
     projectId,
     file.name,
   ]);
