@@ -1,22 +1,23 @@
 name: cut-release
-# 每周二 09:00(北京)从 main HEAD 切下一个 minor 的 release 分支:
-#   1. 算版本(最高 release/vX.Y.Z → bump minor → X.(Y+1).0;0.11.0 → 0.12.0)
-#   2. 切 release/vX.Y.Z + bump apps/packaged/package.json + push
-#   3. 建 backport release/vX.Y.Z label
-# push 用 App token(非 GITHUB_TOKEN),会自动触发 notify-release-feishu → 打 nightly 包 + 发飞书群。
+# Every Tuesday 09:00 Asia/Shanghai, cut the next minor release branch from main HEAD:
+#   1. Compute version (highest release/vX.Y.Z -> bump minor -> X.(Y+1).0; e.g. 0.11.0 -> 0.12.0)
+#   2. Create release/vX.Y.Z, bump apps/packaged/package.json, push
+#   3. Create the "backport release/vX.Y.Z" label
+# The push uses the App token (not GITHUB_TOKEN), so it triggers notify-release-feishu
+# -> builds a nightly package and posts the Feishu card.
 
 on:
   schedule:
-    - cron: '0 1 * * 2'        # 01:00 UTC = 北京周二 09:00
+    - cron: '0 1 * * 2'        # 01:00 UTC = 09:00 Asia/Shanghai, Tuesday
   workflow_dispatch:
     inputs:
       version:
-        description: '完整版本号 x.y.z(留空 = 最高 release 版本 bump minor)'
+        description: 'Full version x.y.z (empty = bump minor of the highest release branch)'
         required: false
         default: ''
 
 permissions:
-  contents: read               # 实际写操作走下面的 App token
+  contents: read               # actual writes go through the App token below
 
 jobs:
   cut:
@@ -38,7 +39,7 @@ jobs:
         with:
           node-version: 24
 
-      - name: 计算下一个版本号
+      - name: Compute next version
         id: ver
         run: |
           set -euo pipefail
@@ -53,16 +54,16 @@ jobs:
           fi
           echo "version=$V"          >> "$GITHUB_OUTPUT"
           echo "branch=release/v$V"  >> "$GITHUB_OUTPUT"
-          echo "切出版本 v$V (分支 release/v$V)"
+          echo "Cutting v$V (branch release/v$V)"
 
-      - name: 防重复(分支已存在则退出)
+      - name: Bail out if the branch already exists
         run: |
           if git ls-remote --exit-code --heads origin "${{ steps.ver.outputs.branch }}" >/dev/null 2>&1; then
-            echo "::error::${{ steps.ver.outputs.branch }} 已存在,跳过"
+            echo "::error::${{ steps.ver.outputs.branch }} already exists, skipping"
             exit 1
           fi
 
-      - name: 切分支 + bump 版本 + push
+      - name: Create branch + bump version + push
         run: |
           set -euo pipefail
           git config user.name  'open-design-release-bot[bot]'
@@ -70,14 +71,14 @@ jobs:
           git switch -c "${{ steps.ver.outputs.branch }}"
           ( cd apps/packaged && npm pkg set version="${{ steps.ver.outputs.version }}" )
           git commit -am "chore(release): v${{ steps.ver.outputs.version }}"
-          git push origin "${{ steps.ver.outputs.branch }}"   # App token push → 触发 notify-release-feishu(nightly + 飞书)
+          git push origin "${{ steps.ver.outputs.branch }}"   # App token push -> triggers notify-release-feishu (nightly + Feishu)
 
-      - name: 建 backport label
+      - name: Create backport label
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           gh label create "backport release/v${{ steps.ver.outputs.version }}" \
             --repo nexu-io/open-design \
             --color 0E8A16 \
-            --description "回灌本修复到 release/v${{ steps.ver.outputs.version }}" \
+            --description "Backport this fix to release/v${{ steps.ver.outputs.version }}" \
             --force
