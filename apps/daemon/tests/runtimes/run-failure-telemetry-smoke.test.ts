@@ -189,14 +189,13 @@ describe('run failure telemetry smoke', () => {
     }
   });
 
-  it('reclassifies AMR/vela upstream failures end-to-end through a real daemon run (#3408 P1)', async () => {
-    // End-to-end proof for the AMR/vela reclassification: a real agent process
-    // emits the production error text, the daemon records it into the run's
-    // events.jsonl, and classifyRunFailure (on the REAL recorded events, not a
-    // hand-built input) must land it in the correct product-view category
-    // instead of the opaque execution_failed bucket. Generous inactivity
-    // timeout so the 100ms exit always wins the race (this test is not about
-    // timeouts).
+  it('reclassifies upstream + install/env failures end-to-end through a real daemon run (#3408 P1)', async () => {
+    // End-to-end proof for the reclassification: a real agent process emits the
+    // production error text (or fails to spawn), the daemon records it into the
+    // run's events.jsonl, and classifyRunFailure (on the REAL recorded events,
+    // not a hand-built input) must land it in the correct category instead of
+    // the opaque execution_failed bucket. Generous inactivity timeout so the
+    // 100ms exit always wins the race (this test is not about timeouts).
     binDir = await mkdtemp(path.join(os.tmpdir(), 'od-amr-reclassify-bin-'));
     await writeFakeClaude(
       binDir,
@@ -205,6 +204,17 @@ describe('run failure telemetry smoke', () => {
     );
     await writeFakeClaude(binDir, 'amr-ratelimit', '429 您的账户已达到速率限制，请您控制请求频率');
     await writeFakeClaude(binDir, 'amr-model', 'API Error: 400 model deepseek-v4-pro-202606 not in allowed list');
+    await writeFakeClaude(
+      binDir,
+      'env-node-path',
+      "'node' is not recognized as an internal or external command, operable program or batch file.",
+    );
+    // The agent itself reports a missing vendored sub-binary (real codex shape).
+    await writeFakeClaude(
+      binDir,
+      'env-spawn-enoent',
+      'Error: spawn /opt/homebrew/lib/node_modules/@openai/codex/codex ENOENT',
+    );
 
     process.env.OD_CHAT_RUN_INACTIVITY_TIMEOUT_MS = '5000';
     delete process.env.POSTHOG_KEY;
@@ -218,6 +228,8 @@ describe('run failure telemetry smoke', () => {
       { bin: 'amr-balance', category: 'insufficient_balance', detail: 'amr_insufficient_balance' },
       { bin: 'amr-ratelimit', category: 'rate_limit', detail: 'rate_limit_429' },
       { bin: 'amr-model', category: 'model_unavailable', detail: 'model_not_found' },
+      { bin: 'env-node-path', category: 'process_exit', detail: 'cli_not_installed' },
+      { bin: 'env-spawn-enoent', category: 'process_exit', detail: 'cli_not_installed' },
     ] as const;
 
     for (const item of cases) {

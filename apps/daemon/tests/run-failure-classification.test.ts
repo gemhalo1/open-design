@@ -964,3 +964,26 @@ describe('classifyRunFailure — AMR/vela reclassification out of execution_fail
     expect(result?.user_action).toBe('switch_model');
   });
 });
+
+// The agent binary being absent at its resolved path also leaks into the opaque
+// execution_failed bucket (#3408 P1). Real production texts sampled from
+// Langfuse. These are an install/PATH problem, not an opaque engine failure.
+describe('classifyRunFailure — binary-not-found reclassification out of execution_failed', () => {
+  it('classifies a Windows "is not recognized as an internal or external command" as cli_not_installed', () => {
+    const result = classify(
+      'AGENT_EXECUTION_FAILED',
+      "'node' is not recognized as an internal or external command, operable program or batch file.",
+    );
+    expect(result?.failure_category).toBe('process_exit');
+    expect(result?.failure_detail).toBe('cli_not_installed');
+  });
+
+  it('classifies a "spawn <path> ENOENT" (missing executable) as cli_not_installed', () => {
+    const result = classify(
+      'AGENT_EXECUTION_FAILED',
+      'Error: spawn /opt/homebrew/lib/node_modules/@openai/codex/codex ENOENT',
+    );
+    expect(result?.failure_category).toBe('process_exit');
+    expect(result?.failure_detail).toBe('cli_not_installed');
+  });
+});

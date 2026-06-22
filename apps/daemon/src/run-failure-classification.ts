@@ -164,7 +164,12 @@ function isAgentConfigInvalidText(text: string): boolean {
 }
 
 function isCliNotInstalledText(text: string): boolean {
-  return /\bnot installed|not on PATH|cannot find the path specified|system cannot find the path specified\b/i
+  // Also covers the agent binary being absent at its resolved path:
+  //   - Windows shell "'node' is not recognized as an internal or external command"
+  //   - Node "Error: spawn <path> ENOENT" (the executable file does not exist —
+  //     distinct from spawn EPERM/EBADF/ENOEXEC where the file exists but can't run)
+  // Both currently leak into the opaque execution_failed bucket (#3408 P1).
+  return /\bnot installed|not on PATH|cannot find the path specified|system cannot find the path specified|is not recognized as an internal or external command|\bspawn\b[^\n]*\bENOENT\b/i
     .test(text);
 }
 
