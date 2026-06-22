@@ -124,4 +124,4 @@ jobs:
           STREAM_LABEL: "release 分支推送"
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: pnpm exec tools-release notify feishu
+        run: node --experimental-strip-types tools/release/src/notifications/feishu.ts
