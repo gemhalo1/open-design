@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daemonAgentPayloadToPersistedAgentEvent } from '../src/server.js';
+import { daemonAgentPayloadToPersistedAgentEvent } from '../src/runtimes/chat-run-messages.js';
 
 // Regression for PR #3375 review: the `tool_loop` event was handled by the live
 // web translator but dropped by the daemon's persisted-event path, so the
