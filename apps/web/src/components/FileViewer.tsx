@@ -4998,13 +4998,7 @@ function HtmlViewer({
   const [deployActionToast, setDeployActionToast] = useState<string | null>(null);
   const [imageExportModalOpen, setImageExportModalOpen] = useState(false);
   const [imageExportFormat, setImageExportFormat] = useState<ImageExportFormat>('png');
-  const [imageExportBusy, setImageExportBusy] = useState(false);
-  // True only while the snapshot is being captured on Save; used to hide the
-  // modal during the web-only host-compositor capture so the overlay can't leak
-  // into the image (the desktop off-screen renderer never sees the modal).
-  const [imageExportCapturing, setImageExportCapturing] = useState(false);
   const [imageExportError, setImageExportError] = useState<string | null>(null);
-  const [imageExportSavedToast, setImageExportSavedToast] = useState<{ message: string; details: string } | null>(null);
   const imageExportSnapshotDataUrlRef = useRef<string | null>(null);
   // Threads the share-popover click → artifact_export_result(image) pair, the
   // same correlation other export formats get via fireShareExport. The image
@@ -7583,8 +7577,13 @@ function HtmlViewer({
   // that drive the slide pager) as PPTX-eligible — not just the narrower
   // artifact-kind/renderer signal — so the option matches when the pager shows.
   const isDeckForExport = isDeckArtifact || effectiveDeck;
-  const canPptx = canShare && isDeckForExport && Boolean(onExportAsPptx) && !streaming;
-  const showPptxExport = canShare && isDeckForExport;
+  // PPTX export is a desktop-runtime capability (it drives the bundled Electron
+  // Chromium via the daemon's screenshot renderer) with no web-only fallback, so
+  // only offer it when a host runtime is present — otherwise the action would
+  // hit a guaranteed 501. (Image/PDF degrade gracefully on web and stay shown.)
+  const canPptx =
+    canShare && isDeckForExport && Boolean(onExportAsPptx) && !streaming && isOpenDesignHostAvailable();
+  const showPptxExport = canShare && isDeckForExport && isOpenDesignHostAvailable();
   const showMarkdownExport = source !== null && isMarkdownArtifact;
   const showImageExport = canShare;
 
@@ -7837,28 +7836,23 @@ function HtmlViewer({
   };
 
   async function handleImageExportSave() {
-    setImageExportBusy(true);
+    // Unify with the PPTX/PDF flow: close the modal and surface progress through
+    // the same portaled, viewport-centered export toast instead of an in-modal
+    // spinner + a separate (non-portaled, off-center) saved toast.
     setImageExportError(null);
+    setImageExportModalOpen(false);
+    setExportToast({ message: t('fileViewer.exportStarted'), tone: 'loading' });
+    // Let the modal unmount before capturing so the web-only host-compositor
+    // snapshot can't catch the overlay (the desktop off-screen renderer ignores
+    // it either way).
+    await waitForAnimationFrame();
+    await waitForAnimationFrame();
     try {
-      // Render now (on Save, after the format is chosen). The desktop off-screen
-      // renderer can't see the modal; for the web-only host-compositor fallback
-      // we hide the modal during the capture so the overlay doesn't leak in.
       let dataUrl = imageExportSnapshotDataUrlRef.current;
       if (!dataUrl) {
-        const hideForCapture = !isOpenDesignHostAvailable();
-        if (hideForCapture) {
-          setImageExportCapturing(true);
-          await waitForAnimationFrame();
-          await waitForAnimationFrame();
-        }
-        let snap;
-        try {
-          snap = await captureExportImageSnapshot();
-        } finally {
-          if (hideForCapture) setImageExportCapturing(false);
-        }
+        const snap = await captureExportImageSnapshot();
         if (!snap) {
-          setImageExportError(t('fileViewer.exportImageFailed'));
+          setExportToast({ message: t('fileViewer.exportImageFailed'), tone: 'error' });
           fireImageExportResult('failed', 'CAPTURE_FAILED');
           return;
         }
@@ -7867,14 +7861,15 @@ function HtmlViewer({
       }
       const blob = await imageDataUrlToBlob(dataUrl, imageExportFormat);
       if (blob.size <= 0) {
-        setImageExportError(t('fileViewer.exportImageFailed'));
+        setExportToast({ message: t('fileViewer.exportImageFailed'), tone: 'error' });
         fireImageExportResult('failed', 'EMPTY_IMAGE');
         return;
       }
       const target = await prepareImageExportTarget(exportTitle, imageExportFormat, { useNativePicker: false });
       if (!target) {
-        // Not a terminal state: the modal stays open so the user can retry or
-        // Cancel. The cancelled result is emitted by the Cancel button.
+        // User dismissed the save picker — clear the loading toast.
+        setExportToast(null);
+        fireImageExportResult('cancelled');
         return;
       }
       if (target.method === 'download' && imageExportFormat === 'png' && dataUrl) {
@@ -7882,22 +7877,18 @@ function HtmlViewer({
       } else {
         await target.save(blob);
       }
-      setImageExportModalOpen(false);
       fireImageExportResult('success');
-      setImageExportSavedToast({
-        message: target.method === 'picker'
-          ? t('fileViewer.exportImageSaved')
-          : t('fileViewer.exportImageDownloadStarted'),
-        details: target.method === 'picker'
-          ? target.filename
-          : t('fileViewer.exportImageDownloadDetails', { filename: target.filename }),
+      setExportToast({
+        message:
+          target.method === 'picker'
+            ? t('fileViewer.exportImageSaved')
+            : t('fileViewer.exportImageDownloadStarted'),
+        tone: 'success',
       });
     } catch (err) {
       console.warn('[exportAsImage] failed to save snapshot:', err);
-      setImageExportError(t('fileViewer.exportImageFailed'));
+      setExportToast({ message: t('fileViewer.exportImageFailed'), tone: 'error' });
       fireImageExportResult('failed', err instanceof Error ? err.name : 'UNKNOWN');
-    } finally {
-      setImageExportBusy(false);
     }
   }
   const creationSortedSideComments = useMemo(
@@ -9371,7 +9362,6 @@ function HtmlViewer({
         <div
           className="modal-backdrop viewer-modal-backdrop image-export-backdrop"
           role="presentation"
-          style={imageExportCapturing ? { visibility: 'hidden' } : undefined}
         >
           <div
             className="modal deploy-modal image-export-modal"
@@ -9385,7 +9375,7 @@ function HtmlViewer({
               <p className="subtitle">{t('fileViewer.exportImageModalSubtitle')}</p>
             </div>
             <div className="deploy-form image-export-form">
-              <fieldset className="image-export-format-field" disabled={imageExportBusy}>
+              <fieldset className="image-export-format-field">
                 <legend>{t('fileViewer.exportImageFormatLabel')}</legend>
                 <div className="image-export-format-options">
                   {IMAGE_EXPORT_FORMAT_OPTIONS.map((option) => (
@@ -9417,7 +9407,6 @@ function HtmlViewer({
               <button
                 type="button"
                 className="ghost-link button-like"
-                disabled={imageExportBusy}
                 onClick={() => {
                   // User dismissed the image export modal without saving —
                   // close the ui_click(image)→result funnel as cancelled.
@@ -9431,12 +9420,11 @@ function HtmlViewer({
               <button
                 type="button"
                 className="viewer-action primary"
-                disabled={imageExportBusy}
                 onClick={() => {
                   void handleImageExportSave();
                 }}
               >
-                {imageExportBusy ? t('fileViewer.exportImageSaving') : t('common.save')}
+                {t('common.save')}
               </button>
             </div>
           </div>
@@ -9852,16 +9840,6 @@ function HtmlViewer({
           onDismiss={() => setDeployActionToast(null)}
         />,
         document.body,
-      ) : null}
-      {imageExportSavedToast ? (
-        <Toast
-          message={imageExportSavedToast.message}
-          details={imageExportSavedToast.details}
-          tone="success"
-          placement="top"
-          ttlMs={3600}
-          onDismiss={() => setImageExportSavedToast(null)}
-        />
       ) : null}
       {shareGuideToast && typeof document !== 'undefined' ? createPortal(
         <Toast
