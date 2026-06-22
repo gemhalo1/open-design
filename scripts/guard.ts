@@ -135,6 +135,10 @@ const residualAllowedPathPrefixes = [
   "design-templates/last30days/scripts/lib/vendor/",
   // Vendored upstream html-ppt runtime assets (lewislulu/html-ppt-skill, design template).
   "design-templates/html-ppt/assets/",
+  // Vendored upstream dom-to-pptx browser UMD bundle (MIT) — injected into the
+  // Electron render window for editable PPTX export. See its README for why the
+  // browser bundle is vendored instead of npm-installed (avoids puppeteer).
+  "apps/desktop/vendor/",
   // Replay-based mock CLIs that impersonate the agent CLIs OD spawns
   // (opencode/claude/codex/gemini/cursor-agent + ACP family). Need to
   // be directly executable via Node so `child_process.spawn` from test
