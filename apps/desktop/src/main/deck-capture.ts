@@ -246,8 +246,9 @@ async function showDeckSlide(window: BrowserWindow, i: number, stage: Stage): Pr
 
 // Captures every deck slide and stacks them top-to-bottom into one tall image
 // (deck image export). Stitches BGRA with a native memcpy per slide and encodes
-// once natively, like the scroll-segment path. Caps total height so a very long
-// deck can't exceed the bitmap limit / RAM.
+// once natively, like the scroll-segment path. Bounds the output height: a deck
+// taller than this is uniformly downscaled so EVERY slide is preserved — never
+// silently truncated.
 const DECK_STITCH_MAX_H = 30000;
 async function stitchDeckSlides(
   window: BrowserWindow,
@@ -256,28 +257,30 @@ async function stitchDeckSlides(
   jpeg: boolean,
   outputDir: string | undefined,
 ): Promise<DesktopRenderSlidesResult> {
-  let W = 0;
-  let slideHpx = 0;
-  let bgra: Buffer | null = null;
-  let maxSlides = count;
-  let placed = 0;
-  for (let i = 0; i < count; i++) {
+  // Capture slide 0 first to learn the native per-slide pixel size, then pick a
+  // single uniform downscale so all `count` slides fit under DECK_STITCH_MAX_H.
+  // Scaling (instead of dropping trailing slides) keeps the "whole deck as one
+  // picture" contract intact — long decks just get a smaller per-slide size.
+  await showDeckSlide(window, 0, stage);
+  const first = await window.webContents.capturePage({ x: 0, y: 0, width: stage.w, height: stage.h });
+  const nativeSize = first.getSize();
+  const scale = Math.min(1, DECK_STITCH_MAX_H / Math.max(1, nativeSize.height * count));
+  const W = Math.max(1, Math.round(nativeSize.width * scale));
+  const slideHpx = Math.max(1, Math.round(nativeSize.height * scale));
+  const bgra = Buffer.alloc(W * slideHpx * count * 4);
+  const place = (image: Electron.NativeImage, index: number): void => {
+    const scaled = scale < 1 ? image.resize({ width: W, height: slideHpx }) : image;
+    const bmp = scaled.toBitmap(); // BGRA, full-width rows
+    bmp.copy(bgra, index * slideHpx * W * 4, 0, Math.min(bmp.length, slideHpx * W * 4));
+  };
+  place(first, 0);
+  for (let i = 1; i < count; i++) {
     await showDeckSlide(window, i, stage);
     const image = await window.webContents.capturePage({ x: 0, y: 0, width: stage.w, height: stage.h });
-    const bmp = image.toBitmap(); // BGRA, full-width rows
-    const size = image.getSize();
-    if (!bgra) {
-      W = size.width;
-      slideHpx = size.height;
-      maxSlides = Math.max(1, Math.min(count, Math.floor(DECK_STITCH_MAX_H / slideHpx)));
-      bgra = Buffer.alloc(W * slideHpx * maxSlides * 4);
-    }
-    if (placed >= maxSlides) break;
-    bmp.copy(bgra, placed * slideHpx * W * 4, 0, Math.min(bmp.length, slideHpx * W * 4));
-    placed++;
+    place(image, i);
   }
-  const H = slideHpx * placed;
-  const img = nativeImage.createFromBitmap(bgra ?? Buffer.alloc(4), { width: W || 1, height: H || 1 });
+  const H = slideHpx * count;
+  const img = nativeImage.createFromBitmap(bgra, { width: W, height: H });
   const bytes = jpeg ? img.toJPEG(82) : img.toPNG();
   return {
     ok: true,

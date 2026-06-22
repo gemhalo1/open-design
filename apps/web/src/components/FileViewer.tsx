@@ -7683,10 +7683,18 @@ function HtmlViewer({
     await waitForAnimationFrame();
     // Prefer the daemon's off-screen render (desktop only): viewport-independent
     // and, rendering the artifact alone in a hidden window, it can never capture
-    // Open Design's own UI. A deck becomes all slides stitched into one tall
-    // image; an ordinary page becomes its full-page capture.
+    // Open Design's own UI. For a deck this captures the CURRENT slide (matching
+    // "the current preview" — both Copy screenshot and Export as image); an
+    // ordinary page becomes its full-page capture. Stitching the whole deck into
+    // one long image is reserved for an explicit action.
     if (isOpenDesignHostAvailable() && projectId && file.name) {
-      const rendered = await exportProjectImageDataUrl({ projectId, fileName: file.name });
+      const deckIndex =
+        effectiveDeck && typeof slideState?.active === 'number' ? slideState.active : undefined;
+      const rendered = await exportProjectImageDataUrl({
+        projectId,
+        fileName: file.name,
+        ...(deckIndex != null ? { index: deckIndex } : {}),
+      });
       if (rendered) return rendered;
     }
 
@@ -7739,6 +7747,10 @@ function HtmlViewer({
     srcDocShellReady,
     useLazySrcDocTransport,
     useUrlLoadPreview,
+    effectiveDeck,
+    slideState?.active,
+    projectId,
+    file.name,
   ]);
 
   const handleCopyScreenshot = useCallback(async () => {
