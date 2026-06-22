@@ -240,6 +240,21 @@ describe("open-design sidecar contract", () => {
         type: SIDECAR_MESSAGES.RENDER_SLIDES,
       }),
     ).toThrow(/absolute path/);
+    // index: a non-negative integer round-trips; negative / fractional / non-number reject.
+    expect(
+      normalizeDesktopSidecarMessage({
+        input: { html: "<p>x</p>", index: 1 },
+        type: SIDECAR_MESSAGES.RENDER_SLIDES,
+      }),
+    ).toEqual({ input: { html: "<p>x</p>", index: 1 }, type: "render-slides" });
+    for (const badIndex of [-1, 1.5, Number.NaN, "0"]) {
+      expect(() =>
+        normalizeDesktopSidecarMessage({
+          input: { html: "<p>x</p>", index: badIndex },
+          type: SIDECAR_MESSAGES.RENDER_SLIDES,
+        }),
+      ).toThrow();
+    }
     // Minimal input (only html) round-trips with nothing extra.
     expect(
       normalizeDesktopSidecarMessage({

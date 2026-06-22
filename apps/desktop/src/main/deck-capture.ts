@@ -128,8 +128,12 @@ export async function renderDeckSlides(
     window.setOpacity(0);
     window.showInactive();
 
+    // Cheap, NON-mutating slide count first — the deck-only DOM mutations
+    // (hiding chrome, freezing animations) must not touch the document until we
+    // know this is a deck, or a page-mode export would render on a modified DOM
+    // (e.g. content using generic `.notes`/`.overview` classes would vanish).
     const count = (await window.webContents.executeJavaScript(
-      `(${prepareDeck.toString()})(${JSON.stringify(SLIDE_SELECTOR)}, ${JSON.stringify(HIDE_CHROME_SELECTOR)})`,
+      `(${countRealSlides.toString()})(${JSON.stringify(SLIDE_SELECTOR)})`,
       true,
     )) as number;
     tPrepare = Date.now();
@@ -147,8 +151,16 @@ export async function renderDeckSlides(
     }
     const wantsDeck = hasSlides && input.deck !== false;
     if (!wantsDeck) {
+      // Page mode: capture the original, unmodified document.
       return finish(await capturePage(window, input.pageImageFormat === "jpeg", input.outputDir));
     }
+
+    // Deck mode only: now apply the deck DOM prep (hide presenter chrome, freeze
+    // animations) so each slide reaches its final state for capture.
+    await window.webContents.executeJavaScript(
+      `(${prepareDeckStage.toString()})(${JSON.stringify(HIDE_CHROME_SELECTOR)})`,
+      true,
+    );
 
     // Measure the deck's authored slide size instead of assuming 16:9 — decks
     // can be 4:3, square, portrait, or any custom canvas. The capture rect, the
@@ -271,6 +283,10 @@ async function showDeckSlide(window: BrowserWindow, i: number, stage: Stage): Pr
 // taller than this is uniformly downscaled so EVERY slide is preserved — never
 // silently truncated.
 const DECK_STITCH_MAX_H = 30000;
+// RAM budget for the stitched BGRA buffer, mirroring the page stitcher. The
+// height cap alone is not enough: a wide / high-DPR stage can still blow past a
+// gigabyte (e.g. 8192px stage @2x => W~16384, * 30000 * 4 ≈ 1.9 GiB).
+const DECK_STITCH_MAX_BYTES = 320 * 1024 * 1024;
 async function stitchDeckSlides(
   window: BrowserWindow,
   count: number,
@@ -279,14 +295,20 @@ async function stitchDeckSlides(
   outputDir: string | undefined,
 ): Promise<DesktopRenderSlidesResult> {
   // Capture slide 0 first to learn the native per-slide pixel size, then pick a
-  // single uniform downscale so all `count` slides fit under DECK_STITCH_MAX_H.
-  // Scaling (instead of dropping trailing slides) keeps the "whole deck as one
-  // picture" contract intact — long decks just get a smaller per-slide size.
+  // single uniform downscale so all `count` slides fit under BOTH the height cap
+  // and the RAM byte budget. Scaling (instead of dropping trailing slides) keeps
+  // the "whole deck as one picture" contract — long/large decks just get a
+  // smaller per-slide size.
   await showDeckSlide(window, 0, stage);
   const first = await window.webContents.capturePage({ x: 0, y: 0, width: stage.w, height: stage.h });
   const nativeSize = first.getSize();
-  const scale = Math.min(1, DECK_STITCH_MAX_H / Math.max(1, nativeSize.height * count));
-  const W = Math.max(1, Math.round(nativeSize.width * scale));
+  const nativeW = Math.max(1, nativeSize.width);
+  const nativeH = Math.max(1, nativeSize.height);
+  const heightScale = DECK_STITCH_MAX_H / (nativeH * count);
+  // total bytes = (nativeW*s) * (nativeH*count*s) * 4 <= MAX_BYTES  =>  s <= sqrt(...)
+  const byteScale = Math.sqrt(DECK_STITCH_MAX_BYTES / (nativeW * nativeH * count * 4));
+  const scale = Math.min(1, heightScale, byteScale);
+  const W = Math.max(1, Math.round(nativeW * scale));
   const slideHpx = Math.max(1, Math.round(nativeSize.height * scale));
   const bgra = Buffer.alloc(W * slideHpx * count * 4);
   const place = (image: Electron.NativeImage, index: number): void => {
@@ -654,19 +676,26 @@ function escapeHtmlAttribute(value: string): string {
 
 // --- Functions serialized into the page (kept dependency-free) ---
 
-function prepareDeck(slideSelector: string, hideSelector: string): number {
+// Non-mutating: count the real slide surfaces (presenter clones excluded). Used
+// to decide page-vs-deck BEFORE any deck-only DOM mutation, so page-mode exports
+// keep the original document intact.
+function countRealSlides(slideSelector: string): number {
+  return Array.prototype.slice
+    .call(document.querySelectorAll(slideSelector))
+    .filter((el) => !(el as HTMLElement).closest(".mini-slide, .overview, .notes-overlay, .thumb")).length;
+}
+
+// Deck-only DOM prep (run only once we've decided this is a deck): hide presenter
+// chrome and freeze animations/transitions so each slide (and its reveal-on-show
+// inner elements, e.g. `.slide.visible .reveal`) reaches its final state.
+function prepareDeckStage(hideSelector: string): void {
   document.querySelectorAll(hideSelector).forEach((el) => {
     (el as HTMLElement).style.setProperty("display", "none", "important");
   });
-  // Freeze animations/transitions so each slide (and its reveal-on-show inner
-  // elements, e.g. `.slide.visible .reveal`) reaches its final state instantly.
   const s = document.createElement("style");
   s.textContent =
     "*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important}";
   (document.head || document.documentElement).appendChild(s);
-  return Array.prototype.slice
-    .call(document.querySelectorAll(slideSelector))
-    .filter((el) => !(el as HTMLElement).closest(".mini-slide, .overview, .notes-overlay, .thumb")).length;
 }
 
 // Deck-only: pin to the measured WxH stage so each slide captures

@@ -7577,13 +7577,16 @@ function HtmlViewer({
   // that drive the slide pager) as PPTX-eligible — not just the narrower
   // artifact-kind/renderer signal — so the option matches when the pager shows.
   const isDeckForExport = isDeckArtifact || effectiveDeck;
-  // PPTX export is a desktop-runtime capability (it drives the bundled Electron
-  // Chromium via the daemon's screenshot renderer) with no web-only fallback, so
-  // only offer it when a host runtime is present — otherwise the action would
-  // hit a guaranteed 501. (Image/PDF degrade gracefully on web and stay shown.)
+  // PPTX export is slide-based, so gate it on the EXPLICIT deck signal
+  // (`isDeckArtifact`: deck renderer/kind/presentation) — NOT the `.slide` regex
+  // (`effectiveDeck`/`looksLikeDeck`), which false-positives on ordinary pages
+  // that contain carousel/testimonial `.slide` markup and would force those down
+  // the deck renderer via the hardcoded `deck: true`. It also requires a host
+  // runtime (the screenshot renderer; no web-only fallback → would 501).
+  // (Image/PDF stay on the broader signal — they handle pages too.)
   const canPptx =
-    canShare && isDeckForExport && Boolean(onExportAsPptx) && !streaming && isOpenDesignHostAvailable();
-  const showPptxExport = canShare && isDeckForExport && isOpenDesignHostAvailable();
+    canShare && isDeckArtifact && Boolean(onExportAsPptx) && !streaming && isOpenDesignHostAvailable();
+  const showPptxExport = canShare && isDeckArtifact && isOpenDesignHostAvailable();
   const showMarkdownExport = source !== null && isMarkdownArtifact;
   const showImageExport = canShare;
 
