@@ -579,6 +579,7 @@ export function proxyDispatcherRequestInit(
 
 const AGENT_COMPLETION_DEBOUNCE_MS = 500;
 const AGENT_KILL_GRACE_MS = 2_000;
+const AGENT_LOG_CLASSIFICATION_TAIL_BYTES = 8192;
 // Truncates the assistant reply we surface in the success copy so a
 // chatty model can't dump kilobytes into the inline status node.
 const SAMPLE_MAX_CHARS = 120;
@@ -2296,9 +2297,20 @@ async function testAgentConnectionInternal(
       const rawStdoutTail = sink.getRawStdoutTail().trim();
       const agentLogTail = agentLogFilePath
         ? await fsp.readFile(agentLogFilePath, 'utf8')
-            .then((text) => text.trim().slice(-400))
+            .then((text) => text.trim().slice(-AGENT_LOG_CLASSIFICATION_TAIL_BYTES))
             .catch(() => '')
         : '';
+      const classificationDetail = [
+        winner.code != null ? `exit ${winner.code}` : null,
+        winner.signal ? `signal ${winner.signal}` : null,
+        stderrTail ? `stderr: ${stderrTail}` : null,
+        rawStdoutTail || buffered
+          ? `stdout: ${rawStdoutTail || buffered}`
+          : null,
+        agentLogTail ? `log: ${agentLogTail}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       if (input.agentId === 'opencode' && exitedCleanly && rawStdoutTail) {
         const recoveredText = extractOpenCodeTextFromRawStdout(rawStdoutTail).trim();
         if (recoveredText) {
@@ -2321,7 +2333,7 @@ async function testAgentConnectionInternal(
         .filter(Boolean)
         .join(' · ');
       if (input.agentId === 'opencode') {
-        const outdatedCliDetail = openCodeOutdatedCliDetail(rawDetail);
+        const outdatedCliDetail = openCodeOutdatedCliDetail(classificationDetail);
         if (outdatedCliDetail) {
           console.warn(
             `[test:agent] ${def.name} → outdated_cli: ${redactSecrets(rawDetail)}`,
@@ -2341,7 +2353,7 @@ async function testAgentConnectionInternal(
           };
         }
       }
-      const auth = classifyAgentAuthFailure(input.agentId, rawDetail);
+      const auth = classifyAgentAuthFailure(input.agentId, classificationDetail);
       if (auth?.status === 'missing') {
         console.warn(`[test:agent] ${def.name} → auth_required: ${redactSecrets(rawDetail)}`);
         return {
@@ -2359,7 +2371,7 @@ async function testAgentConnectionInternal(
         };
       }
       if (input.agentId === 'antigravity') {
-        const serviceFailure = classifyAgentServiceFailure(rawDetail);
+        const serviceFailure = classifyAgentServiceFailure(classificationDetail);
         if (serviceFailure === 'RATE_LIMITED') {
           console.warn(
             `[test:agent] ${def.name} → rate_limited: ${redactSecrets(rawDetail)}`,

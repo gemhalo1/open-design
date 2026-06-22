@@ -3289,9 +3289,10 @@ if (logIndex === -1 || !args[logIndex + 1]) {
   console.error('missing --log-file');
   process.exit(1);
 }
+const filler = 'x'.repeat(600);
 fs.writeFileSync(
   args[logIndex + 1],
-  'RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 1h2m3s.\\n',
+  'RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 1h2m3s.\\n' + filler,
 );
 process.stdin.resume();
 process.stdin.on('end', () => process.exit(0));
