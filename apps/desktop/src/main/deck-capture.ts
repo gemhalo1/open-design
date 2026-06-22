@@ -132,10 +132,13 @@ export async function renderDeckSlides(
     )) as number;
     tPrepare = Date.now();
 
-    // No `.slide` sections — this is an ordinary page (e.g. a website), not a
-    // deck. Capture the whole document at its natural size instead of forcing a
-    // 1920x1080 slide. This is what image export of a non-deck artifact wants.
-    if (!Number.isInteger(count) || count < 1) {
+    // Decide page vs deck. Prefer the caller's explicit `deck` signal: an
+    // ordinary page can contain `.slide` markup (carousels, testimonials)
+    // without being a deck, so we must NOT treat any `.slide` as proof of a deck.
+    // `deck:false` forces full-page capture; otherwise require actual slides.
+    const hasSlides = Number.isInteger(count) && count >= 1;
+    const wantsDeck = hasSlides && input.deck !== false;
+    if (!wantsDeck) {
       return finish(await capturePage(window, input.pageImageFormat === "jpeg", input.outputDir));
     }
 

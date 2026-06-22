@@ -7699,9 +7699,14 @@ function HtmlViewer({
       const rendered = await exportProjectImageDataUrl({
         projectId,
         fileName: file.name,
+        deck: effectiveDeck,
         ...(deckIndex != null ? { index: deckIndex } : {}),
       });
-      if (rendered) return rendered;
+      if (rendered.ok) return rendered.snapshot;
+      // A semantic failure (e.g. "page is too tall — export as PDF") must surface,
+      // NOT silently downgrade to a partial visible-viewport screenshot. Only when
+      // the off-screen renderer is genuinely unavailable do we fall through.
+      if ('error' in rendered) throw new Error(rendered.error);
     }
 
     // Fallback: desktop compositor screenshot of the visible preview region.
@@ -7786,7 +7791,10 @@ function HtmlViewer({
       );
     } catch (err) {
       console.warn('[handleCopyScreenshot] failed:', err);
-      setExportToast({ message: t('fileViewer.screenshotCaptureFailed'), tone: 'error' });
+      // Surface a semantic failure message (e.g. "page is too tall — export as
+      // PDF") rather than a generic one when the renderer gave us a reason.
+      const message = err instanceof Error && err.message ? err.message : t('fileViewer.screenshotCaptureFailed');
+      setExportToast({ message, tone: 'error' });
     } finally {
       screenshotInFlightRef.current = false;
     }
@@ -7906,7 +7914,8 @@ function HtmlViewer({
       });
     } catch (err) {
       console.warn('[exportAsImage] failed to save snapshot:', err);
-      setExportToast({ message: t('fileViewer.exportImageFailed'), tone: 'error' });
+      const message = err instanceof Error && err.message ? err.message : t('fileViewer.exportImageFailed');
+      setExportToast({ message, tone: 'error' });
       fireImageExportResult('failed', err instanceof Error ? err.name : 'UNKNOWN');
     }
   }
@@ -8883,6 +8892,7 @@ function HtmlViewer({
                             projectId,
                             fileName: file.name,
                             title: exportTitle,
+                            deck: effectiveDeck,
                           });
                           if (res.ok) return;
                         }

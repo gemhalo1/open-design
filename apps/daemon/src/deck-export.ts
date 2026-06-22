@@ -15,6 +15,8 @@ import { readProjectFile } from './projects.js';
 
 export interface BuildDeckRenderInputOptions {
   daemonUrl: string;
+  // Explicit page-vs-deck signal (the web knows whether the artifact is a deck).
+  deck?: boolean;
   fileName: string;
   index?: number;
   // Directory the desktop renderer writes the rendered images into (returned as
@@ -50,6 +52,7 @@ export async function buildDeckRenderInput(
     input: {
       baseHref: rawBaseHref(options.daemonUrl, options.projectId, options.fileName),
       html: file.buffer.toString('utf8'),
+      ...(options.deck == null ? {} : { deck: options.deck }),
       ...(options.index == null ? {} : { index: options.index }),
       ...(options.outputDir == null ? {} : { outputDir: options.outputDir }),
       ...(options.pageImageFormat == null ? {} : { pageImageFormat: options.pageImageFormat }),

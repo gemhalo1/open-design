@@ -868,6 +868,7 @@ export async function exportProjectAsPptx(opts: {
   fileName: string;
   title?: string;
   format?: 'pptx' | 'pdf';
+  deck?: boolean;
 }): Promise<ProjectScreenshotExportResult> {
   const format = opts.format ?? 'pptx';
   const path = format === 'pdf' ? 'export/pdf-image' : 'export/pptx';
@@ -879,6 +880,7 @@ export async function exportProjectAsPptx(opts: {
       body: JSON.stringify({
         fileName: opts.fileName,
         ...(opts.title ? { title: opts.title } : {}),
+        ...(typeof opts.deck === 'boolean' ? { deck: opts.deck } : {}),
       }),
     });
     if (!resp.ok) {
@@ -907,11 +909,21 @@ export async function exportProjectAsPptx(opts: {
 // deck pass the current slide `index`; for an ordinary page omit it (the whole
 // document is captured at natural size). Returns a {dataUrl,w,h} snapshot
 // compatible with the existing image-export pipeline, or null if unavailable.
+// Discriminates a genuinely-unavailable off-screen renderer (no desktop host /
+// 501 / network) — where the caller may fall back to a visible-preview capture —
+// from a SEMANTIC export failure (e.g. "page is too tall — export as PDF"), which
+// must be surfaced rather than silently downgraded to a partial viewport shot.
+export type ProjectImageExportResult =
+  | { ok: true; snapshot: PreviewSnapshot }
+  | { ok: false; unavailable: true }
+  | { ok: false; error: string };
+
 export async function exportProjectImageDataUrl(opts: {
   projectId: string;
   fileName: string;
   index?: number;
-}): Promise<PreviewSnapshot | null> {
+  deck?: boolean;
+}): Promise<ProjectImageExportResult> {
   const url = `/api/projects/${encodeURIComponent(opts.projectId)}/export/image`;
   try {
     const resp = await fetch(url, {
@@ -920,15 +932,28 @@ export async function exportProjectImageDataUrl(opts: {
       body: JSON.stringify({
         fileName: opts.fileName,
         ...(typeof opts.index === 'number' ? { index: opts.index } : {}),
+        ...(typeof opts.deck === 'boolean' ? { deck: opts.deck } : {}),
       }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      // 501 = this runtime has no off-screen renderer → caller may fall back.
+      if (resp.status === 501) return { ok: false, unavailable: true };
+      let message = `image export failed (${resp.status})`;
+      try {
+        const err = await resp.json();
+        if (err?.error?.message) message = String(err.error.message);
+      } catch {
+        // non-JSON body; keep the status-based message
+      }
+      return { ok: false, error: message };
+    }
     const blob = await resp.blob();
     const dataUrl = await blobToDataUrl(blob);
     const img = await loadImageFromDataUrl(dataUrl);
-    return { dataUrl, w: img.naturalWidth, h: img.naturalHeight };
+    return { ok: true, snapshot: { dataUrl, w: img.naturalWidth, h: img.naturalHeight } };
   } catch {
-    return null;
+    // Network / transport error — treat as unavailable so a web fallback can try.
+    return { ok: false, unavailable: true };
   }
 }
 
@@ -940,6 +965,7 @@ export function exportProjectScreenshotPdf(opts: {
   projectId: string;
   fileName: string;
   title?: string;
+  deck?: boolean;
 }): Promise<ProjectScreenshotExportResult> {
   return exportProjectAsPptx({ ...opts, format: 'pdf' });
 }

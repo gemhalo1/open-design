@@ -250,6 +250,12 @@ export type DesktopExportPdfResult = {
 export type DesktopRenderSlidesInput = {
   baseHref?: string;
   html: string;
+  // Explicit page-vs-deck signal from the caller (the web side knows whether the
+  // artifact is a deck). `true` forces deck slide capture, `false` forces a
+  // single full-page capture even if the page happens to contain `.slide`
+  // elements (carousels, testimonials). When omitted, the renderer falls back to
+  // the `.slide`-count heuristic.
+  deck?: boolean;
   // When set, render only the slide at this index (deck mode) — used by image
   // export to capture the single slide the user is viewing.
   index?: number;
@@ -686,7 +692,10 @@ function normalizeDesktopExportPdfInput(input: unknown): DesktopExportPdfInput {
 
 function normalizeDesktopRenderSlidesInput(input: unknown): DesktopRenderSlidesInput {
   const value = assertObject(input, "desktop render slides input");
-  assertKnownKeys(value, ["baseHref", "html", "index", "outputDir", "pageImageFormat", "stitch"], "desktop render slides input");
+  assertKnownKeys(value, ["baseHref", "deck", "html", "index", "outputDir", "pageImageFormat", "stitch"], "desktop render slides input");
+  if (value.deck != null && typeof value.deck !== "boolean") {
+    throw new Error("desktop render slides deck must be a boolean");
+  }
   if (value.index != null && (typeof value.index !== "number" || !Number.isInteger(value.index) || value.index < 0)) {
     throw new Error("desktop render slides index must be a non-negative integer");
   }
@@ -698,6 +707,7 @@ function normalizeDesktopRenderSlidesInput(input: unknown): DesktopRenderSlidesI
   }
   return {
     ...(value.baseHref == null ? {} : { baseHref: normalizeNonEmptyString(value.baseHref, "desktop render slides baseHref") }),
+    ...(value.deck == null ? {} : { deck: value.deck }),
     html: normalizeNonEmptyString(value.html, "desktop render slides html"),
     ...(value.index == null ? {} : { index: value.index }),
     ...(value.outputDir == null ? {} : { outputDir: normalizeNonEmptyString(value.outputDir, "desktop render slides outputDir") }),

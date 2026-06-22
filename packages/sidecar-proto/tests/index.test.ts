@@ -200,6 +200,7 @@ describe("open-design sidecar contract", () => {
       normalizeDesktopSidecarMessage({
         input: {
           baseHref: "http://127.0.0.1:7456/api/projects/proj/raw/deck/",
+          deck: true,
           html: "<!doctype html><section class=\"slide\">One</section>",
           outputDir: "/data/export-render/abc123",
           pageImageFormat: "jpeg",
@@ -210,6 +211,7 @@ describe("open-design sidecar contract", () => {
     ).toEqual({
       input: {
         baseHref: "http://127.0.0.1:7456/api/projects/proj/raw/deck/",
+        deck: true,
         html: "<!doctype html><section class=\"slide\">One</section>",
         outputDir: "/data/export-render/abc123",
         pageImageFormat: "jpeg",
@@ -217,6 +219,19 @@ describe("open-design sidecar contract", () => {
       },
       type: "render-slides",
     });
+    // `deck: false` round-trips (explicit page mode) and a non-boolean is rejected.
+    expect(
+      normalizeDesktopSidecarMessage({
+        input: { html: "<p>x</p>", deck: false },
+        type: SIDECAR_MESSAGES.RENDER_SLIDES,
+      }),
+    ).toEqual({ input: { html: "<p>x</p>", deck: false }, type: "render-slides" });
+    expect(() =>
+      normalizeDesktopSidecarMessage({
+        input: { html: "<p>x</p>", deck: "yes" },
+        type: SIDECAR_MESSAGES.RENDER_SLIDES,
+      }),
+    ).toThrow();
     // Minimal input (only html) round-trips with nothing extra.
     expect(
       normalizeDesktopSidecarMessage({

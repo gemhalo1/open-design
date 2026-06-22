@@ -455,6 +455,14 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         projectsRoot: PROJECTS_DIR,
       };
       if (typeof title === 'string') renderOptions.title = title;
+      // Page-vs-deck is the caller's call, not a `.slide`-count guess: PPTX is
+      // deck-only; image/PDF take the web's `effectiveDeck` signal so an ordinary
+      // page that happens to contain `.slide` markup is still captured full-page.
+      if (format === 'pptx') {
+        renderOptions.deck = true;
+      } else if (typeof body?.deck === 'boolean') {
+        renderOptions.deck = body.deck;
+      }
       // Image export = "the whole artifact as one picture": a deck becomes all
       // slides stitched into one tall image; an ordinary page is its full-page
       // capture. (A specific slide index is still honored if explicitly given.)

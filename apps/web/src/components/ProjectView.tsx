@@ -5117,7 +5117,9 @@ export function ProjectView({
       // the old path that sent a prompt asking the agent to run python-pptx.
       // Returns the promise (and rejects on failure) so the caller's loading /
       // error toast reflects the real export, not just kickoff.
-      return exportProjectAsPptx({ projectId: project.id, fileName }).then((res) => {
+      // PPTX is deck-only (the action is gated to deck artifacts), so signal the
+      // renderer explicitly rather than relying on `.slide` heuristics.
+      return exportProjectAsPptx({ projectId: project.id, fileName, deck: true }).then((res) => {
         if (!res.ok) throw new Error(res.error || 'PPTX export failed');
       });
     },
