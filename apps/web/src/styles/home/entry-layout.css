@@ -1506,7 +1506,7 @@
   flex: 0 0 auto;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-strong);
   text-transform: capitalize;
 }
 .inline-switcher__account-upgrade {
