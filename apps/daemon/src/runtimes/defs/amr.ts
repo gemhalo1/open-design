@@ -297,11 +297,16 @@ export async function fetchVelaBillingSummary(
       : typeof data.totalAvailableCreditsUsd === 'string'
         ? data.totalAvailableCreditsUsd
         : null;
+  // `membershipTier` is omitted for free accounts. A SUCCESSFUL summary with no
+  // tier therefore means "free" — normalize to the explicit sentinel so the UI
+  // shows the plan and the Upgrade CTA for free users. "Unknown" (billing
+  // unavailable) is signalled separately by the fetch rejecting → null account,
+  // never by an absent tier on a successful read.
   const tier =
     typeof data.membershipTier === 'string' && data.membershipTier.trim()
       ? data.membershipTier.trim()
-      : undefined;
-  return { ...(tier ? { plan: tier } : {}), balanceUsd };
+      : 'free';
+  return { plan: tier, balanceUsd };
 }
 
 export const amrAgentDef = {

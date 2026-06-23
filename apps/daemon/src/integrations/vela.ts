@@ -33,6 +33,10 @@ const AMR_ENTRY_SOURCES: ReadonlySet<TrackingAmrEntrySource> = new Set([
   'generation_preview_authorize_retry',
   'generation_preview_recharge',
   'generation_preview_switch_retry_card',
+  'settings_amr_upgrade',
+  'inline_amr_upgrade',
+  'avatar_amr_upgrade',
+  'avatar_amr_agent_card',
 ]);
 
 const AMR_ONBOARDING_PROFILE_SOURCES: ReadonlySet<TrackingAmrEntrySource> = new Set([

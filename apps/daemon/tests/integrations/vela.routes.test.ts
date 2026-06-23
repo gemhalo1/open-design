@@ -402,6 +402,24 @@ describe('GET /api/integrations/vela/status', () => {
     expect(body.account?.balanceUsd).toBe('247.51');
   });
 
+  it('normalizes a successful billing summary without a tier to free (upgradeable)', async () => {
+    // membershipTier is omitted for free accounts; a successful read must still
+    // surface a concrete plan so the UI shows it AND keeps the Upgrade CTA.
+    clearAllVelaLiveAccounts();
+    // Balance set, tier unset → fake-vela returns balanceUsd with NO membershipTier.
+    process.env.FAKE_VELA_BILLING_BALANCE_USD = '0.00';
+    seedLogin('local', {
+      user: { id: 'free-1', email: 'free@example.com', plan: undefined },
+    });
+    const { body } = await getJson<{
+      loggedIn: boolean;
+      account?: { plan?: string; balanceUsd?: string | null };
+    }>(`${baseUrl}/api/integrations/vela/status`);
+    expect(body.loggedIn).toBe(true);
+    expect(body.account?.plan).toBe('free');
+    expect(body.account?.balanceUsd).toBe('0.00');
+  });
+
   it('never leaks the runtimeKey or controlKey in the status payload', async () => {
     seedLogin('local', {
       runtimeKey: 'rt-very-secret-do-not-leak',
@@ -1601,5 +1619,37 @@ describe('login → status round-trip (E2E across the three routes)', () => {
 
     delete process.env.FAKE_VELA_LOGIN_USER_EMAIL;
     delete process.env.FAKE_VELA_LOGIN_USER_PLAN;
+  });
+});
+
+describe('parseAmrEntryAnalyticsPayload — entry sources added in this PR', () => {
+  const payloadFor = (source: string, page: string) => ({
+    pageName: 'open_design',
+    sourcePageName: page,
+    area: 'amr_entry',
+    element: source,
+    action: 'click_amr_entry',
+    entryId: 'od-amr-entry-x',
+    sourceProduct: 'open_design',
+    sourceDetail: source,
+    entryOccurredAt: '2026-06-03T12:00:00.000Z',
+  });
+
+  it('accepts the four new upgrade / agent-card sources so mirroring is not 400ed', () => {
+    const cases: Array<[string, string]> = [
+      ['settings_amr_upgrade', 'settings'],
+      ['inline_amr_upgrade', 'chat_panel'],
+      ['avatar_amr_upgrade', 'chat_panel'],
+      ['avatar_amr_agent_card', 'chat_panel'],
+    ];
+    for (const [source, page] of cases) {
+      expect(parseAmrEntryAnalyticsPayload(payloadFor(source, page))).not.toBeNull();
+    }
+  });
+
+  it('still rejects an unknown source', () => {
+    expect(
+      parseAmrEntryAnalyticsPayload(payloadFor('made_up_source', 'settings')),
+    ).toBeNull();
   });
 });
