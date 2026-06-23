@@ -907,11 +907,19 @@ jobs:
               exit 1
             fi
           elif [ "$EVENT_NAME" = "merge_group" ]; then
-            # No '|| true': a failed lookup must block the merge, not wave it through.
+            # Fail closed: capture each gh result into a plain assignment so a failed lookup
+            # trips set -e / pipefail and blocks the merge. Do NOT put the gh call in an `if`
+            # condition — a nonzero exit there is swallowed (read as "no label") and waves the
+            # merge through.
             shas="$(gh api "repos/$REPO/compare/$BASE_SHA...$HEAD_SHA" --jq '.commits[].sha')"
-            prs="$(for s in $shas; do gh api "repos/$REPO/commits/$s/pulls" --jq '.[].number'; done | sort -u)"
-            for pr in $prs; do
-              if gh pr view "$pr" --repo "$REPO" --json labels --jq '.labels[].name' | grep -qx 'needs-validation'; then
+            prs=""
+            for s in $shas; do
+              pulls="$(gh api "repos/$REPO/commits/$s/pulls" --jq '.[].number')"
+              prs="$(printf '%s\n%s\n' "$prs" "$pulls")"
+            done
+            for pr in $(printf '%s\n' "$prs" | sort -u | grep -E '^[0-9]+$'); do
+              labels="$(gh pr view "$pr" --repo "$REPO" --json labels --jq '.labels[].name')"
+              if printf '%s\n' "$labels" | grep -qx 'needs-validation'; then
                 echo "::error::PR #$pr still has 'needs-validation' — blocking merge."
                 exit 1
               fi
