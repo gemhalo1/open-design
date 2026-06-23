@@ -18,13 +18,18 @@ import {
   mirrorAmrOnboardingProfileAnalytics,
   parseAmrEntryAnalyticsPayload,
   parseAmrOnboardingProfileAnalyticsPayload,
+  clearVelaLiveAccountRefreshThrottle,
   parseVelaLoginAttribution,
+  peekVelaLiveAccount,
   readVelaCredentialRevision,
   readVelaLoginStatus,
+  setVelaLiveAccount,
+  shouldRefreshVelaLiveAccount,
   spawnVelaLogin,
 } from '../integrations/vela.js';
 import { amrModelLoadingCache } from '../runtimes/amr-model-cache.js';
 import {
+  fetchVelaBillingSummary,
   fetchVelaPresetModels,
   fetchVelaRemoteModelsWithRetry,
 } from '../runtimes/defs/amr.js';
@@ -191,13 +196,39 @@ export function registerVelaRoutes(app: Express, deps: RegisterVelaRoutesDeps): 
       const configuredEnv = agentCliEnvForAgent(appConfig.agentCliEnv, 'amr');
       const status = readVelaLoginStatus(mergeVelaEnv(env, configuredEnv));
       if (status.loggedIn) {
+        // Merge the cached live account (real plan tier + wallet balance) read
+        // synchronously, so the response never blocks. The background refresh
+        // below updates the cache for the next poll via the vela CLI.
+        const account = peekVelaLiveAccount(status.profile);
+        if (account && status.user) {
+          if (account.plan) status.user.plan = account.plan;
+          status.user.balanceUsd = account.balanceUsd ?? null;
+        }
+        const refreshAccount = shouldRefreshVelaLiveAccount(status.profile);
+        const accountProfile = status.profile;
         void resolveAmrModelProbe()
-          .then((probe) => {
+          .then(async (probe) => {
             amrModelLoadingCache.warm(probe.cacheKey, () =>
               fetchVelaRemoteModelsWithRetry(probe.launchPath, probe.env),
             );
+            if (refreshAccount) {
+              try {
+                setVelaLiveAccount(
+                  accountProfile,
+                  await fetchVelaBillingSummary(probe.launchPath, probe.env),
+                );
+              } catch {
+                // Best-effort: keep the prior cache; retry on the next poll.
+                clearVelaLiveAccountRefreshThrottle(accountProfile);
+              }
+            }
           })
-          .catch((err) => console.warn('[amr] model cache warm failed', err));
+          .catch((err) => {
+            if (refreshAccount) {
+              clearVelaLiveAccountRefreshThrottle(accountProfile);
+            }
+            console.warn('[amr] account/model refresh failed', err);
+          });
       }
       res.json(status);
     } catch (err) {

@@ -360,7 +360,7 @@ function shouldSuppressLifecycleExitFallback(
 }
 
 const AMR_OPENCODE_INCOMPLETE_MESSAGE =
-  'AMR/OpenCode started, but the run did not complete. Please retry or check the run details for the session stream error.';
+  'Open Design started, but the run did not complete. Please retry or check the run details for the session stream error.';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -444,10 +444,10 @@ function formatOpenCodeSessionError(value: unknown): string | null {
     return message;
   }
   if (statusCode === 404) {
-    return 'The model service returned 404 Not Found for the configured runtime endpoint. Check the AMR Link URL or model route.';
+    return 'The model service returned 404 Not Found for the configured runtime endpoint. Check the Open Design link URL or model route.';
   }
   if (statusCode === 401 || statusCode === 403) {
-    return 'AMR authentication failed. Please sign in again or refresh the runtime key.';
+    return 'Open Design authentication failed. Please sign in again or refresh the runtime key.';
   }
   if (statusCode === 429) {
     return 'The model service rejected the request due to quota or rate limits. Retry later or check quota and rate limits.';
@@ -739,6 +739,32 @@ export interface VelaUser {
   name?: string;
   image?: string | null;
   plan?: string;
+  /** Wallet balance (USD, string) from the live `/api/v1/me` projection; `null` when unknown. */
+  balanceUsd?: string | null;
+}
+
+/**
+ * Format a raw wallet `balanceUsd` string (e.g. "12.3") into a display string
+ * (e.g. "$12.30"). Returns `null` when the balance is unknown/unparseable so
+ * callers can simply hide the balance area.
+ */
+export function formatVelaBalanceUsd(raw?: string | null): string | null {
+  if (raw == null || raw === '') return null;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount)) return null;
+  return `$${amount.toFixed(2)}`;
+}
+
+/** Top subscription tier — no upgrade affordance is shown at/above this. */
+export const VELA_TOP_PLAN_TIER = 'max';
+
+/**
+ * Whether to surface an "Upgrade" affordance for the given plan tier. True for
+ * free/plus/pro (and any non-top/unknown tier); false only at the top tier.
+ * A missing plan is treated as free → upgradeable.
+ */
+export function canUpgradeVelaPlan(plan?: string | null): boolean {
+  return (plan?.trim() || 'free').toLowerCase() !== VELA_TOP_PLAN_TIER;
 }
 
 export interface VelaLoginStatus {

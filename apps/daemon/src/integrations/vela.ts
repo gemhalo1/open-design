@@ -72,6 +72,10 @@ const AMR_ENTRY_SOURCE_PAGE_BY_SOURCE: Record<
   generation_preview_authorize_retry: 'file_manager',
   generation_preview_recharge: 'file_manager',
   generation_preview_switch_retry_card: 'file_manager',
+  settings_amr_upgrade: 'settings',
+  inline_amr_upgrade: 'chat_panel',
+  avatar_amr_upgrade: 'chat_panel',
+  avatar_amr_agent_card: 'chat_panel',
 };
 
 const AMR_ANALYTICS_EVENTS_URL =
@@ -165,6 +169,12 @@ export interface VelaUser {
   name?: string;
   image?: string | null;
   plan?: string;
+  /**
+   * Wallet balance (USD, string), surfaced live from the control-plane
+   * `/api/v1/me` endpoint. `null` when unknown (lookup failed, not yet warmed,
+   * or upstream does not return it). Absent on stale config-only reads.
+   */
+  balanceUsd?: string | null;
 }
 
 export interface VelaLoginStatus {
@@ -324,6 +334,53 @@ export function readVelaLoginStatus(
       }
     : null;
   return { loggedIn: true, loginInFlight, profile, user, configPath };
+}
+
+/**
+ * Live account fields (plan tier + wallet balance) sourced from the vela CLI
+ * (`vela billing summary`). Cached separately from the config-only
+ * {@link readVelaLoginStatus} read so the status route can merge live data
+ * without blocking: the route reads this cache synchronously and triggers a
+ * background CLI refresh for the next poll. The CLI spawn itself lives in the
+ * route layer (which already resolves the vela launch path for models).
+ */
+export interface VelaLiveAccount {
+  plan?: string;
+  balanceUsd?: string | null;
+}
+
+const liveAccountCache = new Map<string, VelaLiveAccount>();
+const liveAccountFetchedAt = new Map<string, number>();
+const LIVE_ACCOUNT_TTL_MS = 60_000;
+
+/** Synchronous, non-blocking read of the most recent live-account projection. */
+export function peekVelaLiveAccount(profile: string): VelaLiveAccount | null {
+  return liveAccountCache.get(profile) ?? null;
+}
+
+/**
+ * TTL gate for the background refresh. Returns true (and records the attempt)
+ * at most once per profile per {@link LIVE_ACCOUNT_TTL_MS}, so concurrent
+ * status polls don't all spawn the CLI.
+ */
+export function shouldRefreshVelaLiveAccount(profile: string): boolean {
+  const last = liveAccountFetchedAt.get(profile) ?? 0;
+  if (Date.now() - last < LIVE_ACCOUNT_TTL_MS) return false;
+  liveAccountFetchedAt.set(profile, Date.now());
+  return true;
+}
+
+/** Store a freshly fetched live-account projection. */
+export function setVelaLiveAccount(
+  profile: string,
+  account: VelaLiveAccount,
+): void {
+  liveAccountCache.set(profile, account);
+}
+
+/** Clear the refresh throttle so a failed fetch can retry on the next poll. */
+export function clearVelaLiveAccountRefreshThrottle(profile: string): void {
+  liveAccountFetchedAt.delete(profile);
 }
 
 export function readVelaCredentialRevision(

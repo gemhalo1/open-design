@@ -44,10 +44,15 @@ import {
   amrLoginStatusEventReason,
 } from './amrLoginPolling';
 import {
+  canUpgradeVelaPlan,
   fetchVelaLoginStatus,
+  formatVelaBalanceUsd,
   type VelaLoginStatus,
 } from '../providers/daemon';
-import { amrProfileBadgeLabel } from '../runtime/amr-guidance';
+import {
+  amrPlansUrlForProfile,
+  amrProfileBadgeLabel,
+} from '../runtime/amr-guidance';
 import { ExportDiagnosticsRow } from './ExportDiagnosticsButton';
 import { Icon } from './Icon';
 import {
@@ -618,7 +623,7 @@ function cleanAgentVersionLabel(
 }
 
 function displayAgentName(agent: Pick<AgentInfo, 'id' | 'name'>): string {
-  return agent.id === 'amr' ? 'Open Design AMR' : agent.name;
+  return agent.id === 'amr' ? 'Open Design' : agent.name;
 }
 
 const AGENT_CLI_ENV_FIELDS = [
@@ -3615,6 +3620,18 @@ export function SettingsDialog({
                             isAmrAgent && active && amrCardStatus?.loggedIn
                               ? amrProfileBadgeLabel(amrCardStatus.profile)
                               : null;
+                          const amrCardBalanceLabel =
+                            isAmrAgent && active && amrCardStatus?.loggedIn
+                              ? formatVelaBalanceUsd(amrCardStatus.user?.balanceUsd)
+                              : null;
+                          const amrCardPlanLabel =
+                            isAmrAgent && active && amrCardStatus?.loggedIn
+                              ? amrCardStatus.user?.plan?.trim() || null
+                              : null;
+                          const amrCardCanUpgrade =
+                            isAmrAgent && active && amrCardStatus?.loggedIn
+                              ? canUpgradeVelaPlan(amrCardStatus.user?.plan)
+                              : false;
                           const amrRevealPendingCancelAction =
                             isAmrAgent &&
                             active &&
@@ -3728,6 +3745,30 @@ export function SettingsDialog({
                                           ) : null}
                                         </div>
                                       ) : null}
+                                      {amrCardPlanLabel || amrCardBalanceLabel ? (
+                                        <div className="agent-card-amr-meta-row">
+                                          {amrCardPlanLabel ? (
+                                            <span className="agent-card-amr-balance">
+                                              <span className="agent-card-amr-balance-label">
+                                                {t('settings.amrPlan')}
+                                              </span>
+                                              <span className="agent-card-amr-balance-value agent-card-amr-plan-value">
+                                                {amrCardPlanLabel}
+                                              </span>
+                                            </span>
+                                          ) : null}
+                                          {amrCardBalanceLabel ? (
+                                            <span className="agent-card-amr-balance">
+                                              <span className="agent-card-amr-balance-label">
+                                                {t('settings.amrBalance')}
+                                              </span>
+                                              <span className="agent-card-amr-balance-value">
+                                                {amrCardBalanceLabel}
+                                              </span>
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                       {!active && modelSummary ? (
                                         <div className="agent-card-model-summary">
                                           <span>{t('settings.modelPicker')}</span>
@@ -3763,6 +3804,25 @@ export function SettingsDialog({
                                             />
                                           </svg>
                                         </span>
+                                      ) : null}
+                                      {amrCardCanUpgrade ? (
+                                        <button
+                                          type="button"
+                                          className="agent-card-amr-upgrade"
+                                          data-testid="settings-agent-card-amr-upgrade"
+                                          onClick={() =>
+                                            void openExternalUrl(
+                                              attributedAmrSettingsUrl(
+                                                amrPlansUrlForProfile(
+                                                  amrCardStatus?.profile,
+                                                ),
+                                                'settings_amr_upgrade',
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          {t('settings.amrUpgrade')}
+                                        </button>
                                       ) : null}
                                       <AmrLoginPill
                                         className="agent-card-amr-auth"
