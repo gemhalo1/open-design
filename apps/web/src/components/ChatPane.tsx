@@ -3296,9 +3296,9 @@ export function isAssistantMessageStreaming(
 
 export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): string {
   const lines: string[] = [];
-  const raw = input.rawMessage?.trim();
-  if (raw) {
-    lines.push(raw, '');
+  const sourceText = input.rawMessage?.trim() || input.message.trim();
+  if (sourceText) {
+    lines.push(sourceText, '');
   }
 
   lines.push(

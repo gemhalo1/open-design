@@ -387,6 +387,24 @@ describe('ChatPane streaming state', () => {
     expect(text).not.toContain('\nerror:\n');
   });
 
+  it('falls back to the display message when raw error text is unavailable', () => {
+    const text = buildRunErrorDiagnosticText({
+      message: 'Connection dropped. Try again.',
+      rawMessage: '  ',
+      errorCode: 'AGENT_CONNECTION_DROPPED',
+      traceId: 'run-abc',
+      projectId: 'project-1',
+      conversationId: 'conv-1',
+      assistantMessageId: 'assistant-1',
+      agentId: 'amr',
+    });
+
+    expect(text).toMatch(/^Connection dropped\. Try again\.\n\nOpen Design run error diagnostics/);
+    expect(text).not.toContain('raw_error:');
+    expect(text).toContain('error_code: AGENT_CONNECTION_DROPPED');
+    expect(text).not.toContain('\nerror:\n');
+  });
+
   it('renders user turns with the chat bubble styling hook', () => {
     const messages: ChatMessage[] = [
       {
