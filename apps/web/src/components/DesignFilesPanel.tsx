@@ -58,6 +58,8 @@ interface Props {
   onUploadFiles: (files: File[]) => void;
   onPaste: () => void;
   onNewSketch: () => void;
+  onOpenBrowser?: () => void;
+  onCreateDesignSystem?: () => void;
   /** Opens the "Select from library" picker to pull registry assets in. */
   onSelectFromLibrary?: () => void;
   // Reports the folder the panel is currently viewing so the parent can create
@@ -285,6 +287,8 @@ export function DesignFilesPanel({
   onUploadFiles,
   onPaste,
   onNewSketch,
+  onOpenBrowser,
+  onCreateDesignSystem,
   onSelectFromLibrary,
   uploadError = null,
   onClearUploadError,
@@ -976,16 +980,42 @@ export function DesignFilesPanel({
                 <span className="df-empty-title">
                   {t('designFiles.empty')}
                 </span>
-                <button
-                  type="button"
-                  className="df-empty-cta"
-                  data-testid="design-files-empty-new-sketch"
-                  onClick={onNewSketch}
-                  title={t('designFiles.newSketch')}
-                >
-                  <Icon name="pencil" size={13} />
-                  <span>{t('designFiles.newSketch')}</span>
-                </button>
+                <div className="df-empty-actions">
+                  <button
+                    type="button"
+                    className="df-empty-cta df-empty-cta-primary"
+                    data-testid="design-files-empty-new-sketch"
+                    onClick={onNewSketch}
+                    title={t('designFiles.newSketch')}
+                  >
+                    <Icon name="pencil" size={13} />
+                    <span>{t('designFiles.newSketch')}</span>
+                  </button>
+                  {onOpenBrowser ? (
+                    <button
+                      type="button"
+                      className="df-empty-cta df-empty-cta-secondary"
+                      data-testid="design-files-empty-open-browser"
+                      onClick={onOpenBrowser}
+                      title={t('workspace.newBrowserDescription')}
+                    >
+                      <Icon name="globe" size={13} />
+                      <span>{t('workspace.newBrowser')}</span>
+                    </button>
+                  ) : null}
+                  {onCreateDesignSystem ? (
+                    <button
+                      type="button"
+                      className="df-empty-cta df-empty-cta-tertiary"
+                      data-testid="design-files-empty-create-design-system"
+                      onClick={onCreateDesignSystem}
+                      title={t('dsManager.createTitle')}
+                    >
+                      <Icon name="blocks" size={13} />
+                      <span>{t('dsManager.createTitle')}</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : (

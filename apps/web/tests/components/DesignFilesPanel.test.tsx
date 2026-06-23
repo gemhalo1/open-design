@@ -120,6 +120,26 @@ describe('DesignFilesPanel sections', () => {
     expect(screen.getByTestId('design-files-upload-trigger')).toBeTruthy();
   });
 
+  it('shows prioritized project starter actions in the empty state', () => {
+    const onNewSketch = vi.fn();
+    const onOpenBrowser = vi.fn();
+    const onCreateDesignSystem = vi.fn();
+
+    renderPanel([], {
+      onNewSketch,
+      onOpenBrowser,
+      onCreateDesignSystem,
+    });
+
+    fireEvent.click(screen.getByTestId('design-files-empty-new-sketch'));
+    fireEvent.click(screen.getByTestId('design-files-empty-open-browser'));
+    fireEvent.click(screen.getByTestId('design-files-empty-create-design-system'));
+
+    expect(onNewSketch).toHaveBeenCalledTimes(1);
+    expect(onOpenBrowser).toHaveBeenCalledTimes(1);
+    expect(onCreateDesignSystem).toHaveBeenCalledTimes(1);
+  });
+
   it('groups files into semantic sections by category', () => {
     renderPanel([
       file({ name: 'page.html', kind: 'html', mime: 'text/html' }),

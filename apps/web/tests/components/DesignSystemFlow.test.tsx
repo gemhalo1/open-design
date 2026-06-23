@@ -13,7 +13,7 @@ import {
   DesignSystemDetailView,
 } from '../../src/components/DesignSystemFlow';
 import { CONNECTORS_CHANGED_EVENT } from '../../src/components/connectors-events';
-import type { AppConfig, Conversation, DesignSystemDetail, Project, ProjectFile } from '../../src/types';
+import type { AppConfig, Conversation, DesignSystemDetail, DesignSystemSummary, Project, ProjectFile } from '../../src/types';
 import { I18nProvider } from '../../src/i18n';
 
 const mocks = vi.hoisted(() => ({
@@ -424,6 +424,57 @@ describe('DesignSystemCreationFlow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
     expect((screen.getByPlaceholderText(/name: Heritage/i) as HTMLTextAreaElement).value).toBe(designMd);
+  });
+
+  it('restores the current DESIGN.md draft when clearing a copied reference system', async () => {
+    const designSystems: DesignSystemSummary[] = [
+      {
+        id: 'clay',
+        title: 'Clay',
+        summary: 'Friendly tactile product UI.',
+        category: 'Product',
+        swatches: ['#f4efe7', '#25211d'],
+      },
+    ];
+    const draft = [
+      '---',
+      'name: Manual Draft',
+      'colors:',
+      '  primary: "#123456"',
+      '---',
+      '',
+      '## Overview',
+      'A pasted draft the user is still editing.',
+    ].join('\n');
+
+    mocks.fetchDesignSystem.mockResolvedValue({
+      ...designSystems[0],
+      body: '# Clay reference\n',
+      source: 'user',
+      status: 'published',
+      isEditable: true,
+    } satisfies DesignSystemDetail);
+
+    render(
+      <DesignSystemCreationFlow
+        onBack={() => {}}
+        onCreated={() => {}}
+        designSystems={designSystems}
+      />,
+    );
+
+    const textarea = screen.getByPlaceholderText(/name: Heritage/i) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: draft } });
+
+    fireEvent.click(screen.getByTestId('project-ds-picker-trigger'));
+    fireEvent.mouseDown(await screen.findByTestId('project-ds-picker-option-clay'));
+
+    await waitFor(() => expect(textarea.value).toBe('# Clay reference\n'));
+
+    fireEvent.click(screen.getByTestId('project-ds-picker-trigger'));
+    fireEvent.click(await screen.findByTestId('project-ds-picker-clear'));
+
+    await waitFor(() => expect(textarea.value).toBe(draft));
   });
 
   it('creates from a brand description by sending a fallback DESIGN.md', async () => {

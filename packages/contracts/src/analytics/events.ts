@@ -1862,6 +1862,8 @@ export interface FileManagerClickProps {
   area: 'file_manager';
   element:
     | 'new_sketch'
+    | 'new_browser'
+    | 'create_design_system'
     | 'paste'
     | 'upload'
     | 'library'

@@ -575,7 +575,7 @@
   box-shadow:
     0 1px 0 rgba(15, 15, 15, 0.02),
     0 8px 24px -12px rgba(15, 15, 15, 0.08);
-  max-width: min(420px, 92%);
+  max-width: min(560px, 92%);
   text-align: center;
 }
 .df-empty-title {
@@ -584,6 +584,13 @@
   font-weight: 500;
   letter-spacing: -0.005em;
   line-height: 1.3;
+}
+.df-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .df-empty-cta {
   display: inline-flex;
@@ -601,9 +608,28 @@
   flex-shrink: 0;
   transition: background 120ms var(--ease-out), border-color 120ms var(--ease-out);
 }
+.df-empty-cta-primary {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+  color: var(--bg-panel);
+}
+.df-empty-cta-secondary {
+  background: var(--bg);
+}
+.df-empty-cta-tertiary {
+  background: transparent;
+  color: var(--text-muted);
+}
 .df-empty-cta:hover {
   background: var(--bg-subtle);
   border-color: var(--border-strong);
+}
+.df-empty-cta-primary:hover {
+  background: var(--text);
+  border-color: var(--text);
+}
+.df-empty-cta-tertiary:hover {
+  color: var(--text);
 }
 .df-empty-cta:focus-visible {
   outline: 2px solid var(--accent);

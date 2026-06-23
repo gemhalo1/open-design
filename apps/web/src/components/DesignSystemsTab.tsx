@@ -1082,10 +1082,11 @@ function DesignSystemDetail({
       {isUser ? (
         <Button
           size="icon"
-          className={styles.downloadBtn}
+          className={`${styles.downloadBtn} od-tooltip`}
           data-testid={`design-system-download-${system.id}`}
           aria-label={t('dsManager.downloadAria', { title: system.title })}
-          title={t('dsManager.downloadTitle')}
+          data-tooltip={t('dsManager.downloadTitle')}
+          data-tooltip-placement="top"
           onClick={() => void handleDownload()}
           disabled={busy || downloading}
         >
