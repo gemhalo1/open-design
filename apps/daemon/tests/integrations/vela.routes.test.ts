@@ -277,6 +277,53 @@ describe('GET /api/integrations/vela/wallet', () => {
     }
   });
 
+  it('does not serve a cached wallet balance after the control key is rejected', async () => {
+    let requestCount = 0;
+    const walletApi = await startWalletApi((_req, res) => {
+      requestCount += 1;
+      res.setHeader('content-type', 'application/json');
+      if (requestCount === 1) {
+        res.end(JSON.stringify({
+          balanceUsd: '0.1000',
+          updatedAt: '2026-06-23T06:05:18.782Z',
+        }));
+        return;
+      }
+      res.statusCode = 401;
+      res.end(JSON.stringify({ error: 'unauthenticated' }));
+    });
+    seedLogin('local', {
+      apiUrl: walletApi.url,
+      controlKey: 'ck-revoked-wallet',
+      runtimeKey: 'rt-wallet-balance',
+      user: { id: 'wallet-user', email: 'wallet@example.com', plan: 'free' },
+    });
+    try {
+      const first = await getJson<{
+        balanceUsd: string | null;
+        source: string;
+        status: string;
+      }>(`${baseUrl}/api/integrations/vela/wallet`);
+      const second = await getJson<{
+        balanceUsd: string | null;
+        error?: { code: string; message: string };
+        source: string;
+        status: string;
+      }>(`${baseUrl}/api/integrations/vela/wallet?refresh=1`);
+
+      expect(first.body.status).toBe('available');
+      expect(first.body.balanceUsd).toBe('0.1000');
+      expect(first.body.source).toBe('vela_api');
+      expect(second.body.status).toBe('unavailable');
+      expect(second.body.balanceUsd).toBeNull();
+      expect(second.body.source).toBe('unavailable');
+      expect(second.body.error?.code).toBe('unauthorized');
+      expect(second.body.error?.message).toMatch(/sign in again/i);
+    } finally {
+      await walletApi.close();
+    }
+  });
+
   it('reports missing_control_key instead of showing zero when only a runtime key is present', async () => {
     seedLogin('local', {
       controlKey: '',

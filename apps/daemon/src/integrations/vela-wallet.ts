@@ -122,16 +122,7 @@ export function createVelaWalletSnapshotReader(options: VelaWalletReaderOptions 
         },
       });
       if (response.status === 401 || response.status === 403) {
-        const cached = cache.get(key);
-        if (cached) {
-          return {
-            ...withCacheSource(cached.snapshot, true),
-            error: {
-              code: 'unauthorized',
-              message: 'AMR wallet authorization expired. Sign in again to refresh wallet access.',
-            },
-          };
-        }
+        cache.delete(key);
         return unavailableSnapshot({
           code: 'unauthorized',
           fetchedAt,

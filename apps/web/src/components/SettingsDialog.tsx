@@ -954,6 +954,23 @@ export function agentRefreshOptionsForConfig(cfg: AppConfig): AgentRefreshOption
   };
 }
 
+export function amrWalletValueLabel(input: {
+  balance: string | null;
+  loadingLabel: string;
+  ready: boolean;
+  snapshot: AmrWalletSnapshot | null;
+  unavailableLabel: string;
+}): string {
+  if (!input.ready) return input.loadingLabel;
+  if (input.balance) return input.balance;
+  const code = input.snapshot?.error?.code;
+  if (code === 'missing_control_key' || code === 'unauthorized') {
+    const message = input.snapshot?.error?.message?.trim();
+    if (message) return message;
+  }
+  return input.unavailableLabel;
+}
+
 function apiModelOptionLabel(
   model: ProviderModelOption,
   sourceLabel?: string,
@@ -3815,9 +3832,13 @@ export function SettingsDialog({
                                             {t('settings.amrWalletBalance')}
                                           </span>
                                           <span className="agent-card-amr-wallet__value">
-                                            {amrWalletReady
-                                              ? (amrWalletBalance ?? t('settings.amrWalletUnavailable'))
-                                              : t('common.loading')}
+                                            {amrWalletValueLabel({
+                                              balance: amrWalletBalance,
+                                              loadingLabel: t('common.loading'),
+                                              ready: amrWalletReady,
+                                              snapshot: amrWalletSnapshot,
+                                              unavailableLabel: t('settings.amrWalletUnavailable'),
+                                            })}
                                           </span>
                                           {amrWalletTime ? (
                                             <span className="agent-card-amr-wallet__meta">
