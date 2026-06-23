@@ -62,12 +62,16 @@ export function BrandsTab({ onApplyDesignSystem, onOpenProject }: BrandsTabProps
     if (isBrandsView) void refresh();
   }, [isBrandsView, refresh]);
 
-  // While a brand is mid-extraction, poll so its card flips from `extracting`
-  // to the finalized preview without the user leaving and returning. Scoped to
-  // the active view and torn down once nothing is extracting, so a hidden tab
+  // While a brand is mid-extraction (or paused awaiting user input), poll so its
+  // card flips from `extracting` to the finalized preview — or back from
+  // `needs_input` once the user answers — without leaving and returning. Scoped
+  // to the active view and torn down once nothing is in-flight, so a hidden tab
   // never polls.
   const hasExtracting = useMemo(
-    () => (brands ?? []).some((b) => b.meta.status === 'extracting'),
+    () =>
+      (brands ?? []).some(
+        (b) => b.meta.status === 'extracting' || b.meta.status === 'needs_input',
+      ),
     [brands],
   );
   useEffect(() => {

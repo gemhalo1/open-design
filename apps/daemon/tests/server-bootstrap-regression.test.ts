@@ -385,6 +385,7 @@ describe('bootstrap route regressions', () => {
       CRAFT_DIR: path.join(tempRoot, 'craft'),
       DESIGN_SYSTEMS_DIR: path.join(tempRoot, 'design-systems'),
       DESIGN_TEMPLATES_DIR: path.join(tempRoot, 'design-templates'),
+      LIBRARY_DIR: path.join(tempRoot, 'library'),
       OD_BIN: path.join(tempRoot, 'od'),
       PROJECT_ROOT: tempRoot,
       PROJECTS_DIR: path.join(tempRoot, 'projects'),

@@ -168,6 +168,15 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose }
           <Icon name="layers-filled" size={18} />
         </NavButton>
         <NavButton
+          active={view === 'brands'}
+          ariaLabel={t('entry.navBrands')}
+          tooltip={t('entry.navBrands')}
+          onClick={() => selectView('brands')}
+          testId="entry-nav-brands"
+        >
+          <Icon name="blocks" size={18} />
+        </NavButton>
+        <NavButton
           active={view === 'tasks'}
           ariaLabel={t('entry.navTasks')}
           tooltip={t('entry.navTasks')}

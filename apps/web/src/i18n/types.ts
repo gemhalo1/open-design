@@ -152,6 +152,17 @@ export interface Dict {
   'settings.onboardingNewsletterBody': string;
   'settings.onboardingConnectTitle': string;
   'settings.onboardingConnectBody': string;
+  'settings.onboardingCloudTitle': string;
+  'settings.onboardingCloudBody': string;
+  'settings.onboardingCloudSignIn': string;
+  'settings.onboardingCloudContinue': string;
+  'settings.onboardingCloudAlternative': string;
+  'settings.onboardingCloudOr': string;
+  'settings.onboardingCloudRights': string;
+  'settings.onboardingGateTooltipNoRuntime': string;
+  'settings.onboardingGateTooltipAmr': string;
+  'settings.onboardingGateTooltipLocal': string;
+  'settings.onboardingGateTooltipByok': string;
   'settings.onboardingRecommended': string;
   'settings.onboardingAmrCloudOfficialBadge': string;
   'settings.onboardingLocalTitle': string;
@@ -193,6 +204,7 @@ export interface Dict {
   'settings.onboardingRoleDesigner': string;
   'settings.onboardingRoleEngineer': string;
   'settings.onboardingRoleMarketing': string;
+  'settings.onboardingRoleAgency': string;
   'settings.onboardingRoleGrowth': string;
   'settings.onboardingRoleOps': string;
   'settings.onboardingRoleFounder': string;
@@ -221,7 +233,6 @@ export interface Dict {
   'settings.onboardingBack': string;
   'settings.onboardingContinue': string;
   'settings.onboardingFinish': string;
-  'settings.onboardingSkip': string;
   'settings.kicker': string;
   'settings.title': string;
   'settings.subtitle': string;
@@ -3332,6 +3343,9 @@ export interface Dict {
   'brand.colorsCount': string;
   'brand.extracting': string;
   'brand.failed': string;
+  'brand.needsInput': string;
+  'brand.needsInputHint': string;
+  'brand.appliedToChat': string;
   'brand.previewEmpty': string;
   'brand.viewDetails': string;
   'newBrand.title': string;
