@@ -669,6 +669,15 @@ async function designSystemAssetsRootFingerprint(
     manifest?.files.components ?? 'components.html',
     manifest?.componentsManifest ?? 'components.manifest.json',
   ]);
+  // When the manifest-less user: backfill is eligible, the resolved tokensCss is
+  // derived from DESIGN.md and gated on metadata.json (artifactMode), so both
+  // must enter the cache fingerprint — otherwise editing swatches or flipping to
+  // agent-managed would keep serving stale synthesized tokens. Mirrors the
+  // eligibility check in deriveLegacyUserTokensCss.
+  if (manifest === null && id.startsWith('user:')) {
+    candidates.add('DESIGN.md');
+    candidates.add('metadata.json');
+  }
   return {
     root,
     id,

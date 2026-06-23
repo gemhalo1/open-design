@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createUserDesignSystem,
   readDesignSystemAssets,
+  resolveDesignSystemAssets,
 } from '../../src/design-systems/index.js';
 
 // Red spec for EXISTING self-built design systems (created before the
@@ -66,5 +67,40 @@ describe('legacy self-built design system token backfill', () => {
     const assets = await readDesignSystemAssets(root, created.id);
 
     expect(assets.tokensCss).toBeUndefined();
+  });
+
+  // Regression for the resolveDesignSystemAssets cache: the synthesized
+  // tokensCss is derived from DESIGN.md and gated on metadata.json, so those
+  // files must participate in the cache fingerprint. Otherwise the daemon keeps
+  // serving stale synthesized tokens after the package is switched back to
+  // agent-managed (DESIGN.md-only) mode.
+  it('drops synthesized legacy tokens after metadata flips to agent-managed', async () => {
+    const builtInRoot = await mkdtemp(path.join(tmpdir(), 'od-builtin-'));
+    try {
+      const created = await createUserDesignSystem(root, {
+        title: 'Cache Brand',
+        summary: 'Dense product UI.',
+        category: 'Custom',
+      });
+      const dir = path.join(root, created.id.slice('user:'.length));
+      await rm(path.join(dir, 'tokens.css'), { force: true });
+
+      const first = await resolveDesignSystemAssets(created.id, builtInRoot, root, {});
+      expect(first.tokensCss, 'legacy package derives tokens on first resolve').toBeTruthy();
+
+      // Flip to agent-managed via metadata.json — the fallback should stop.
+      const metaPath = path.join(dir, 'metadata.json');
+      const meta = JSON.parse(await readFile(metaPath, 'utf8'));
+      meta.artifactMode = 'agent-managed';
+      await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+      const second = await resolveDesignSystemAssets(created.id, builtInRoot, root, {});
+      expect(
+        second.tokensCss,
+        'cache must invalidate when metadata.json changes, not serve stale tokens',
+      ).toBeUndefined();
+    } finally {
+      await rm(builtInRoot, { recursive: true, force: true });
+    }
   });
 });
