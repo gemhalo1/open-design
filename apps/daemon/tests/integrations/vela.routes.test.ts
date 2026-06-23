@@ -27,6 +27,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { startServer } from '../../src/server.js';
 import { readAppConfig, writeAppConfig } from '../../src/app-config.js';
 import {
+  clearAllVelaLiveAccounts,
   parseAmrEntryAnalyticsPayload,
   parseAmrOnboardingProfileAnalyticsPayload,
 } from '../../src/integrations/vela.js';
@@ -182,6 +183,8 @@ afterEach(() => {
   delete process.env.OD_AMR_LOGIN_ACTIVATION_GRACE_MS;
   delete process.env.FAKE_VELA_LOGIN_USER_EMAIL;
   delete process.env.FAKE_VELA_LOGIN_USER_PLAN;
+  delete process.env.FAKE_VELA_BILLING_TIER;
+  delete process.env.FAKE_VELA_BILLING_BALANCE_USD;
   delete process.env.FAKE_VELA_ENV_DUMP_PATH;
   delete process.env.OD_PUBLIC_BASE_URL;
   delete process.env.VELA_RUNTIME_KEY;
@@ -375,6 +378,26 @@ describe('GET /api/integrations/vela/status', () => {
     expect(body.user?.email).toBe('leaf@example.com');
     expect(body.user?.plan).toBe('free');
     expect(body.user?.name).toBe('杨瑾龙');
+  });
+
+  it('blocks the first signed-in /status on a cold cache and surfaces the fetched plan + balance', async () => {
+    // Regression: the new account surfaces read /status once and do not
+    // re-poll, so a cold cache must resolve live billing BEFORE the first
+    // response — otherwise plan/balance stay hidden until the user refocuses.
+    clearAllVelaLiveAccounts();
+    process.env.FAKE_VELA_BILLING_TIER = 'plus';
+    process.env.FAKE_VELA_BILLING_BALANCE_USD = '247.51';
+    // Config carries no plan, so plan/balance can only come from the live fetch.
+    seedLogin('local', {
+      user: { id: 'cold-1', email: 'cold@example.com', plan: undefined },
+    });
+    const { body } = await getJson<{
+      loggedIn: boolean;
+      user: { email?: string; plan?: string; balanceUsd?: string | null } | null;
+    }>(`${baseUrl}/api/integrations/vela/status`);
+    expect(body.loggedIn).toBe(true);
+    expect(body.user?.plan).toBe('plus');
+    expect(body.user?.balanceUsd).toBe('247.51');
   });
 
   it('never leaks the runtimeKey or controlKey in the status payload', async () => {

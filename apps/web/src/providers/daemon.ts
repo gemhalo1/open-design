@@ -760,11 +760,15 @@ export const VELA_TOP_PLAN_TIER = 'max';
 
 /**
  * Whether to surface an "Upgrade" affordance for the given plan tier. True for
- * free/plus/pro (and any non-top/unknown tier); false only at the top tier.
- * A missing plan is treated as free → upgradeable.
+ * a KNOWN tier below the top (free/plus/pro); false at the top tier AND when
+ * the plan is unknown. The unknown case matters: a signed-in session whose live
+ * billing summary has not resolved yet has no plan, and treating that as
+ * upgradeable would flash an Upgrade CTA at top-tier users until billing loads.
  */
 export function canUpgradeVelaPlan(plan?: string | null): boolean {
-  return (plan?.trim() || 'free').toLowerCase() !== VELA_TOP_PLAN_TIER;
+  const normalized = plan?.trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized !== VELA_TOP_PLAN_TIER;
 }
 
 export interface VelaLoginStatus {
