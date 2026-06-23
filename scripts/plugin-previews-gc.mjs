@@ -157,6 +157,15 @@ function main() {
 
   const armed = args.delete && process.env.GC_ENABLE_DELETE === '1';
   if (!orphans.length) return;
+  // Fail closed: never delete from a protected set built on partial ref data
+  // (e.g. main's manifest could not be read). An empty/main-less protected set
+  // would mark live clips as orphans.
+  if (armed && (protectedSet.size === 0 || !manifestAtRef('origin/main'))) {
+    console.error(
+      'refusing to delete: protected set is empty or origin/main manifest is unreadable — fail-closed',
+    );
+    process.exit(1);
+  }
   if (!armed) {
     console.log(
       `DRY RUN — deleting nothing. Re-run with --delete and GC_ENABLE_DELETE=1 to remove the ${orphans.length} orphan(s).`,

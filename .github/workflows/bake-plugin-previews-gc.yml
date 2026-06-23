@@ -43,10 +43,14 @@ jobs:
         with:
           fetch-depth: 0 # need all tags + refs to build the protected set
 
-      - name: Fetch release branches + tags
+      - name: Fetch release branches + tags (fail closed)
+        # No `|| true`: these refs define the protected set. If we cannot fetch
+        # them, fail the job rather than GC from partial ref data — once deletion
+        # is armed, an incomplete protected set could prune clips a live release
+        # or main manifest still references.
         run: |
-          git fetch --tags --force origin '+refs/heads/release/*:refs/remotes/origin/release/*' || true
-          git fetch origin main:refs/remotes/origin/main || true
+          git fetch --tags --force origin '+refs/heads/release/*:refs/remotes/origin/release/*'
+          git fetch origin main:refs/remotes/origin/main
 
       - name: Garbage-collect (dry-run unless armed)
         env:
