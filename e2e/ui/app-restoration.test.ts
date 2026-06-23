@@ -1,5 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@/playwright/suite';
 import { ensureRailOpen } from '@/playwright/rail';
+import { runErrorCard } from '@/playwright/chat';
 import type { Dialog, Locator, Page, Request, Response } from '@playwright/test';
 import { automatedUiScenarios } from '@/playwright/resources';
 import type { UiScenario } from '@/playwright/resources';
@@ -1824,11 +1825,36 @@ test('[P0] @critical daemon error details persist between failed sends', async (
   await expectWorkspaceReady(page);
 
   await sendPrompt(page, 'first failing prompt');
-  await expect(page.locator('.msg.error')).toContainText('connection refused');
+  await expect(runErrorCard(page)).toContainText('connection refused');
   await expect(page.locator('.msg.user').getByText('first failing prompt', { exact: true })).toBeVisible();
 
+  const current = new URL(page.url());
+  const [, projects, projectId] = current.pathname.split('/');
+  if (projects !== 'projects' || !projectId) throw new Error(`unexpected project route: ${current.pathname}`);
+  await seedHtmlArtifact(
+    page,
+    projectId,
+    'error-cross-tab.html',
+    '<!doctype html><html><body><h1>Error cross tab</h1></body></html>',
+  );
+  await page.getByTestId('design-files-tab').click();
+  const crossFileRow = page.locator('[data-testid^="design-file-row-"]', {
+    hasText: 'error-cross-tab.html',
+  });
+  await expect(crossFileRow).toBeVisible();
+  await crossFileRow.getByRole('button').first().click();
+  await clickDesignFilePreviewOpen(page);
+  await expect(page.getByRole('tab', { name: /error-cross-tab\.html/i })).toHaveAttribute('aria-selected', 'true');
+  await expect(artifactPreviewFrame(page).getByRole('heading', { name: 'Error cross tab' })).toBeVisible();
+
+  await page.goto(`/projects/${projectId}`);
+  await expectWorkspaceReady(page);
+  await expect(runErrorCard(page)).toContainText('connection refused');
+  await expect(page.locator('.msg.user').getByText('first failing prompt', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('chat-composer-input')).toBeVisible();
+
   await sendPrompt(page, 'second failing prompt');
-  await expect(page.locator('.msg.error')).toContainText('connection refused');
+  await expect(runErrorCard(page)).toContainText('connection refused');
   await expect(page.locator('.msg.user').getByText('first failing prompt', { exact: true })).toBeVisible();
   await expect(page.locator('.msg.user').getByText('second failing prompt', { exact: true })).toBeVisible();
 });
@@ -1905,8 +1931,8 @@ test('[P0] a successful retry after a failed send restores the workspace to a fr
   await expectWorkspaceReady(page);
 
   await sendPrompt(page, 'first failing prompt');
-  await expect(page.locator('.msg.error')).toContainText('connection refused');
-  await expect(page.locator('.msg.error')).toContainText('connection refused');
+  await expect(runErrorCard(page)).toContainText('connection refused');
+  await expect(runErrorCard(page)).toContainText('connection refused');
 
   await sendPrompt(page, 'retry prompt that succeeds');
   await expect(page.getByText('retry-success-artifact.html', { exact: true }).first()).toBeVisible();
@@ -1975,7 +2001,7 @@ test('[P0] retrying a failed run does not duplicate the original user message', 
 
   const prompt = 'retry dedup prompt';
   await sendPrompt(page, prompt);
-  await expect(page.locator('.msg.error')).toContainText('connection refused');
+  await expect(runErrorCard(page)).toContainText('connection refused');
   await expect(page.locator('.chat-error-retry')).toBeVisible();
   await expect(page.locator('.msg.user', { hasText: prompt })).toHaveCount(1);
 

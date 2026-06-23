@@ -38,11 +38,20 @@ import {
 } from '../design-system-auto-prompt';
 import { isTodoWriteToolName, latestTodoWriteInputForPinnedCard } from '../runtime/todos';
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, ChatMessageFeedbackChange, Conversation, DesignSystemSummary, PreviewComment, Project, ProjectFile, ProjectMetadata, SkillSummary } from '../types';
-import { exactDateTime, messageTime, shortTime } from '../utils/chatTime';
+import { agentDisplayName } from '../utils/agentLabels';
 import { commentTargetDisplayName, commentsToAttachments, simplePositionLabel } from '../comments';
 import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessage';
 import { AmrGuidance } from './AmrGuidance';
+import { AmrLoginPill } from './AmrLoginPill';
+import {
+  AMR_LOGIN_STATUS_EVENT,
+  amrLoginStatusEventReason,
+} from './amrLoginPolling';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
+import {
+  fetchVelaLoginStatus,
+  type VelaLoginStatus,
+} from '../providers/daemon';
 import { RESUME_CONTINUE_PROMPT } from '../runtime/resume';
 import {
   ChatComposer,
@@ -746,7 +755,19 @@ export function ChatPane({
   const t = useT();
   const analytics = useAnalytics();
   const amrProfile = config?.agentCliEnv?.amr?.[AMR_PROFILE_ENV_KEY] ?? null;
+  const [inlineAmrLoginStatus, setInlineAmrLoginStatus] =
+    useState<VelaLoginStatus | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
+  // Guards the inline AMR sign-in card so a successful login auto-retries the
+  // failed run exactly once (the pill's onStatusChange fires loggedIn on every
+  // poll). Keyed by the failed assistant's id.
+  const amrAuthRetriedRef = useRef<string | null>(null);
+  // Tracks the last observed AMR login state so we retry only on a real
+  // signed-out -> signed-in transition. Without this, a run that keeps failing
+  // AMR_AUTH_REQUIRED while /status already reports signed-in would auto-retry
+  // forever (each retry is a new assistant id, so the id guard alone never
+  // converges).
+  const amrAuthPrevLoggedInRef = useRef<boolean | undefined>(undefined);
   const chatLogScrollIdleTimerRef = useRef<number | null>(null);
   const historyWrapRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<ChatComposerHandle | null>(null);
@@ -763,6 +784,25 @@ export function ChatPane({
   // shouldn't be yanked back the moment the next chunk streams in.
   const pinnedToBottomRef = useRef(true);
   const scrolledToFormRef = useRef<Set<string>>(new Set());
+  const refreshInlineAmrLoginStatus = useCallback(async () => {
+    const next = await fetchVelaLoginStatus().catch(() => null);
+    if (next) setInlineAmrLoginStatus(next);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    void refreshInlineAmrLoginStatus();
+    const onAmrLoginStatusChange = (event: Event) => {
+      const reason = amrLoginStatusEventReason(event);
+      if (reason === 'login-canceled') return;
+      void refreshInlineAmrLoginStatus();
+    };
+    window.addEventListener(AMR_LOGIN_STATUS_EVENT, onAmrLoginStatusChange);
+    return () => {
+      window.removeEventListener(AMR_LOGIN_STATUS_EVENT, onAmrLoginStatusChange);
+    };
+  }, [refreshInlineAmrLoginStatus]);
+
   // "Anchor the just-sent turn to the top" (ChatGPT-style). On send we pin
   // the user's message to the top of the viewport and let the reply stream
   // below it instead of following the bottom. `pending` is armed by the
@@ -859,6 +899,45 @@ export function ChatPane({
   const runFailureUi = retryAssistant
     ? resolveRunFailureUi(failedRunErrorEvent?.code, retryAssistant.agentId)
     : null;
+  const hasInlineAmrAuthorizeFailure = Boolean(
+    retryAssistant && onRetry && runFailureUi?.primaryAction === 'authorize',
+  );
+  useEffect(() => {
+    if (!hasInlineAmrAuthorizeFailure || !retryAssistant || !onRetry) return;
+    let stopped = false;
+    const retryIfSignedIn = async () => {
+      const next = await refreshInlineAmrLoginStatus();
+      if (stopped) return;
+      // Retry only on a real signed-out -> signed-in transition. A null/unknown
+      // status is NOT treated as signed-out, so it can't fabricate a transition;
+      // and once signed-in we never retry again until an explicit signed-out is
+      // seen. Otherwise a run that keeps failing auth while /status reports
+      // signed-in would retry forever (each retry is a new assistant id).
+      if (next?.loggedIn === true) {
+        const wasSignedOut = amrAuthPrevLoggedInRef.current === false;
+        amrAuthPrevLoggedInRef.current = true;
+        if (wasSignedOut && amrAuthRetriedRef.current !== retryAssistant.id) {
+          amrAuthRetriedRef.current = retryAssistant.id;
+          onRetry(retryAssistant);
+        }
+      } else if (next && next.loggedIn === false) {
+        amrAuthPrevLoggedInRef.current = false;
+      }
+    };
+    void retryIfSignedIn();
+    const interval = window.setInterval(() => {
+      void retryIfSignedIn();
+    }, 500);
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    hasInlineAmrAuthorizeFailure,
+    onRetry,
+    refreshInlineAmrLoginStatus,
+    retryAssistant,
+  ]);
   // Offer Continue (resume) when the failed run is resumable AND the active
   // agent still matches the agent that produced it. The daemon stores a
   // resumable session per (conversation, agent); after an agent switch the new
@@ -878,7 +957,14 @@ export function ChatPane({
   // string; fall back to the live global error (also covers conversation-load
   // / audio errors) then the persisted run error so a reload still shows it.
   const rawError = error ?? failedRunErrorEvent?.detail ?? null;
-  const displayError = runFailureUi?.messageKey ? t(runFailureUi.messageKey) : rawError;
+  // Friendly agent name for {agent} interpolation in failure copy (e.g. the
+  // sign-in messages). Falls back to a neutral word when unreadable, never null.
+  const failedAgentLabel =
+    agentDisplayName(retryAssistant?.agentId, retryAssistant?.agentName) ??
+    t('chat.runError.agentFallback');
+  const displayError = runFailureUi?.messageKey
+    ? t(runFailureUi.messageKey, { agent: failedAgentLabel })
+    : rawError;
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
         message: displayError,
@@ -891,7 +977,22 @@ export function ChatPane({
         agentId: retryAssistant?.agentId,
       })
     : null;
+  // First non-empty line of the diagnostics — shown as the one-line peek when
+  // the error-source area is collapsed.
+  const errorSourcePeek =
+    errorDiagnosticText?.split('\n').find((line) => line.trim().length > 0)?.trim() ?? null;
+  // Status-dot tone for the unified card. Brand (accent) for AMR sign-in/top-up
+  // — the commercial recovery path; warn (amber) for the self-healing
+  // connection drop; error (red) for everything else. Purely visual.
+  const runErrorTone: 'error' | 'warn' | 'brand' =
+    runFailureUi?.primaryAction === 'authorize' || runFailureUi?.primaryAction === 'recharge'
+      ? 'brand'
+      : failedRunErrorEvent?.code === 'AGENT_CONNECTION_DROPPED'
+        ? 'warn'
+        : 'error';
   const [copiedErrorDiagnostic, setCopiedErrorDiagnostic] = useState(false);
+  // Collapsed by default: the error source area shows one line until expanded.
+  const [errorSourceOpen, setErrorSourceOpen] = useState(false);
   const errorDiagnosticCopyTimerRef = useRef<number | null>(null);
   const copyErrorDiagnostic = useCallback(async () => {
     if (!errorDiagnosticText) return;
@@ -995,6 +1096,12 @@ export function ChatPane({
     () => messages.find((m) => m.role === 'user')?.id,
     [messages],
   );
+  const shouldBalanceFinishedTranscript =
+    !loading &&
+    !streaming &&
+    !displayError &&
+    !hasActiveRunMessage &&
+    messages.length > 0;
   // Map each assistant message id to the user message that follows it (if any)
   // so the chat-side Questions banner can reopen that exact answered form in
   // the right-hand panel later.
@@ -1820,6 +1927,7 @@ export function ChatPane({
                 loading ? 'is-loading' : '',
                 chatLogScrollable ? 'is-scrollable' : '',
                 chatLogScrolling ? 'is-scrolling' : '',
+                shouldBalanceFinishedTranscript ? 'is-balanced-transcript' : '',
               ].filter(Boolean).join(' ')}
               ref={logRef}
               aria-busy={loading}
@@ -1960,10 +2068,63 @@ export function ChatPane({
                 scrollContainerRef={logRef}
               />
               {displayError ? (
-                <div className="msg error">
-                  <span className="chat-error-text">{displayError}</span>
-                  {errorDiagnosticText || showErrorActions || (retryAssistant && onRetry && runFailureUi) ? (
-                    <div className="chat-error-actions">
+                <div className="run-error" data-tone={runErrorTone}>
+                  {/* ① type title + ② detail */}
+                  <div className="run-error__main">
+                    <span className="run-error__icon" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.4" />
+                        <path d="M8 4.5v4M8 11h.01" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                      </svg>
+                    </span>
+                    <div className="run-error__copy">
+                      {runFailureUi ? (
+                        <p className="run-error__title">{t(runFailureUi.titleKey)}</p>
+                      ) : null}
+                      <p className="run-error__desc">{displayError}</p>
+                    </div>
+                  </div>
+                  {/* ④ collapsible error source */}
+                  {errorDiagnosticText ? (
+                    <div className={`run-error__source${errorSourceOpen ? ' is-open' : ''}`}>
+                      <div className="run-error__source-head">
+                        <button
+                          type="button"
+                          className="run-error__source-bar"
+                          aria-expanded={errorSourceOpen}
+                          aria-label={
+                            errorSourceOpen
+                              ? t('chat.runError.sourceCollapseAria')
+                              : t('chat.runError.sourceExpandAria')
+                          }
+                          onClick={() => setErrorSourceOpen((open) => !open)}
+                        >
+                          <svg className="run-error__source-chevron" viewBox="0 0 12 12" fill="none">
+                            <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span className="run-error__source-label">{t('chat.runError.sourceLabel')}</span>
+                          {errorSourcePeek ? (
+                            <span className="run-error__source-peek">{errorSourcePeek}</span>
+                          ) : null}
+                        </button>
+                        <button
+                          type="button"
+                          className="run-error__source-copy"
+                          onClick={() => void copyErrorDiagnostic()}
+                          aria-label={copiedErrorDiagnostic ? t('chat.copyDone') : t('chat.copyErrorDiagnostic')}
+                          title={copiedErrorDiagnostic ? t('chat.copyDone') : t('chat.copyErrorDiagnostic')}
+                        >
+                          <Icon name={copiedErrorDiagnostic ? 'check' : 'copy'} size={13} />
+                        </button>
+                      </div>
+                      <div className="run-error__source-full">
+                        <pre>{errorDiagnosticText}</pre>
+                      </div>
+                    </div>
+                  ) : null}
+                  {/* ③ fix actions */}
+                  {showErrorActions || (retryAssistant && onRetry && runFailureUi) ? (
+                    <div className="run-error__actions">
                       {showByokRecoveryCta ? (
                         <button
                           type="button"
@@ -1973,42 +2134,45 @@ export function ChatPane({
                           {t('avatar.useLocal')}
                         </button>
                       ) : null}
-                      {errorDiagnosticText ? (
-                        <button
-                          type="button"
-                          className="ghost chat-error-copy"
-                          onClick={() => void copyErrorDiagnostic()}
-                          aria-label={copiedErrorDiagnostic ? t('chat.copyDone') : t('chat.copyErrorDiagnostic')}
-                          title={copiedErrorDiagnostic ? t('chat.copyDone') : t('chat.copyErrorDiagnostic')}
-                        >
-                          <Icon name={copiedErrorDiagnostic ? 'check' : 'copy'} size={13} />
-                        </button>
-                      ) : null}
                       {retryAssistant && onRetry && runFailureUi ? (
                         <>
                           {runFailureUi.primaryAction === 'authorize' ? (
-                            <button
-                              type="button"
-                              className="chat-error-action"
-                              onClick={() => {
-                                recordAmrEntry(
-                                  analytics.track,
-                                  'chat_error_authorize_retry',
-                                  new Date(),
-                                  {
-                                    metricsConsent:
-                                      config?.telemetry?.metrics === true,
-                                  },
-                                );
-                                if (onSwitchToAmrAndRetry) {
-                                  onSwitchToAmrAndRetry(retryAssistant);
-                                } else {
-                                  onOpenAmrSettings?.();
+                            // Sign in to AMR inline — the pill drives vela login,
+                            // surfaces the activation URL/code when the browser
+                            // doesn't auto-open, and on success we retry the run
+                            // without bouncing the user out to Settings.
+                            <AmrLoginPill
+                              className="chat-error-amr-login"
+                              signInLabel={t('chat.amrError.authorizeCta')}
+                              amrEntrySourceDetail="chat_error_authorize_retry"
+                              initialStatus={inlineAmrLoginStatus}
+                              metricsConsent={config?.telemetry?.metrics === true}
+                              installationId={config?.installationId}
+                              showActivationDetails
+                              hideSignedOutStatus
+                              revealPendingCancelAction
+                              onStatusChange={(loginStatus) => {
+                                // Retry only on a real signed-out -> signed-in
+                                // transition (see amrAuthPrevLoggedInRef).
+                                if (loginStatus?.loggedIn === true) {
+                                  const wasSignedOut =
+                                    amrAuthPrevLoggedInRef.current === false;
+                                  amrAuthPrevLoggedInRef.current = true;
+                                  if (
+                                    wasSignedOut &&
+                                    amrAuthRetriedRef.current !== retryAssistant.id
+                                  ) {
+                                    amrAuthRetriedRef.current = retryAssistant.id;
+                                    onRetry(retryAssistant);
+                                  }
+                                } else if (
+                                  loginStatus &&
+                                  loginStatus.loggedIn === false
+                                ) {
+                                  amrAuthPrevLoggedInRef.current = false;
                                 }
                               }}
-                            >
-                              {t('chat.amrError.authorizeCta')}
-                            </button>
+                            />
                           ) : runFailureUi.primaryAction === 'launch-terminal-auth' ? (
                             <button
                               type="button"
@@ -2126,14 +2290,17 @@ export function ChatPane({
             {/* Always mounted so the CSS transition can play in both
                 directions; the `chat-jump-btn-active` class flips the
                 slide + opacity, and `aria-hidden` + `tabIndex={-1}`
-                keep it out of the a11y tree when it's not visible. */}
+                keep it out of the a11y tree when it's not visible.
+                Also suppressed while the conversation-history dropdown is
+                open: the dropdown sits in a separate stacking context, so
+                without this the button bleeds through it (#4123). */}
             <button
               type="button"
-              className={`chat-jump-btn${scrolledFromBottom ? ' chat-jump-btn-active' : ''}`}
+              className={`chat-jump-btn${scrolledFromBottom && !showConvList ? ' chat-jump-btn-active' : ''}`}
               onClick={jumpToBottom}
               title={t('chat.scrollToLatest')}
-              aria-hidden={!scrolledFromBottom}
-              tabIndex={scrolledFromBottom ? 0 : -1}
+              aria-hidden={!scrolledFromBottom || showConvList}
+              tabIndex={scrolledFromBottom && !showConvList ? 0 : -1}
             >
               <Icon name="arrow-up" size={12} style={{ transform: 'rotate(180deg)' }} />
               <span>{t('chat.jumpToLatest')}</span>
@@ -3308,13 +3475,10 @@ function UserMessageImpl({
   }
 
   const isDesignSystemWorkspaceRequest = isDesignSystemWorkspacePrompt(message.content);
-  const ts = messageTime(message);
 
   return (
     <div className="msg user">
-      <div className="role">
-        <span>{t('chat.you')}</span>
-      </div>
+      <span className="sr-only">{t('chat.you')}</span>
       {hasRunContext ? (
         <div className="msg-run-context-row" data-testid="msg-run-context-row">
           {message.sessionMode ? (
@@ -3403,15 +3567,6 @@ function UserMessageImpl({
         <div className="user-text-wrap">
           <div className="user-text user-bubble">{message.content}</div>
           <div className="user-actions">
-            {ts ? (
-              <time
-                className="user-actions-time"
-                dateTime={new Date(ts).toISOString()}
-                title={exactDateTime(ts)}
-              >
-                {shortTime(ts)}
-              </time>
-            ) : null}
             <button
               type="button"
               className="ghost user-copy-btn"

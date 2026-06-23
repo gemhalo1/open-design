@@ -167,6 +167,10 @@ interface Props {
   pendingPluginId: string | null;
   pendingChipId: string | null;
   submitDisabled?: boolean;
+  // True while the submitted run is still creating its project/conversation
+  // (#4082). Distinct from `submitDisabled`: it swaps the send button into a
+  // visible Sending… state instead of leaving it silently idle.
+  submitting?: boolean;
   onPickPlugin: (record: InstalledPluginRecord, nextPrompt: string | null) => void;
   onPickExamplePlugin?: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
   onPickSkill?: (skill: SkillSummary, nextPrompt: string | null) => void;
@@ -275,6 +279,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     pendingPluginId,
     pendingChipId,
     submitDisabled = false,
+    submitting = false,
     onPickPlugin,
     onPickExamplePlugin = () => undefined,
     onPickSkill = () => undefined,
@@ -324,7 +329,8 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   const mentionPickerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const shortcutsMenuRef = useRef<HTMLDivElement>(null);
-  const canSubmit = (prompt.trim().length > 0 || stagedFiles.length > 0) && !submitDisabled;
+  const canSubmit =
+    (prompt.trim().length > 0 || stagedFiles.length > 0) && !submitDisabled && !submitting;
   const previewHomeFile = useMemo(() => {
     if (!previewHomeFileKey) return null;
     return stagedFiles.find((file, index) => homeFileKey(file, index) === previewHomeFileKey) ?? null;
@@ -1479,17 +1485,18 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
             ) : null}
             <button
               type="button"
-              className={`home-hero__submit od-tooltip${sendAttention ? ' home-hero__attention-sheen' : ''}`}
+              className={`home-hero__submit od-tooltip${sendAttention ? ' home-hero__attention-sheen' : ''}${submitting ? ' is-sending' : ''}`}
               data-testid="home-hero-submit"
               onClick={onSubmit}
               onAnimationEnd={() => setSendAttention(false)}
               disabled={!canSubmit}
-              title={canSubmit ? t('homeHero.run') : t('homeHero.typeSomethingToRun')}
-              data-tooltip={canSubmit ? t('homeHero.run') : t('homeHero.typeSomethingToRun')}
-              aria-label={t('homeHero.run')}
+              title={submitting ? t('chat.comments.sending') : canSubmit ? t('homeHero.run') : t('homeHero.typeSomethingToRun')}
+              data-tooltip={submitting ? t('chat.comments.sending') : canSubmit ? t('homeHero.run') : t('homeHero.typeSomethingToRun')}
+              aria-label={submitting ? t('chat.comments.sending') : t('homeHero.run')}
+              aria-busy={submitting}
             >
               <Icon name="send" size={13} />
-              <span>{t('chat.send')}</span>
+              <span>{submitting ? t('chat.comments.sending') : t('chat.send')}</span>
             </button>
           </div>
         </div>
@@ -2786,6 +2793,7 @@ function homeHeroChipLabel(chipId: string, t: ReturnType<typeof useT>): string {
     case 'video': return t('homeHero.chip.video');
     case 'hyperframes': return t('homeHero.chip.hyperframes');
     case 'audio': return t('homeHero.chip.audio');
+    case 'create-brand-kit': return t('homeHero.chip.createBrandKit');
     case 'create-plugin': return t('homeHero.chip.createPlugin');
     case 'figma': return t('homeHero.chip.figma');
     case 'template': return t('homeHero.chip.template');
@@ -2797,6 +2805,7 @@ function homeHeroChipTitle(chip: HomeHeroChip, t: ReturnType<typeof useT>): stri
   switch (chip.id) {
     case 'live-artifact': return t('homeHero.chip.liveArtifactHint');
     case 'hyperframes': return t('homeHero.chip.hyperframesHint');
+    case 'create-brand-kit': return t('homeHero.chip.createBrandKitHint');
     case 'create-plugin': return t('homeHero.chip.createPluginHint');
     case 'figma': return t('homeHero.chip.figmaHint');
     case 'template': return t('homeHero.chip.templateHint');

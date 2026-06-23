@@ -4,8 +4,36 @@ import type {
   TrackingFirstModelEventType,
   TrackingRunLifecyclePhase,
   TrackingRunPhaseTimingStatus,
+  TrackingRuntimeType,
 } from '@open-design/contracts/analytics';
 import type { VelaLoginStatus } from './integrations/vela.js';
+
+const RUNTIME_TYPES: readonly TrackingRuntimeType[] = [
+  'amr_cloud',
+  'byok',
+  'local_cli',
+  'none',
+];
+
+// Resolve the `runtime_type` to stamp on daemon-emitted run_created /
+// run_finished. The daemon derives a best-effort value from the run's agent +
+// AMR sign-in, but it can never observe a saved BYOK key (those live only in
+// the web client), so a BYOK run looks like local_cli/amr_cloud server-side.
+// The web client passes the true runtime for the run it launched as a request
+// hint; a valid hint wins. Anything outside the closed runtime set (missing,
+// malformed) falls back to the daemon's own derivation.
+export function runtimeTypeForRunAnalytics(args: {
+  derived: TrackingRuntimeType;
+  hint?: unknown;
+}): TrackingRuntimeType {
+  if (
+    typeof args.hint === 'string' &&
+    (RUNTIME_TYPES as readonly string[]).includes(args.hint)
+  ) {
+    return args.hint as TrackingRuntimeType;
+  }
+  return args.derived;
+}
 
 // AMR account id stamp for daemon-emitted run events. Browser captures get
 // `user_id` from the PostHog super-property register (analytics/client.ts);
@@ -38,6 +66,17 @@ export interface RunTelemetryTimestamps {
   launchPreflightEndAt?: number;
   processSpawnStartedAt?: number;
   processSpawnedAt?: number;
+  // Subsegment boundaries inside `processSpawnedAt -> firstTokenAt`. The
+  // markers are keyed by runtime family (see `noteCliReadyAt` /
+  // `noteSessionInitDoneAt` in server.ts and the ACP callbacks): `cliReadyAt`
+  // is the first well-formed adapter output (first JSONL line / first ACP
+  // JSON-RPC message / first decoded stream event / first non-empty stdout
+  // chunk), and `sessionInitDoneAt` is the resume/`session/new` ack for ACP or
+  // the first model-bound request for stream agents. Either may be absent when
+  // its declared marker cannot be observed; the unattributed time then rolls
+  // into `spawn_to_first_token_remainder_ms`.
+  cliReadyAt?: number;
+  sessionInitDoneAt?: number;
   modelCallStartAt?: number;
   stdinWriteStartAt?: number;
   stdinWriteEndAt?: number;
@@ -81,6 +120,14 @@ export interface RunTimingAnalytics {
   runtime_init_to_first_token_ms?: number;
   spawn_to_first_token_ms?: number;
   time_to_first_artifact_ms?: number;
+  // `spawn_to_first_token_ms` split into auditable subsegments. By construction
+  // `cli_ready_ms + session_init_ms + model_first_token_ms +
+  // spawn_to_first_token_remainder_ms === spawn_to_first_token_ms` (absent
+  // subsegments count as 0 and their time falls into the remainder).
+  cli_ready_ms?: number;
+  session_init_ms?: number;
+  model_first_token_ms?: number;
+  spawn_to_first_token_remainder_ms?: number;
   generation_duration_ms?: number;
   tool_call_count: number;
   tool_duration_ms?: number;
@@ -558,6 +605,31 @@ export function summarizeRunTimingAnalytics(args: {
     telemetry.firstTokenAt,
     runEndAt,
   ]);
+
+  if (spawnToFirstToken !== undefined) {
+    const cliReady = durationBetween(
+      telemetry.processSpawnedAt,
+      telemetry.cliReadyAt,
+    );
+    const sessionInit = durationBetween(
+      telemetry.cliReadyAt,
+      telemetry.sessionInitDoneAt,
+    );
+    const modelFirstToken = durationBetween(
+      telemetry.sessionInitDoneAt,
+      telemetry.firstTokenAt,
+    );
+    if (cliReady !== undefined) result.cli_ready_ms = cliReady;
+    if (sessionInit !== undefined) result.session_init_ms = sessionInit;
+    if (modelFirstToken !== undefined) {
+      result.model_first_token_ms = modelFirstToken;
+    }
+    const attributed = (cliReady ?? 0) + (sessionInit ?? 0) + (modelFirstToken ?? 0);
+    result.spawn_to_first_token_remainder_ms = Math.max(
+      0,
+      spawnToFirstToken - attributed,
+    );
+  }
 
   if (typeof telemetry.attemptIndex === 'number') result.attempt_index = telemetry.attemptIndex;
   const attemptStartAt = telemetry.attemptStartedAt ?? startAt;

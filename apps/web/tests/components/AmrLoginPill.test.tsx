@@ -21,6 +21,7 @@ import {
 } from '../../src/components/AmrLoginPill';
 import { AMR_LOGIN_TIMEOUT_MS } from '../../src/components/amrLoginPolling';
 import { I18nProvider } from '../../src/i18n';
+import type { VelaLoginStatus } from '../../src/providers/daemon';
 
 interface StubbedResponse {
   status?: number;
@@ -47,10 +48,10 @@ beforeEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function renderPill() {
+function renderPill(props: ComponentProps<typeof AmrLoginPill> = {}) {
   return render(
     <I18nProvider initial="en">
-      <AmrLoginPill />
+      <AmrLoginPill {...props} />
     </I18nProvider>,
   );
 }
@@ -95,6 +96,54 @@ describe('AmrAccountControl', () => {
 
     expect(screen.getByText('Signing in…')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('surfaces the activation URL while signing in so the user can reopen the sign-in page', () => {
+    renderAccountControl({
+      status: 'signing-in',
+      compact: true,
+      activationUrl: 'https://app.vela.example/device?user_code=AB12-CD34',
+      onSignIn: vi.fn(),
+    });
+
+    const link = screen.getByRole('link', { name: 'Open sign-in page' });
+    // The activation URL already carries the device code, so the link alone
+    // completes sign-in — no separate code is rendered.
+    expect(link.getAttribute('href')).toBe(
+      'https://app.vela.example/device?user_code=AB12-CD34',
+    );
+    expect(screen.queryByText('AB12-CD34')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Copy verification code' }),
+    ).toBeNull();
+  });
+
+  it('shows the browser-failed hint when vela could not open the browser', () => {
+    renderAccountControl({
+      status: 'signing-in',
+      compact: true,
+      activationUrl: 'https://app.vela.example/device?user_code=AB12-CD34',
+      browserOpenFailed: true,
+      onSignIn: vi.fn(),
+    });
+
+    expect(
+      screen.getByText(
+        'Couldn’t open your browser automatically. Open the sign-in page below to continue.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('does not render the activation block before vela has printed a URL', () => {
+    renderAccountControl({
+      status: 'signing-in',
+      compact: true,
+      onSignIn: vi.fn(),
+    });
+
+    expect(
+      screen.queryByRole('link', { name: 'Open sign-in page' }),
+    ).toBeNull();
   });
 
   it('renders the signed-in email without profile fallback details', () => {
@@ -460,6 +509,108 @@ describe('AmrLoginPill', () => {
       expect(loginCalls).toBe(1);
     });
     expect(await screen.findByText('Signing in…')).toBeTruthy();
+  });
+
+  it('clears the local signing-in state as soon as status reports the login is complete', async () => {
+    let loginPosted = false;
+    const fetchMock = vi.fn(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as URL).toString();
+      if (url.endsWith('/api/integrations/vela/status')) {
+        return jsonResponse({
+          body: loginPosted
+            ? {
+                loggedIn: true,
+                profile: 'prod',
+                configPath: '/x',
+                user: { id: 'u', email: 'leaf@example.com', plan: 'free' },
+              }
+            : { loggedIn: false, profile: 'prod', user: null, configPath: '/x' },
+        });
+      }
+      if (
+        url.endsWith('/api/integrations/vela/login') &&
+        init?.method === 'POST'
+      ) {
+        loginPosted = true;
+        return jsonResponse({ status: 202, body: { pid: 4242 } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    renderPill();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy();
+    });
+    expect(screen.getByText('leaf@example.com')).toBeTruthy();
+    expect(screen.queryByText('Signing in…')).toBeNull();
+  });
+
+  it('does not reuse stale activation details when a new login starts after a canceled attempt', async () => {
+    const fetchMock = vi.fn(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as URL).toString();
+      if (
+        url.endsWith('/api/integrations/vela/login') &&
+        init?.method === 'POST'
+      ) {
+        return jsonResponse({ status: 202, body: { pid: 4242 } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    renderPill({
+      skipInitialRefresh: true,
+      initialStatus: {
+        loggedIn: false,
+        loginInFlight: false,
+        profile: 'prod',
+        user: null,
+        configPath: '/x',
+        activationUrl: 'https://app.vela.example/expired-device-code',
+        userCode: 'EXPIRED',
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Signing in…')).toBeTruthy();
+    });
+    expect(
+      screen.queryByRole('link', { name: 'Open sign-in page' }),
+    ).toBeNull();
+    expect(screen.queryByText('EXPIRED')).toBeNull();
+  });
+
+  it('only surfaces activation details from the pill when explicitly enabled', async () => {
+    const initialStatus: VelaLoginStatus = {
+      loggedIn: false,
+      loginInFlight: true,
+      profile: 'prod',
+      user: null,
+      configPath: '/x',
+      activationUrl: 'https://app.vela.example/device?user_code=VISIBLE',
+      userCode: 'VISIBLE',
+    };
+
+    const first = renderPill({ skipInitialRefresh: true, initialStatus });
+    expect(await screen.findByText('Signing in…')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Open sign-in page' })).toBeNull();
+    expect(screen.queryByText('VISIBLE')).toBeNull();
+    first.unmount();
+
+    renderPill({
+      skipInitialRefresh: true,
+      initialStatus,
+      showActivationDetails: true,
+    });
+    expect(await screen.findByRole('link', { name: 'Open sign-in page' })).toBeTruthy();
+    // The activation URL carries the device code, so the link alone is shown —
+    // the standalone code is never rendered even when present in the status.
+    expect(screen.queryByText('VISIBLE')).toBeNull();
   });
 
   it('recovers from transient /status failures and still flips to signed-in when polling succeeds later', async () => {
