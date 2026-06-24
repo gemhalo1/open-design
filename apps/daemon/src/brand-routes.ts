@@ -16,9 +16,11 @@ import type { Application, Request, Response } from 'express';
 
 import {
   getProject,
+  listFirstConversationRunStatuses,
   listConversationsAwaitingInput,
   listLatestConversationRunStatuses,
   listLatestProjectRunStatuses,
+  listLatestRunStatuses,
   listProjectsAwaitingInput,
   type insertProject,
 } from './db.js';
@@ -236,6 +238,8 @@ type BrandRunStatus = {
 interface BrandStatusContext {
   latestByProject: Map<string, BrandRunStatus>;
   latestByConversation: Map<string, BrandRunStatus>;
+  firstByConversation: Map<string, BrandRunStatus>;
+  latestByRun: Map<string, BrandRunStatus>;
   /** Projects whose latest assistant turn is a still-unanswered question form
    *  (anti-bot wall / clarifying question). Drives the reversible needs_input. */
   awaitingInput: Set<string>;
@@ -250,6 +254,14 @@ function createBrandStatusContext(deps: BrandRoutesDeps): BrandStatusContext {
   const latestByConversation = new Map<string, BrandRunStatus>();
   for (const [conversationId, status] of listLatestConversationRunStatuses(deps.db) as Map<string, BrandRunStatus>) {
     latestByConversation.set(conversationId, status);
+  }
+  const firstByConversation = new Map<string, BrandRunStatus>();
+  for (const [conversationId, status] of listFirstConversationRunStatuses(deps.db) as Map<string, BrandRunStatus>) {
+    firstByConversation.set(conversationId, status);
+  }
+  const latestByRun = new Map<string, BrandRunStatus>();
+  for (const [runId, status] of listLatestRunStatuses(deps.db) as Map<string, BrandRunStatus>) {
+    latestByRun.set(runId, status);
   }
   for (const run of deps.runs?.list() ?? []) {
     if (!run.projectId) continue;
@@ -276,10 +288,22 @@ function createBrandStatusContext(deps: BrandRoutesDeps): BrandStatusContext {
       error: run.error ?? null,
       errorCode: run.errorCode ?? null,
     });
+    const existingByRun = latestByRun.get(run.id);
+    if (!existingByRun || updatedAt > Number(existingByRun.updatedAt ?? 0)) {
+      latestByRun.set(run.id, {
+        value: normalizeBrandRunStatus(run.status),
+        updatedAt,
+        runId: run.id,
+        error: run.error ?? null,
+        errorCode: run.errorCode ?? null,
+      });
+    }
   }
   return {
     latestByProject,
     latestByConversation,
+    firstByConversation,
+    latestByRun,
     awaitingInput: listProjectsAwaitingInput(deps.db),
     awaitingInputByConversation: listConversationsAwaitingInput(deps.db),
   };
@@ -313,37 +337,52 @@ function reconcileBrandMetaStatus(
   context: BrandStatusContext,
 ): BrandMeta {
   if (!meta.projectId) return meta;
-  const status = meta.extractionConversationId
-    ? context.latestByConversation.get(meta.extractionConversationId)
-    : context.latestByProject.get(meta.projectId);
+  let nextMeta = meta;
+  const extractionRunId = resolveExtractionRunId(meta, context);
+  if (extractionRunId && !meta.extractionRunId) {
+    nextMeta = patchMeta(brandsRoot, meta.id, { extractionRunId }) ?? { ...meta, extractionRunId };
+  }
+  const status = extractionRunId
+    ? context.latestByRun.get(extractionRunId)
+    : meta.extractionConversationId
+      ? context.latestByConversation.get(meta.extractionConversationId)
+      : context.latestByProject.get(meta.projectId);
   if (status && (status.value === 'failed' || status.value === 'canceled')) {
-    const error = terminalBrandRunError(meta, status);
-    if (!shouldReconcileTerminalBrandRun(meta, status)) return meta;
+    const error = terminalBrandRunError(nextMeta, status);
+    if (!shouldReconcileTerminalBrandRun(nextMeta, status)) return nextMeta;
     const terminalPatch: Parameters<typeof patchMeta>[2] = {
       status: 'failed',
       error,
       extractionTerminalError: error,
     };
     if (status.runId) terminalPatch.extractionTerminalRunId = status.runId;
+    if (extractionRunId) terminalPatch.extractionRunId = extractionRunId;
     return patchMeta(brandsRoot, meta.id, terminalPatch) ?? {
-      ...meta,
+      ...nextMeta,
       status: 'failed',
       error,
       extractionTerminalError: error,
       ...(status.runId ? { extractionTerminalRunId: status.runId } : {}),
+      ...(extractionRunId ? { extractionRunId } : {}),
     };
   }
-  if (meta.status !== 'extracting') return meta;
+  if (nextMeta.status !== 'extracting') return nextMeta;
   // The backing run paused on a question form (anti-bot wall / clarifying
   // question). Surface it as needs_input WITHOUT persisting — answering the
   // question resumes extraction, so the brand must be free to flip back.
-  const isAwaitingInput = meta.extractionConversationId
-    ? context.awaitingInputByConversation.has(meta.extractionConversationId)
+  const isAwaitingInput = nextMeta.extractionConversationId
+    ? context.awaitingInputByConversation.has(nextMeta.extractionConversationId)
     : context.awaitingInput.has(meta.projectId);
   if (isAwaitingInput) {
-    return { ...meta, status: 'needs_input' };
+    return { ...nextMeta, status: 'needs_input' };
   }
-  return meta;
+  return nextMeta;
+}
+
+function resolveExtractionRunId(meta: BrandMeta, context: BrandStatusContext): string | undefined {
+  if (meta.extractionRunId) return meta.extractionRunId;
+  if (!meta.extractionConversationId) return undefined;
+  return context.firstByConversation.get(meta.extractionConversationId)?.runId;
 }
 
 function terminalBrandRunError(meta: BrandMeta, status: BrandRunStatus): string {

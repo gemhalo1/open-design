@@ -388,6 +388,67 @@ describe('brand routes', () => {
     expect(storedMeta.error).toBeUndefined();
   });
 
+  it('does not fail extracting brands when a later same-conversation run is canceled', async () => {
+    writeBrandFixture('brand-extracting-same-conversation', {
+      projectId: 'project-extracting-same-conversation',
+      extractionConversationId: 'conversation-extracting-same-conversation',
+      logoPrimary: 'logos/missing.svg',
+      status: 'extracting',
+    });
+    insertProject(db, {
+      id: 'project-extracting-same-conversation',
+      name: 'Extracting Same Conversation Brand Project',
+      skillId: null,
+      designSystemId: null,
+      createdAt: 1,
+      updatedAt: 1,
+      metadata: { kind: 'brand', brandId: 'brand-extracting-same-conversation' },
+    });
+    insertConversation(db, {
+      id: 'conversation-extracting-same-conversation',
+      projectId: 'project-extracting-same-conversation',
+      title: 'Extract brand',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    upsertMessage(db, 'conversation-extracting-same-conversation', {
+      id: 'message-extracting-same-conversation',
+      role: 'assistant',
+      content: 'Still extracting.',
+      runId: 'run-extracting-same-conversation',
+      runStatus: 'running',
+      startedAt: 1,
+      endedAt: null,
+    });
+    upsertMessage(db, 'conversation-extracting-same-conversation', {
+      id: 'message-extracting-same-conversation-follow-up',
+      role: 'assistant',
+      content: 'Stopped follow-up.',
+      runId: 'run-extracting-same-conversation-follow-up',
+      runStatus: 'canceled',
+      startedAt: 3,
+      endedAt: 4,
+    });
+
+    const detail = await requestJson('/api/brands/brand-extracting-same-conversation');
+    const list = await requestJson('/api/brands');
+
+    expect(detail.status).toBe(200);
+    expect(detail.body.meta.status).toBe('extracting');
+    expect(detail.body.meta.error).toBeUndefined();
+    expect(
+      list.body.brands.find((brand: any) => brand.meta.id === 'brand-extracting-same-conversation')?.meta
+        .status,
+    ).toBe('extracting');
+
+    const storedMeta = JSON.parse(
+      readFileSync(path.join(brandsRoot, 'brand-extracting-same-conversation', 'meta.json'), 'utf8'),
+    );
+    expect(storedMeta.status).toBe('extracting');
+    expect(storedMeta.error).toBeUndefined();
+    expect(storedMeta.extractionRunId).toBe('run-extracting-same-conversation');
+  });
+
   it('surfaces needs_input when the backing project is awaiting user input', async () => {
     writeBrandFixture('brand-blocked', {
       projectId: 'project-blocked',
@@ -448,6 +509,7 @@ describe('brand routes', () => {
       error?: string;
       extractionTerminalRunId?: string;
       extractionTerminalError?: string;
+      extractionRunId?: string;
     },
   ) {
     const brandDir = path.join(brandsRoot, id);
@@ -463,6 +525,7 @@ describe('brand routes', () => {
         ...(options.error ? { error: options.error } : {}),
         ...(options.extractionTerminalRunId ? { extractionTerminalRunId: options.extractionTerminalRunId } : {}),
         ...(options.extractionTerminalError ? { extractionTerminalError: options.extractionTerminalError } : {}),
+        ...(options.extractionRunId ? { extractionRunId: options.extractionRunId } : {}),
         ...(options.projectId ? { projectId: options.projectId } : {}),
         ...(options.extractionConversationId ? { extractionConversationId: options.extractionConversationId } : {}),
       }),

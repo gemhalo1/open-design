@@ -634,6 +634,59 @@ export function listLatestConversationRunStatuses(db: SqliteDb) {
   return latestByConversation;
 }
 
+export function listFirstConversationRunStatuses(db: SqliteDb) {
+  const rows = db
+    .prepare(
+      `SELECT m.conversation_id AS conversationId,
+              m.run_id AS runId,
+              m.run_status AS status,
+              COALESCE(m.ended_at, m.started_at, m.created_at) AS updatedAt,
+              m.position AS position
+         FROM messages m
+        WHERE m.run_status IS NOT NULL
+          AND m.run_id IS NOT NULL
+        ORDER BY m.position ASC`,
+    )
+    .all() as DbRow[];
+  const firstByConversation = new Map<string, DbRow>();
+  for (const row of rows) {
+    if (!firstByConversation.has(row.conversationId)) {
+      firstByConversation.set(row.conversationId, {
+        value: normalizeProjectRunStatus(row.status),
+        updatedAt: Number(row.updatedAt),
+        runId: row.runId ?? undefined,
+      });
+    }
+  }
+  return firstByConversation;
+}
+
+export function listLatestRunStatuses(db: SqliteDb) {
+  const rows = db
+    .prepare(
+      `SELECT m.run_id AS runId,
+              m.run_status AS status,
+              COALESCE(m.ended_at, m.started_at, m.created_at) AS updatedAt,
+              m.position AS position
+         FROM messages m
+        WHERE m.run_status IS NOT NULL
+          AND m.run_id IS NOT NULL
+        ORDER BY updatedAt DESC, m.position DESC`,
+    )
+    .all() as DbRow[];
+  const latestByRun = new Map<string, DbRow>();
+  for (const row of rows) {
+    if (!latestByRun.has(row.runId)) {
+      latestByRun.set(row.runId, {
+        value: normalizeProjectRunStatus(row.status),
+        updatedAt: Number(row.updatedAt),
+        runId: row.runId ?? undefined,
+      });
+    }
+  }
+  return latestByRun;
+}
+
 export function listProjectsAwaitingInput(db: SqliteDb) {
   const rows = db
     .prepare(
