@@ -883,8 +883,9 @@ export async function exportProjectAsPptx(opts: {
   const format = opts.format ?? 'pptx';
   const path = format === 'pdf' ? 'export/pdf-image' : 'export/pptx';
   const url = `/api/projects/${encodeURIComponent(opts.projectId)}/${path}`;
+  let resp: Response;
   try {
-    const resp = await fetch(url, {
+    resp = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -893,30 +894,38 @@ export async function exportProjectAsPptx(opts: {
         ...(typeof opts.deck === 'boolean' ? { deck: opts.deck } : {}),
       }),
     });
-    if (!resp.ok) {
-      // 501 = this runtime has no off-screen renderer → caller may fall back to
-      // the vector/browser PDF. Everything else is a real (semantic) failure
-      // that must surface, not be masked by the vector path.
-      if (resp.status === 501) return { ok: false, unavailable: true };
-      let message = `export request failed (${resp.status})`;
-      try {
-        const err = await resp.json();
-        if (err?.error?.message) message = String(err.error.message);
-      } catch {
-        // non-JSON error body; keep the status-based message
-      }
-      return { ok: false, error: message };
+  } catch {
+    // Transport-level failure (offline, daemon down) — genuinely unavailable, so
+    // the caller may fall back to the vector/browser PDF.
+    return { ok: false, unavailable: true };
+  }
+  if (!resp.ok) {
+    // 501 = this runtime has no off-screen renderer → caller may fall back to
+    // the vector/browser PDF. Everything else is a real (semantic) failure that
+    // must surface, not be masked by the vector path.
+    if (resp.status === 501) return { ok: false, unavailable: true };
+    let message = `export request failed (${resp.status})`;
+    try {
+      const err = await resp.json();
+      if (err?.error?.message) message = String(err.error.message);
+    } catch {
+      // non-JSON error body; keep the status-based message
     }
+    return { ok: false, error: message };
+  }
+  // The renderer already produced bytes — a failure reading the body or
+  // triggering the download is a real (post-response) export failure, NOT
+  // "renderer unavailable". Returning `error` (not `unavailable`) keeps the
+  // caller from silently downgrading to the lower-fidelity vector path.
+  try {
     const blob = await resp.blob();
     const base = opts.fileName.replace(/^.*\//, '').replace(/\.html?$/i, '');
     const slug = safeFilename(opts.title || base, 'deck');
     const fromHeader = filenameFromContentDisposition(resp);
     triggerDownload(blob, fromHeader || `${slug}.${format}`);
     return { ok: true };
-  } catch {
-    // Transport-level failure (offline, daemon down) — genuinely unavailable, so
-    // the caller may fall back to the vector/browser PDF.
-    return { ok: false, unavailable: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'export download failed' };
   }
 }
 

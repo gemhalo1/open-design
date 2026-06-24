@@ -504,8 +504,18 @@ async function capturePage(
     true,
   )) as number;
   const totalLogical = Math.max(PAGE_VIEW_H, Number.isFinite(measured) ? measured : PAGE_VIEW_H);
-  // Same budget guard as the debugger path: refuse rather than truncate.
+  // Same budget guard as the debugger path: refuse rather than truncate. The PDF
+  // path normally paginates a too-tall page (paginateTallPage), but that needs
+  // CDP (captureBeyondViewport per chunk) and we only reach here because the
+  // debugger could not attach. Surface a distinct, retryable error instead of
+  // the self-contradictory "export as PDF instead" (the user already chose PDF).
   if (totalLogical * dpr > ramMaxOutH) {
+    if (jpeg) {
+      return {
+        ok: false,
+        error: `couldn't render this long page to PDF — the renderer is busy, please retry`,
+      };
+    }
     return {
       ok: false,
       error: `page is too tall to export as one image (~${totalLogical}px) — export as PDF instead`,

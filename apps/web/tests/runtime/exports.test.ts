@@ -668,6 +668,27 @@ describe('exportProjectAsPptx', () => {
 
     expect(res).toEqual({ ok: false, unavailable: true });
   });
+
+  it('a post-response failure (renderer already produced bytes) is an error, not unavailable', async () => {
+    // The 200 came back — a failure reading the body / triggering the download
+    // must NOT be reported as `unavailable`, or the caller silently downgrades to
+    // the lower-fidelity vector PDF instead of surfacing the failure.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        blob: async () => {
+          throw new Error('corrupt response body');
+        },
+      })),
+    );
+
+    const res = await exportProjectAsPptx({ projectId: 'p', fileName: 'deck.html', format: 'pdf' });
+
+    expect(res).toEqual({ ok: false, error: 'corrupt response body' });
+  });
 });
 
 // `exportAsMd` is a pass-through (the file body is the artifact source
