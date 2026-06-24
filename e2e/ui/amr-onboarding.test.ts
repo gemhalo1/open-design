@@ -130,6 +130,40 @@ test('[P0] @critical onboarding Local CLI card lets the user pick an agent model
   await expect(page.getByRole('button', { name: /^Continue$/i })).toBeVisible();
 });
 
+test('[P0] onboarding Local CLI path completes setup with the selected agent model', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: false,
+    initialLoggedIn: false,
+    codexModels: [
+      { id: 'gpt-5.4-mini', label: 'gpt-5.4-mini' },
+      { id: 'glm-5', label: 'GLM 5' },
+    ],
+  });
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+
+  await page.getByRole('button', { name: /Local coding agent/i }).click();
+  const localPanel = page.locator('.onboarding-view__setup-panel');
+  await expect(localPanel).toBeVisible();
+  await selectOnboardingOption(localPanel, 'Model', 'GLM 5');
+  await page.getByRole('button', { name: /^Continue$/i }).click();
+
+  await expect(page.getByRole('heading', { name: /About you/i })).toBeVisible({ timeout: T.long });
+  await advanceFromAboutYouToBrand(page);
+  await page.getByRole('button', { name: /Finish setup/i }).click();
+
+  await expectOnboardingFinished(page);
+  await pollStoredConfig(page).toMatchObject({
+    mode: 'daemon',
+    agentId: 'codex',
+    agentModels: {
+      codex: { model: 'glm-5' },
+    },
+    onboardingCompleted: true,
+  });
+});
+
 test('[P0] onboarding Local CLI path stays gated when no local CLI is available', async ({ page }) => {
   const config = await wireOnboardingMocks(page, {
     amrAvailable: false,
@@ -449,20 +483,6 @@ test('[P0] onboarding gate cannot be bypassed by direct Home navigation or new-t
   await expect(connectLandingHeading(page)).toBeVisible();
 });
 
-test('[P0] onboarding Connect step exposes no Skip affordance', async ({ page }) => {
-  const config = await wireOnboardingMocks(page, {
-    amrAvailable: true,
-    initialLoggedIn: true,
-  });
-
-  await seedOnboardingConfig(page, config);
-  await gotoOnboarding(page);
-
-  // "Skip for now" was removed — Connect is now a required step, so there is
-  // no way to exit onboarding from here without connecting a runtime.
-  await expect(page.getByRole('button', { name: /Skip for now/i })).toHaveCount(0);
-});
-
 test('[P0] onboarding visited steps become locked again when the Connect runtime becomes invalid', async ({ page }) => {
   const config = await wireOnboardingMocks(page, {
     amrAvailable: true,
@@ -581,6 +601,216 @@ test('[P0] onboarding newsletter malformed email does not block finishing setup'
   await pollStoredConfig(page).toMatchObject({
     onboardingCompleted: true,
   });
+});
+
+test('[P0] onboarding newsletter submits a valid email only when setup finishes', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: true,
+    initialLoggedIn: true,
+  });
+  const newsletterBodies: Array<Record<string, unknown>> = [];
+  await page.route('https://open-design.ai/subscribe', async (route) => {
+    newsletterBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ json: { ok: true } });
+  });
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+  await advanceToNewsletterStep(page);
+
+  await page.getByPlaceholder('you@studio.com').fill('Designer@Example.COM ');
+  await page.getByRole('button', { name: /^Continue$/i }).click();
+  await expect(page.getByRole('heading', { name: /Extract your design system/i })).toBeVisible();
+  await expect.poll(() => newsletterBodies.length).toBe(0);
+
+  await page.getByRole('button', { name: /Finish setup/i }).click();
+
+  await expectOnboardingFinished(page);
+  await expect.poll(() => newsletterBodies).toEqual([
+    { email: 'designer@example.com', source: 'client' },
+  ]);
+  await pollStoredConfig(page).toMatchObject({
+    onboardingCompleted: true,
+  });
+});
+
+test('[P0] onboarding newsletter submit failure does not block finishing setup', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: true,
+    initialLoggedIn: true,
+  });
+  let newsletterCalls = 0;
+  await page.route('https://open-design.ai/subscribe', async (route) => {
+    newsletterCalls += 1;
+    await route.fulfill({
+      status: 500,
+      json: { ok: false },
+    });
+  });
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+  await advanceToNewsletterStep(page);
+
+  await page.getByPlaceholder('you@studio.com').fill('designer@example.com');
+  await page.getByRole('button', { name: /^Continue$/i }).click();
+  await expect(page.getByRole('heading', { name: /Extract your design system/i })).toBeVisible();
+  await page.getByRole('button', { name: /Finish setup/i }).click();
+
+  await expectOnboardingFinished(page);
+  await expect.poll(() => newsletterCalls).toBe(1);
+  await pollStoredConfig(page).toMatchObject({
+    onboardingCompleted: true,
+  });
+});
+
+test('[P0] onboarding brand extraction starts a brand project and completes onboarding', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: true,
+    initialLoggedIn: true,
+  });
+  const brandRequests: Array<Record<string, unknown>> = [];
+  await page.route('**/api/brands', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    brandRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      json: {
+        id: 'brand-onboarding-test',
+        projectId: 'brand-project-test',
+        conversationId: 'brand-conversation-test',
+        sourceUrl: 'https://example.com',
+      },
+    });
+  });
+  await mockBrandProject(page, 'brand-project-test', 'brand-conversation-test');
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+  await clickCloudPrimary(page);
+  await advanceFromAboutYouToBrand(page);
+
+  await page.getByPlaceholder('yourcompany.com').fill('example.com');
+  await page.getByRole('button', { name: /^Extract design system$/i }).click();
+
+  await expect.poll(() => brandRequests).toEqual([{ url: 'example.com' }]);
+  await expect(page).toHaveURL(/\/projects\/brand-project-test\/conversations\/brand-conversation-test$/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.sessionStorage.getItem('od:auto-send-first:brand-project-test')),
+    )
+    .toBe('1');
+  await pollStoredConfig(page).toMatchObject({
+    onboardingCompleted: true,
+  });
+});
+
+test('[P0] onboarding brand reference picker starts extraction with the picked brand', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: true,
+    initialLoggedIn: true,
+  });
+  const brandRequests: Array<Record<string, unknown>> = [];
+  await page.route('**/api/brands', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    brandRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      json: {
+        id: 'brand-picker-onboarding-test',
+        projectId: 'brand-picker-project-test',
+        conversationId: 'brand-picker-conversation-test',
+        sourceUrl: 'https://slack.com',
+      },
+    });
+  });
+  await mockBrandProject(page, 'brand-picker-project-test', 'brand-picker-conversation-test');
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+  await clickCloudPrimary(page);
+  await advanceFromAboutYouToBrand(page);
+
+  await page.getByTestId('brand-quick-slack.com').click();
+
+  await expect.poll(() => brandRequests).toEqual([{ url: 'slack.com' }]);
+  await expect(page).toHaveURL(/\/projects\/brand-picker-project-test\/conversations\/brand-picker-conversation-test$/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.sessionStorage.getItem('od:auto-send-first:brand-picker-project-test')),
+    )
+    .toBe('1');
+  await pollStoredConfig(page).toMatchObject({
+    onboardingCompleted: true,
+  });
+});
+
+test('[P0] onboarding brand extraction failure stays on the brand step and still allows finishing', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: true,
+    initialLoggedIn: true,
+  });
+  let brandRequests = 0;
+  await page.route('**/api/brands', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    brandRequests += 1;
+    await route.fulfill({
+      status: 500,
+      json: { error: 'Brand extraction unavailable' },
+    });
+  });
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+  await clickCloudPrimary(page);
+  await advanceFromAboutYouToBrand(page);
+
+  await page.getByPlaceholder('yourcompany.com').fill('example.com');
+  await page.getByRole('button', { name: /^Extract design system$/i }).click();
+
+  await expect.poll(() => brandRequests).toBe(1);
+  await expect(page.locator('.onboarding-view__action-status.is-error')).toContainText('Brand extraction unavailable');
+  await expect(page.getByRole('heading', { name: /Extract your design system/i })).toBeVisible();
+  await pollStoredConfig(page).toMatchObject({
+    onboardingCompleted: false,
+  });
+
+  await page.getByRole('button', { name: /Finish setup/i }).click();
+  await expectOnboardingFinished(page);
+  await pollStoredConfig(page).toMatchObject({
+    onboardingCompleted: true,
+  });
+});
+
+test('[P0] onboarding Back keeps newsletter email and brand URL draft intact', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: true,
+    initialLoggedIn: true,
+  });
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+  await advanceToNewsletterStep(page);
+
+  await page.getByPlaceholder('you@studio.com').fill('designer@example.com');
+  await page.getByRole('button', { name: /^Continue$/i }).click();
+  await expect(page.getByRole('heading', { name: /Extract your design system/i })).toBeVisible();
+  await page.getByPlaceholder('yourcompany.com').fill('example.com');
+
+  await page.getByRole('button', { name: /^Back$/i }).click();
+  await expect(page.getByRole('heading', { name: /Stay in the loop/i })).toBeVisible();
+  await expect(page.getByPlaceholder('you@studio.com')).toHaveValue('designer@example.com');
+
+  await page.getByRole('button', { name: /^Continue$/i }).click();
+  await expect(page.getByRole('heading', { name: /Extract your design system/i })).toBeVisible();
+  await expect(page.getByPlaceholder('yourcompany.com')).toHaveValue('example.com');
 });
 
 test('[P0] @critical onboarding BYOK path can fetch models, test the provider, and complete setup', async ({ page }) => {
@@ -709,6 +939,68 @@ test('[P0] onboarding BYOK path cannot continue before a successful connection t
   await page.getByRole('button', { name: /^Test$/i }).click();
   await expectProviderConnectionSuccess(page);
   await expect(continueButton).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+test('[P0] onboarding BYOK path supports Anthropic model selection and API key visibility before completing', async ({ page }) => {
+  const config = await wireOnboardingMocks(page, {
+    amrAvailable: true,
+    initialLoggedIn: true,
+  });
+  let connectionBody: Record<string, unknown> | null = null;
+  await page.route('**/api/test/connection', async (route) => {
+    connectionBody = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      json: {
+        ok: true,
+        kind: 'success',
+        latencyMs: 19,
+        model: 'claude-custom-onboarding',
+        sample: 'Connected',
+      },
+    });
+  });
+
+  await seedOnboardingConfig(page, config);
+  await gotoOnboarding(page);
+
+  await page.getByRole('button', { name: /Bring your own key/i }).click();
+  await expect(page.getByRole('tab', { name: /^Anthropic$/i })).toHaveAttribute('aria-selected', 'true');
+
+  const apiKeyField = onboardingField(page, 'API key');
+  const apiKeyInput = apiKeyField.locator('input');
+  await expect(apiKeyInput).toHaveAttribute('type', 'password');
+  await fillInlineField(page, 'API key', 'anthropic-test-key');
+  await apiKeyField.getByRole('button', { name: /^Show$/i }).click();
+  await expect(apiKeyInput).toHaveAttribute('type', 'text');
+
+  await fillInlineField(page, 'Base URL', 'https://api.anthropic.com');
+  const byokPanel = page.locator('.onboarding-view__setup-panel').filter({ hasText: /BYOK/ });
+  await selectOnboardingOption(byokPanel, 'Model', 'claude-sonnet-4-5');
+  await page.getByRole('button', { name: /^Test$/i }).click();
+  await expectProviderConnectionSuccess(page);
+
+  await expect.poll(() => connectionBody).toMatchObject({
+    mode: 'provider',
+    protocol: 'anthropic',
+    apiKey: 'anthropic-test-key',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-5',
+  });
+
+  await page.getByRole('button', { name: /^Continue$/i }).click();
+  await expect(page.getByRole('heading', { name: /About you/i })).toBeVisible();
+  await advanceFromAboutYouToBrand(page);
+  await page.getByRole('button', { name: /Finish setup/i }).click();
+
+  await expectOnboardingFinished(page);
+  await pollStoredConfig(page).toMatchObject({
+    mode: 'api',
+    apiProtocol: 'anthropic',
+    apiKey: 'anthropic-test-key',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-5',
+    onboardingCompleted: true,
+  });
 });
 
 test('[P0] onboarding BYOK successful test is invalidated when connection settings change', async ({ page }) => {
@@ -1087,6 +1379,76 @@ async function advanceToNewsletterStep(page: Page) {
 
 async function expectProviderConnectionSuccess(page: Page) {
   await expect(page.getByText(/Connected\. Replied in \d+ ms/)).toBeVisible();
+}
+
+async function mockBrandProject(page: Page, projectId: string, conversationId: string) {
+  const now = Date.now();
+  const project = {
+    id: projectId,
+    name: 'Brand extraction',
+    skillId: null,
+    designSystemId: null,
+    createdAt: now,
+    updatedAt: now,
+    metadata: { kind: 'brand' },
+    status: { value: 'not_started', updatedAt: now },
+  };
+  const conversation = {
+    id: conversationId,
+    projectId,
+    title: 'Brand extraction',
+    createdAt: now,
+    updatedAt: now,
+    messageCount: 0,
+  };
+
+  await page.route(`**/api/projects/${projectId}`, async (route) => {
+    await route.fulfill({ json: { project, resolvedDir: null } });
+  });
+  await page.route(`**/api/projects/${projectId}/conversations`, async (route) => {
+    await route.fulfill({ json: { conversations: [conversation] } });
+  });
+  await page.route(`**/api/projects/${projectId}/conversations/${conversationId}`, async (route) => {
+    await route.fulfill({ json: { conversation } });
+  });
+  await page.route(`**/api/projects/${projectId}/conversations/${conversationId}/messages`, async (route) => {
+    await route.fulfill({ json: { messages: [] } });
+  });
+  await page.route(`**/api/projects/${projectId}/files`, async (route) => {
+    await route.fulfill({ json: { files: [] } });
+  });
+  await page.route(`**/api/projects/${projectId}/folders`, async (route) => {
+    await route.fulfill({ json: { folders: [] } });
+  });
+  await page.route('**/api/runs', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({ runId: 'brand-onboarding-run' }),
+    });
+  });
+  await page.route('**/api/runs/brand-onboarding-run/events', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body: [
+        'event: start',
+        'data: {"bin":"codex"}',
+        '',
+        'event: end',
+        'data: {"code":0,"status":"succeeded"}',
+        '',
+        '',
+      ].join('\n'),
+    });
+  });
 }
 
 function pollStoredConfig(page: Page) {
