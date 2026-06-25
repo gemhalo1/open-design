@@ -124,6 +124,7 @@ jobs:
       contabo_control: ${{ steps.runners.outputs.contabo_control }}
       hosted_or_blacksmith: ${{ steps.runners.outputs.hosted_or_blacksmith }}
       blacksmith_default: ${{ steps.runners.outputs.blacksmith_default }}
+      serveroptima_poc: ${{ steps.runners.outputs.serveroptima_poc }}
 
     steps:
       - name: Checkout
@@ -655,7 +656,7 @@ jobs:
     name: UI P0 smoke
     needs: [scopes, runners]
     if: ${{ needs.scopes.outputs.run_ui_p0 == 'true' }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.blacksmith_default) }}
+    runs-on: ${{ fromJSON(needs.runners.outputs.serveroptima_poc) }}
     timeout-minutes: 30
 
     steps:
@@ -668,14 +669,14 @@ jobs:
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
         with:
-          runner-labels: ${{ needs.runners.outputs.blacksmith_default }}
+          runner-labels: ${{ needs.runners.outputs.serveroptima_poc }}
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
         with:
           package-json-path: e2e/package.json
           install-command: pnpm -C e2e exec playwright install --with-deps chromium
-          runner-labels: ${{ needs.runners.outputs.blacksmith_default }}
+          runner-labels: ${{ needs.runners.outputs.serveroptima_poc }}
 
       - name: Prebuild workspace type declarations
         run: |
@@ -761,7 +762,7 @@ jobs:
     name: Playwright visual (${{ matrix.name }})
     needs: [scopes, runners]
     if: ${{ needs.scopes.outputs.run_playwright_visual == 'true' }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.blacksmith_default) }}
+    runs-on: ${{ fromJSON(matrix.name == 'settings-workspace' && needs.runners.outputs.serveroptima_poc || needs.runners.outputs.blacksmith_default) }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -778,14 +779,14 @@ jobs:
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
         with:
-          runner-labels: ${{ needs.runners.outputs.blacksmith_default }}
+          runner-labels: ${{ matrix.name == 'settings-workspace' && needs.runners.outputs.serveroptima_poc || needs.runners.outputs.blacksmith_default }}
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
         with:
           package-json-path: e2e/package.json
           install-command: pnpm -C e2e exec playwright install --with-deps chromium
-          runner-labels: ${{ needs.runners.outputs.blacksmith_default }}
+          runner-labels: ${{ matrix.name == 'settings-workspace' && needs.runners.outputs.serveroptima_poc || needs.runners.outputs.blacksmith_default }}
 
       - name: Prebuild workspace type declarations
         run: |

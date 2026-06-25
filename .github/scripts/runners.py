@@ -23,10 +23,10 @@ def normalize_mode(raw_mode):
 
 
 def resolve_profiles(mode):
-    blacksmith_runner = SERVEROPTIMA_POC if is_serveroptima_poc() else BLACKSMITH_4V
-    hosted_or_blacksmith = blacksmith_runner if mode == "performance" else GITHUB_HOSTED
-    blacksmith_default = GITHUB_HOSTED if mode == "economic" else blacksmith_runner
+    hosted_or_blacksmith = BLACKSMITH_4V if mode == "performance" else GITHUB_HOSTED
+    blacksmith_default = GITHUB_HOSTED if mode == "economic" else BLACKSMITH_4V
     contabo_control = CONTABO_CONTROL if mode == "default" else GITHUB_HOSTED
+    serveroptima_poc = SERVEROPTIMA_POC if mode == "default" and is_serveroptima_poc() else blacksmith_default
 
     return {
         "mode": mode,
@@ -34,6 +34,7 @@ def resolve_profiles(mode):
         "contabo_control": contabo_control,
         "hosted_or_blacksmith": hosted_or_blacksmith,
         "blacksmith_default": blacksmith_default,
+        "serveroptima_poc": serveroptima_poc,
     }
 
 

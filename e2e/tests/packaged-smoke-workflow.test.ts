@@ -542,6 +542,7 @@ describe("packaged smoke workflow", () => {
     const nixValidation = sectionBetween(workflow, "  nix_validation:", "  preflight:");
     const preflight = sectionBetween(workflow, "  preflight:", "  workspace_unit_tests:");
     const dockerPr = sectionBetween(workflow, "  docker_pr:", "  validate:");
+    const uiP0Smoke = sectionBetween(workflow, "  ui_p0_smoke:", "  ui_p0:");
     const uiP0 = sectionBetween(workflow, "  ui_p0:", "  playwright_visual:");
     const visual = sectionBetween(workflow, "  playwright_visual:", "  docker_pr:");
 
@@ -558,6 +559,8 @@ describe("packaged smoke workflow", () => {
     expect(nixValidation).toContain("needs.runners.outputs.hosted_or_blacksmith");
     expect(preflight).toContain("needs.runners.outputs.hosted_or_blacksmith");
     expect(dockerPr).toContain("needs.runners.outputs.hosted_or_blacksmith");
+    expect(uiP0Smoke).toContain("needs.runners.outputs.serveroptima_poc");
+    expect(uiP0Smoke).not.toContain('"od-persistent-ci"');
     expect(uiP0).toContain("needs.runners.outputs.blacksmith_default");
     expect(uiP0).toContain("include: ${{ fromJSON(needs.scopes.outputs.ui_p0_matrix) }}");
     expect(uiP0CiMatrix.map((entry) => entry.name)).toEqual([
@@ -574,6 +577,8 @@ describe("packaged smoke workflow", () => {
       "ui/workspace-keyboard-flows.test.ts",
     ]);
     expect(visual).toContain("needs.runners.outputs.blacksmith_default");
+    expect(visual).toContain("matrix.name == 'settings-workspace'");
+    expect(visual).toContain("needs.runners.outputs.serveroptima_poc");
   });
 
   it("[P2] resolves CI runner profiles by mode", async () => {
@@ -588,23 +593,27 @@ describe("packaged smoke workflow", () => {
     ]);
     expect(runnerLabels(defaultProfiles, "hosted_or_blacksmith")).toEqual(["ubuntu-24.04"]);
     expect(runnerLabels(defaultProfiles, "blacksmith_default")).toEqual(["blacksmith-4vcpu-ubuntu-2404"]);
+    expect(runnerLabels(defaultProfiles, "serveroptima_poc")).toEqual(["blacksmith-4vcpu-ubuntu-2404"]);
 
     const performanceProfiles = await runRunners("performance");
     expect(runnerOutput(performanceProfiles, "mode")).toBe("performance");
     expect(runnerLabels(performanceProfiles, "contabo_control")).toEqual(["ubuntu-24.04"]);
     expect(runnerLabels(performanceProfiles, "hosted_or_blacksmith")).toEqual(["blacksmith-4vcpu-ubuntu-2404"]);
     expect(runnerLabels(performanceProfiles, "blacksmith_default")).toEqual(["blacksmith-4vcpu-ubuntu-2404"]);
+    expect(runnerLabels(performanceProfiles, "serveroptima_poc")).toEqual(["blacksmith-4vcpu-ubuntu-2404"]);
 
     const economicProfiles = await runRunners("economic");
     expect(runnerOutput(economicProfiles, "mode")).toBe("economic");
     expect(runnerLabels(economicProfiles, "contabo_control")).toEqual(["ubuntu-24.04"]);
     expect(runnerLabels(economicProfiles, "hosted_or_blacksmith")).toEqual(["ubuntu-24.04"]);
     expect(runnerLabels(economicProfiles, "blacksmith_default")).toEqual(["ubuntu-24.04"]);
+    expect(runnerLabels(economicProfiles, "serveroptima_poc")).toEqual(["ubuntu-24.04"]);
 
     const pocProfiles = await runRunners(undefined, {
       GITHUB_REF_NAME: "codex/serveroptima-runner-poc",
     });
-    expect(runnerLabels(pocProfiles, "blacksmith_default")).toEqual([
+    expect(runnerLabels(pocProfiles, "blacksmith_default")).toEqual(["blacksmith-4vcpu-ubuntu-2404"]);
+    expect(runnerLabels(pocProfiles, "serveroptima_poc")).toEqual([
       "self-hosted",
       "Linux",
       "X64",
