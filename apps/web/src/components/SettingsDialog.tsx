@@ -966,8 +966,8 @@ export function amrWalletValueLabel(input: {
   snapshot: AmrWalletSnapshot | null;
   unavailableLabel: string;
 }): string {
-  if (!input.ready) return input.loadingLabel;
   if (input.balance) return input.balance;
+  if (!input.ready) return input.loadingLabel;
   const code = input.snapshot?.error?.code;
   if (code === 'missing_control_key' || code === 'unauthorized') {
     const message = input.snapshot?.error?.message?.trim();
@@ -3894,7 +3894,6 @@ export function SettingsDialog({
                                   <button
                                     type="button"
                                     className="agent-card-amr-wallet-refresh"
-                                    title={t('settings.amrWalletRefreshTitle')}
                                     aria-label={t('settings.amrWalletRefreshTitle')}
                                     disabled={amrWalletRefreshing}
                                     onClick={() => void refreshAmrWallet(true)}
