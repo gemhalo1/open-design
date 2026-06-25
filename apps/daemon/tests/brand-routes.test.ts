@@ -593,6 +593,64 @@ describe('brand routes', () => {
     }
   });
 
+  it('returns cancel promptly when active finalize fallback is still settling', async () => {
+    const prefetch = vi.fn(async (url: string): Promise<PrefetchResult> => programmaticPrefetchResult(url));
+    let logoFallbackStarted!: () => void;
+    const logoFallbackStartedPromise = new Promise<void>((resolve) => {
+      logoFallbackStarted = resolve;
+    });
+    let releaseLogoFallback!: () => void;
+    const logoFallbackGate = new Promise<void>((resolve) => {
+      releaseLogoFallback = resolve;
+    });
+    const logoFallback = vi.fn(async () => {
+      logoFallbackStarted();
+      await logoFallbackGate;
+      return { changed: false };
+    });
+    const server = await startBrandServer({
+      prefetch,
+      logoFallback,
+      imageryFallback: NO_IMAGERY_FALLBACK,
+    });
+    try {
+      const started = await server.requestJson('/api/brands', {
+        method: 'POST',
+        body: { url: 'https://acme.com' },
+      });
+      expect(started.status).toBe(200);
+      await logoFallbackStartedPromise;
+
+      const cancelRequest = server.requestJson(`/api/brands/${started.body.id}/cancel-extraction`, {
+        method: 'POST',
+      });
+      const cancel = await Promise.race([
+        cancelRequest,
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(() => reject(new Error('cancel-extraction waited for finalize fallback')), 1000);
+        }),
+      ]);
+
+      expect(cancel.status).toBe(200);
+      expect(cancel.body).toEqual({ ok: true, status: 'failed' });
+      const canceledMeta = JSON.parse(
+        readFileSync(path.join(brandsRoot, started.body.id, 'meta.json'), 'utf8'),
+      );
+      expect(canceledMeta.status).toBe('failed');
+      expect(canceledMeta.error).toBe('Programmatic extraction stopped by the user.');
+
+      releaseLogoFallback();
+      await cancelRequest;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const finalMeta = JSON.parse(readFileSync(path.join(brandsRoot, started.body.id, 'meta.json'), 'utf8'));
+      expect(finalMeta.status).toBe('failed');
+      expect(finalMeta.error).toBe('Programmatic extraction stopped by the user.');
+    } finally {
+      releaseLogoFallback();
+      await server.close();
+    }
+  });
+
   it('keeps cancel terminal when browser HTML extraction is in flight', async () => {
     let prefetchStarted!: () => void;
     const prefetchStartedPromise = new Promise<void>((resolve) => {
@@ -737,6 +795,35 @@ describe('brand routes', () => {
       mkdirSync(path.dirname(logoPath), { recursive: true });
       writeFileSync(logoPath, options.logoBody);
     }
+  }
+
+  function programmaticPrefetchResult(url: string): PrefetchResult {
+    return {
+      url,
+      finalUrl: url,
+      siteName: 'Acme',
+      title: 'Acme',
+      description: 'Acme makes excellent things for everyone.',
+      colors: [
+        { hex: '#f5f4ed', count: 12 },
+        { hex: '#141413', count: 9 },
+        { hex: '#b8422e', count: 8 },
+        { hex: '#3d7a4f', count: 3 },
+      ],
+      fonts: [{ family: 'Inter', count: 10 }],
+      fontFaceFamilies: [],
+      googleFontsUrls: [],
+      fontFiles: [],
+      logos: [],
+      headings: ['Excellent things'],
+      paragraphs: ['Acme makes useful products for careful teams.'],
+      navLabels: ['Product', 'Pricing'],
+      extraPages: [],
+      screenshot: null,
+      thin: false,
+      blocked: false,
+      materialMd: '# Acme\n\nExcellent things',
+    };
   }
 
   async function requestBrandLogo(id: string) {

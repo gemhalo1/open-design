@@ -80,11 +80,14 @@ export interface BrandRoutesDeps {
 const LOGO_EXT_PRIORITY = ['.svg', '.png', '.webp', '.jpg', '.jpeg', '.gif', '.ico'];
 const PROGRAMMATIC_CANCEL_ERROR = 'Programmatic extraction stopped by the user.';
 const BROWSER_HTML_EXTRACTION_ERROR = 'Could not extract a design system from the provided page.';
+const PROGRAMMATIC_CANCEL_SETTLE_GRACE_MS = 250;
 
 type ActiveProgrammaticBrandExtraction = {
   controller: AbortController;
   settled: Promise<unknown>;
 };
+
+type ProgrammaticExtractionAbortResult = 'none' | 'settled' | 'timeout';
 
 export function registerBrandRoutes(app: Application, deps: BrandRoutesDeps): void {
   const { brandsRoot, userDesignSystemsRoot, projectsRoot, skillsRoot, dataDir, db, randomId } = deps;
@@ -101,19 +104,47 @@ export function registerBrandRoutes(app: Application, deps: BrandRoutesDeps): vo
       settled: backgroundExtraction,
     };
     activeProgrammaticBrandExtractions.set(brandId, active);
-    void backgroundExtraction.finally(() => {
-      if (activeProgrammaticBrandExtractions.get(brandId) === active) {
-        activeProgrammaticBrandExtractions.delete(brandId);
-      }
-    });
+    void backgroundExtraction
+      .finally(() => {
+        if (activeProgrammaticBrandExtractions.get(brandId) === active) {
+          activeProgrammaticBrandExtractions.delete(brandId);
+        }
+      })
+      .catch(() => undefined);
   }
 
-  async function abortActiveProgrammaticBrandExtraction(brandId: string): Promise<void> {
+  async function abortActiveProgrammaticBrandExtraction(
+    brandId: string,
+    options: { settleTimeoutMs?: number } = {},
+  ): Promise<ProgrammaticExtractionAbortResult> {
     const active = activeProgrammaticBrandExtractions.get(brandId);
-    if (!active) return;
+    if (!active) return 'none';
     active.controller.abort();
     activeProgrammaticBrandExtractions.delete(brandId);
-    await active.settled.catch(() => undefined);
+    return waitForProgrammaticExtractionSettlement(active, options.settleTimeoutMs);
+  }
+
+  async function waitForProgrammaticExtractionSettlement(
+    active: ActiveProgrammaticBrandExtraction,
+    settleTimeoutMs: number | undefined,
+  ): Promise<Exclude<ProgrammaticExtractionAbortResult, 'none'>> {
+    const settled = active.settled.then(
+      () => 'settled' as const,
+      () => 'settled' as const,
+    );
+    if (settleTimeoutMs === undefined) return settled;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        settled,
+        new Promise<'timeout'>((resolve) => {
+          timer = setTimeout(() => resolve('timeout'), settleTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async function markBrowserHtmlExtractionFailed(brandId: string, previousMeta: BrandMeta): Promise<void> {
@@ -270,7 +301,9 @@ export function registerBrandRoutes(app: Application, deps: BrandRoutesDeps): vo
         res.status(404).json({ error: 'brand not found' });
         return;
       }
-      await abortActiveProgrammaticBrandExtraction(id);
+      await abortActiveProgrammaticBrandExtraction(id, {
+        settleTimeoutMs: PROGRAMMATIC_CANCEL_SETTLE_GRACE_MS,
+      });
       const currentMeta = readBrandDetail(brandsRoot, id)?.meta ?? detail.meta;
       if (currentMeta.status !== 'ready') {
         patchMeta(brandsRoot, id, {
