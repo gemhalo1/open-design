@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// ServerOptima runner POC scope trigger.
 
 // The Design-systems focus handoff is a one-shot: the brand-ready prompt stores
 // the new system id, and the Design systems tab must read it EXACTLY once and

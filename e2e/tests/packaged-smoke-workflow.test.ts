@@ -148,14 +148,17 @@ if (${JSON.stringify(changedFiles.length > 0)}) process.stdout.write("\\n");
   }
 }
 
-async function runRunners(mode?: string): Promise<Record<string, string>> {
+async function runRunners(mode?: string, extraEnv: Record<string, string> = {}): Promise<Record<string, string>> {
   const env = { ...process.env };
   if (mode === undefined) {
     delete env.OD_CI_RUNNER_MODE;
   } else {
     env.OD_CI_RUNNER_MODE = mode;
   }
+  delete env.OD_CI_RUNNER_POC;
+  delete env.GITHUB_REF_NAME;
   delete env.GITHUB_OUTPUT;
+  Object.assign(env, extraEnv);
 
   const { stdout } = await execFileAsync("python3", [runnersScriptPath], {
     cwd: workspaceRoot,
@@ -597,6 +600,17 @@ describe("packaged smoke workflow", () => {
     expect(runnerLabels(economicProfiles, "contabo_control")).toEqual(["ubuntu-24.04"]);
     expect(runnerLabels(economicProfiles, "hosted_or_blacksmith")).toEqual(["ubuntu-24.04"]);
     expect(runnerLabels(economicProfiles, "blacksmith_default")).toEqual(["ubuntu-24.04"]);
+
+    const pocProfiles = await runRunners(undefined, {
+      GITHUB_REF_NAME: "codex/serveroptima-runner-poc",
+    });
+    expect(runnerLabels(pocProfiles, "blacksmith_default")).toEqual([
+      "self-hosted",
+      "Linux",
+      "X64",
+      "od-persistent-ci",
+      "od-serveroptima-poc",
+    ]);
   });
 
   it("[P2] routes CI follow-ons through generic handoff workflows", async () => {

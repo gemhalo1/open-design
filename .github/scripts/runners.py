@@ -8,6 +8,7 @@ from pathlib import Path
 GITHUB_HOSTED = ["ubuntu-24.04"]
 CONTABO_CONTROL = ["self-hosted", "Linux", "X64", "od-persistent-ci", "od-ci-hot-poc"]
 BLACKSMITH_4V = ["blacksmith-4vcpu-ubuntu-2404"]
+SERVEROPTIMA_POC = ["self-hosted", "Linux", "X64", "od-persistent-ci", "od-serveroptima-poc"]
 
 
 def compact_json(value):
@@ -22,8 +23,9 @@ def normalize_mode(raw_mode):
 
 
 def resolve_profiles(mode):
-    hosted_or_blacksmith = BLACKSMITH_4V if mode == "performance" else GITHUB_HOSTED
-    blacksmith_default = GITHUB_HOSTED if mode == "economic" else BLACKSMITH_4V
+    blacksmith_runner = SERVEROPTIMA_POC if is_serveroptima_poc() else BLACKSMITH_4V
+    hosted_or_blacksmith = blacksmith_runner if mode == "performance" else GITHUB_HOSTED
+    blacksmith_default = GITHUB_HOSTED if mode == "economic" else blacksmith_runner
     contabo_control = CONTABO_CONTROL if mode == "default" else GITHUB_HOSTED
 
     return {
@@ -33,6 +35,12 @@ def resolve_profiles(mode):
         "hosted_or_blacksmith": hosted_or_blacksmith,
         "blacksmith_default": blacksmith_default,
     }
+
+
+def is_serveroptima_poc():
+    poc_value = (os.environ.get("OD_CI_RUNNER_POC") or "").strip().lower()
+    ref_name = (os.environ.get("GITHUB_REF_NAME") or "").strip()
+    return poc_value == "serveroptima" or ref_name == "codex/serveroptima-runner-poc"
 
 
 def main():
