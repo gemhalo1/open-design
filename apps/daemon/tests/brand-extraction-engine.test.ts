@@ -780,6 +780,87 @@ describe('agent-driven brand extraction engine', () => {
     expect(messages[3]?.runStatus).toBe('succeeded');
   });
 
+  it('ignores a stale programmatic attempt that resumes after a newer retry finalizes', async () => {
+    const db = openDatabase(tempDir, { dataDir: tempDir });
+    let releaseFirstPrefetch!: () => void;
+    const firstPrefetchGate = new Promise<void>((resolve) => {
+      releaseFirstPrefetch = resolve;
+    });
+    let firstBackground: Promise<unknown> | null = null;
+    const staleMaterial = (url: string): PrefetchResult => ({
+      ...programmaticPrefetchResult(url),
+      siteName: 'Staleco',
+      title: 'Staleco',
+      description: 'Staleco should never overwrite the retry.',
+      headings: ['Staleco stale attempt'],
+      paragraphs: ['Staleco resumed after a newer retry completed.'],
+      materialMd: '# Staleco\n\nStale attempt',
+    });
+    const retryMaterial = (url: string): PrefetchResult => ({
+      ...programmaticPrefetchResult(url),
+      siteName: 'Retryco',
+      title: 'Retryco',
+      description: 'Retryco is the newer successful retry.',
+      headings: ['Retryco retry attempt'],
+      paragraphs: ['Retryco completed before the original attempt resumed.'],
+      materialMd: '# Retryco\n\nNewer retry attempt',
+    });
+
+    const result = await startOfflineBrandExtraction({
+      url: 'acme.com',
+      brandsRoot,
+      projectsRoot,
+      userDesignSystemsRoot,
+      skillsRoot: SKILLS_ROOT,
+      db,
+      logoFallback: NO_LOGO_FALLBACK,
+      prefetch: async (url) => {
+        await firstPrefetchGate;
+        return staleMaterial(url);
+      },
+      onBackgroundExtraction: (settled) => {
+        firstBackground = settled;
+      },
+      transcriptAgent: { agentId: 'claude', agentName: 'Claude' },
+    });
+    const firstAttemptId = readBrandDetail(brandsRoot, result.id)?.meta.extractionAttemptId;
+    expect(firstAttemptId).toBeTruthy();
+
+    let retryBackground: Promise<unknown> | null = null;
+    await continueBrandExtraction({
+      id: result.id,
+      brandsRoot,
+      projectsRoot,
+      userDesignSystemsRoot,
+      skillsRoot: SKILLS_ROOT,
+      db,
+      logoFallback: NO_LOGO_FALLBACK,
+      imageryFallback: NO_IMAGERY_FALLBACK,
+      prefetch: async (url) => retryMaterial(url),
+      onBackgroundExtraction: (settled) => {
+        retryBackground = settled;
+      },
+      transcriptAgent: { agentId: 'claude', agentName: 'Claude' },
+    });
+    const retryAttemptId = readBrandDetail(brandsRoot, result.id)?.meta.extractionAttemptId;
+    expect(retryAttemptId).toBeTruthy();
+    expect(retryAttemptId).not.toBe(firstAttemptId);
+
+    if (!retryBackground) throw new Error('expected retry background extraction promise');
+    await retryBackground;
+    expect(readBrandDetail(brandsRoot, result.id)?.brand?.name).toBe('Retryco');
+
+    releaseFirstPrefetch();
+    if (!firstBackground) throw new Error('expected first background extraction promise');
+    await firstBackground;
+
+    const completed = readBrandDetail(brandsRoot, result.id);
+    expect(completed?.meta.status).toBe('ready');
+    expect(completed?.meta.extractionAttemptId).toBe(retryAttemptId);
+    expect(completed?.brand?.name).toBe('Retryco');
+    expect(getProject(db, result.projectId)?.name).toBe('Retryco Design System');
+  });
+
   it('continues a brand extraction with a fresh conversation when the recorded one was deleted', async () => {
     const db = openDatabase(tempDir, { dataDir: tempDir });
     let firstBackground: Promise<unknown> | null = null;

@@ -152,6 +152,10 @@ export interface BrandMeta {
   /** When the programmatic pass started (ms epoch), so a terminal reconcile can
    *  stamp an accurate elapsed window on the synthetic message. */
   extractionStartedAt?: number;
+  /** Current programmatic extraction generation. Background passes must match
+   *  this before committing terminal writes, so stale retries cannot overwrite a
+   *  newer Browser/manual retry. */
+  extractionAttemptId?: string;
 }
 
 /** A brand as surfaced to the library list + detail page. */

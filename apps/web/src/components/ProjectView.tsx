@@ -779,6 +779,25 @@ function brandExtractionAllowsEditing(status: BrandStatus | null): boolean {
   return status === 'ready' || status === 'failed';
 }
 
+function urlOrigin(value: string | null | undefined): string | null {
+  const url = value?.trim();
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function brandBrowserSnapshotMatchesSource(
+  snapshotBaseUrl: string,
+  sourceUrl: string | null | undefined,
+): boolean {
+  const snapshotOrigin = urlOrigin(snapshotBaseUrl);
+  const sourceOrigin = urlOrigin(sourceUrl);
+  return Boolean(snapshotOrigin && sourceOrigin && snapshotOrigin === sourceOrigin);
+}
+
 function workspaceContextItemEqual(
   a: WorkspaceContextItem | null,
   b: WorkspaceContextItem | null,
@@ -1227,8 +1246,16 @@ export function ProjectView({
       brandExtractionStatusOverride.brandId !== currentBrandExtractionId
     ) {
       setBrandExtractionStatusOverride(null);
+      return;
     }
-  }, [brandExtractionStatusOverride, currentBrandExtractionId]);
+    if (
+      brandExtractionStatusOverride &&
+      brandExtractionStatusOverride.brandId === currentBrandExtractionId &&
+      brandExtractionAllowsEditing(polledBrandExtractionStatus)
+    ) {
+      setBrandExtractionStatusOverride(null);
+    }
+  }, [brandExtractionStatusOverride, currentBrandExtractionId, polledBrandExtractionStatus]);
   const effectiveBrandExtractionStatus =
     brandExtractionStatusOverride?.brandId === currentBrandExtractionId
       ? brandExtractionStatusOverride.status
@@ -6451,6 +6478,10 @@ export function ProjectView({
     setBrandExtractionStatusOverride({ brandId, status: 'extracting' });
     const brandPreviewFile = brandExtractionPreviewFileName(projectFiles);
     requestOpenFile(brandPreviewFile);
+    const brandExtractionSourceUrl =
+      currentProject.metadata?.brandSourceUrl?.trim() ||
+      brandBrowserAssist?.sourceUrl?.trim() ||
+      '';
 
     const refreshAfterProgrammaticContinue = async (
       status: string,
@@ -6488,7 +6519,10 @@ export function ProjectView({
 
     void (async () => {
       const snapshot = await readBrandBrowserSnapshot(BRAND_BROWSER_TAB_ID);
-      if (snapshot.status === 'ready') {
+      if (
+        snapshot.status === 'ready' &&
+        brandBrowserSnapshotMatchesSource(snapshot.baseUrl, brandExtractionSourceUrl)
+      ) {
         const outcome = await extractBrandFromHtml(brandId, {
           html: snapshot.html,
           css: snapshot.css,
@@ -6546,6 +6580,7 @@ export function ProjectView({
       });
   }, [
     activeConversationId,
+    brandBrowserAssist?.sourceUrl,
     currentProject.metadata,
     dismissBrandBrowserAssist,
     failedMessagesConversationId,

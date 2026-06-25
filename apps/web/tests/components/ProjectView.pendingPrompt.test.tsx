@@ -628,6 +628,38 @@ describe('ProjectView pending prompt seeding', () => {
     });
   });
 
+  it('falls back to programmatic retry when the Browser tab is on another origin', async () => {
+    const executeJavaScript = vi.fn()
+      .mockResolvedValueOnce('<html><head><title>Wrong</title></head><body><h1>Wrong</h1></body></html>')
+      .mockResolvedValueOnce('body { color: #111111; background: #ffffff; }');
+    brandBrowserBridgeMocks.getBrandBrowser.mockReturnValue({
+      isDesktopWebview: true,
+      getURL: () => 'https://wrong.example/',
+      executeJavaScript,
+    });
+
+    renderProjectView(
+      {
+        ...project('brand-retry'),
+        metadata: {
+          kind: 'brand',
+          importedFrom: 'brand-extraction',
+          brandId: 'brand-retry',
+          brandSourceUrl: 'https://economist.com/',
+          brandDesignSystemId: 'user:brand-retry',
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(chatPaneSpy.mock.calls.at(-1)?.[0].onContinueBrandExtraction).toBeTypeOf('function');
+    });
+    chatPaneSpy.mock.calls.at(-1)?.[0].onContinueBrandExtraction?.();
+
+    await waitFor(() => expect(mockedContinueBrandExtraction).toHaveBeenCalledWith('brand-retry'));
+    expect(mockedExtractBrandFromHtml).not.toHaveBeenCalled();
+  });
+
   it('does not duplicate a persisted browser-assist card already in the conversation', async () => {
     mockedFetchBrands.mockResolvedValue([
       {
@@ -676,6 +708,49 @@ describe('ProjectView pending prompt seeding', () => {
         String(call[2]?.content ?? '').includes('<od-card type="brand-browser-assist"'),
       ),
     ).toBe(false);
+  });
+
+  it('lets a terminal failed poll supersede a local retry status override', async () => {
+    mockedFetchBrands.mockResolvedValue([
+      {
+        meta: {
+          id: 'brand-retry',
+          sourceUrl: 'https://economist.com/',
+          createdAt: 1,
+          updatedAt: 2,
+          status: 'failed',
+          designSystemId: 'user:brand-retry',
+        },
+        brand: null,
+      },
+    ]);
+
+    renderProjectView(
+      {
+        ...project('brand-retry'),
+        metadata: {
+          kind: 'brand',
+          importedFrom: 'brand-extraction',
+          brandId: 'brand-retry',
+          brandSourceUrl: 'https://economist.com/',
+          brandDesignSystemId: 'user:brand-retry',
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(fileWorkspaceSpy.mock.calls.at(-1)?.[0].designSystemEditable).toBe(true);
+    });
+    const callsBeforeContinue = fileWorkspaceSpy.mock.calls.length;
+
+    latestChatPaneProps().onContinueBrandExtraction?.();
+
+    await waitFor(() => expect(mockedContinueBrandExtraction).toHaveBeenCalledWith('brand-retry'));
+    await waitFor(() => {
+      const callsAfterContinue = fileWorkspaceSpy.mock.calls.slice(callsBeforeContinue);
+      expect(callsAfterContinue.some(([props]) => props.designSystemEditable === false)).toBe(true);
+      expect(fileWorkspaceSpy.mock.calls.at(-1)?.[0].designSystemEditable).toBe(true);
+    });
   });
 
   it('dedupes rapid programmatic brand continuation before the busy rerender lands', async () => {
