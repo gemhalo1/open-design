@@ -473,8 +473,8 @@ const tutorialCopy =
         border: 1px solid var(--line);
         border-radius: 10px;
       }
-      /* Italic line directly after an image acts as a caption */
-      .tut-body :global(p > em:only-child) {
+      /* Italic line in the paragraph directly after an image acts as a caption */
+      .tut-body :global(p:has(> img) + p > em:only-child) {
         display: block;
         font-size: 14px;
         line-height: 1.5;

@@ -57,7 +57,7 @@ corepack enable && pnpm install
 pnpm tools-dev run web
 ```
 
-Then open the local URL it prints (the web UI runs at `http://localhost:7456`). You need Node `~24` and pnpm `10.33.x`; Corepack will select the pinned pnpm version for you.
+Then open the local URL it prints. You need Node `~24` and pnpm `10.33.x`; Corepack will select the pinned pnpm version for you.
 
 ### Option C — Install into your coding agent
 
