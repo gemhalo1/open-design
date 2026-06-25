@@ -651,6 +651,138 @@ describe('brand routes', () => {
     }
   });
 
+  it('continues extraction promptly when stale finalize fallback is still settling', async () => {
+    let prefetchCalls = 0;
+    const prefetch = vi.fn(async (url: string): Promise<PrefetchResult | null> => {
+      prefetchCalls += 1;
+      return prefetchCalls === 1 ? programmaticPrefetchResult(url) : null;
+    });
+    let logoFallbackStarted!: () => void;
+    const logoFallbackStartedPromise = new Promise<void>((resolve) => {
+      logoFallbackStarted = resolve;
+    });
+    let releaseLogoFallback!: () => void;
+    const logoFallbackGate = new Promise<void>((resolve) => {
+      releaseLogoFallback = resolve;
+    });
+    let logoFallbackCalls = 0;
+    const logoFallback = vi.fn(async () => {
+      logoFallbackCalls += 1;
+      if (logoFallbackCalls === 1) {
+        logoFallbackStarted();
+        await logoFallbackGate;
+      }
+      return { changed: false };
+    });
+    const server = await startBrandServer({
+      prefetch,
+      logoFallback,
+      imageryFallback: NO_IMAGERY_FALLBACK,
+    });
+    try {
+      const started = await server.requestJson('/api/brands', {
+        method: 'POST',
+        body: { url: 'https://acme.com' },
+      });
+      expect(started.status).toBe(200);
+      await logoFallbackStartedPromise;
+
+      const continueRequest = server.requestJson(`/api/brands/${started.body.id}/continue-extraction`, {
+        method: 'POST',
+        body: {},
+      });
+      const continued = await Promise.race([
+        continueRequest,
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(() => reject(new Error('continue-extraction waited for stale finalize fallback')), 1000);
+        }),
+      ]);
+
+      expect(continued.status).toBe(200);
+      expect(continued.body).toMatchObject({
+        id: started.body.id,
+        projectId: started.body.projectId,
+        status: 'extracting',
+      });
+
+      releaseLogoFallback();
+      await continueRequest;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const finalMeta = JSON.parse(readFileSync(path.join(brandsRoot, started.body.id, 'meta.json'), 'utf8'));
+      expect(finalMeta.status).not.toBe('ready');
+    } finally {
+      releaseLogoFallback();
+      await server.close();
+    }
+  });
+
+  it('starts browser HTML retry promptly when stale finalize fallback is still settling', async () => {
+    const prefetch = vi.fn(async (url: string): Promise<PrefetchResult> => programmaticPrefetchResult(url));
+    let logoFallbackStarted!: () => void;
+    const logoFallbackStartedPromise = new Promise<void>((resolve) => {
+      logoFallbackStarted = resolve;
+    });
+    let releaseLogoFallback!: () => void;
+    const logoFallbackGate = new Promise<void>((resolve) => {
+      releaseLogoFallback = resolve;
+    });
+    let logoFallbackCalls = 0;
+    const logoFallback = vi.fn(async () => {
+      logoFallbackCalls += 1;
+      if (logoFallbackCalls === 1) {
+        logoFallbackStarted();
+        await logoFallbackGate;
+      }
+      return { changed: false };
+    });
+    const server = await startBrandServer({
+      prefetch,
+      logoFallback,
+      imageryFallback: NO_IMAGERY_FALLBACK,
+    });
+    try {
+      const started = await server.requestJson('/api/brands', {
+        method: 'POST',
+        body: { url: 'https://acme.com' },
+      });
+      expect(started.status).toBe(200);
+      await logoFallbackStartedPromise;
+      const staleMeta = JSON.parse(readFileSync(path.join(brandsRoot, started.body.id, 'meta.json'), 'utf8'));
+      const staleAttemptId = staleMeta.extractionAttemptId;
+
+      const extractionRequest = server.requestJson(`/api/brands/${started.body.id}/extract-from-html`, {
+        method: 'POST',
+        body: {
+          html: validBrowserHtml(),
+          css: validBrowserCss(),
+          baseUrl: 'https://acme.com/',
+        },
+      });
+      let retryAttemptStarted = false;
+      const deadline = Date.now() + 1000;
+      while (Date.now() < deadline) {
+        const currentMeta = JSON.parse(readFileSync(path.join(brandsRoot, started.body.id, 'meta.json'), 'utf8'));
+        if (currentMeta.extractionAttemptId && currentMeta.extractionAttemptId !== staleAttemptId) {
+          retryAttemptStarted = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(retryAttemptStarted).toBe(true);
+
+      releaseLogoFallback();
+      const extracted = await extractionRequest;
+      expect(extracted.status).toBe(200);
+      expect(extracted.body.id).toBe(started.body.id);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const finalMeta = JSON.parse(readFileSync(path.join(brandsRoot, started.body.id, 'meta.json'), 'utf8'));
+      expect(finalMeta.status).toBe('ready');
+    } finally {
+      releaseLogoFallback();
+      await server.close();
+    }
+  });
+
   it('keeps cancel terminal when browser HTML extraction is in flight', async () => {
     let prefetchStarted!: () => void;
     const prefetchStartedPromise = new Promise<void>((resolve) => {
@@ -824,6 +956,27 @@ describe('brand routes', () => {
       blocked: false,
       materialMd: '# Acme\n\nExcellent things',
     };
+  }
+
+  function validBrowserHtml(): string {
+    return [
+      '<!doctype html><html><head>',
+      '<title>Acme Inc</title>',
+      '<meta name="description" content="We build delightful developer tools.">',
+      '</head><body>',
+      '<h1>Welcome to Acme</h1><h2>Fast, friendly software</h2>',
+      `<p>${'Acme builds delightful developer tools teams enjoy using every day. '.repeat(2)}</p>`,
+      '</body></html>',
+    ].join('');
+  }
+
+  function validBrowserCss(): string {
+    return [
+      ':root{--brand:#3b5bdb}',
+      'h1{color:#3b5bdb;font-family:"Inter",sans-serif}',
+      'body{background:#ffffff;color:#1f2933}',
+      'a{color:#e8590c}.accent{color:#0ca678}.cta{background:#3b5bdb}',
+    ].join('');
   }
 
   async function requestBrandLogo(id: string) {

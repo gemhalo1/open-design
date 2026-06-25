@@ -80,7 +80,7 @@ export interface BrandRoutesDeps {
 const LOGO_EXT_PRIORITY = ['.svg', '.png', '.webp', '.jpg', '.jpeg', '.gif', '.ico'];
 const PROGRAMMATIC_CANCEL_ERROR = 'Programmatic extraction stopped by the user.';
 const BROWSER_HTML_EXTRACTION_ERROR = 'Could not extract a design system from the provided page.';
-const PROGRAMMATIC_CANCEL_SETTLE_GRACE_MS = 250;
+const PROGRAMMATIC_ABORT_SETTLE_GRACE_MS = 250;
 
 type ActiveProgrammaticBrandExtraction = {
   controller: AbortController;
@@ -259,7 +259,9 @@ export function registerBrandRoutes(app: Application, deps: BrandRoutesDeps): vo
   app.post('/api/brands/:id/continue-extraction', async (req: Request, res: Response) => {
     const id = String(req.params.id);
     try {
-      await abortActiveProgrammaticBrandExtraction(id);
+      await abortActiveProgrammaticBrandExtraction(id, {
+        settleTimeoutMs: PROGRAMMATIC_ABORT_SETTLE_GRACE_MS,
+      });
       const programmaticAbortController = new AbortController();
       const backgroundExtractionRef: { current: Promise<unknown> | null } = { current: null };
       const transcriptAgent = await deps.resolveTranscriptAgent?.().catch(() => null);
@@ -302,7 +304,7 @@ export function registerBrandRoutes(app: Application, deps: BrandRoutesDeps): vo
         return;
       }
       await abortActiveProgrammaticBrandExtraction(id, {
-        settleTimeoutMs: PROGRAMMATIC_CANCEL_SETTLE_GRACE_MS,
+        settleTimeoutMs: PROGRAMMATIC_ABORT_SETTLE_GRACE_MS,
       });
       const currentMeta = readBrandDetail(brandsRoot, id)?.meta ?? detail.meta;
       if (currentMeta.status !== 'ready') {
@@ -432,7 +434,9 @@ export function registerBrandRoutes(app: Application, deps: BrandRoutesDeps): vo
         res.status(404).json({ error: 'brand not found' });
         return;
       }
-      await abortActiveProgrammaticBrandExtraction(id);
+      await abortActiveProgrammaticBrandExtraction(id, {
+        settleTimeoutMs: PROGRAMMATIC_ABORT_SETTLE_GRACE_MS,
+      });
       const result = await extractBrandFromHtml({
         id,
         meta,
