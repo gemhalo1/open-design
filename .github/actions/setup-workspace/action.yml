@@ -10,6 +10,10 @@ inputs:
     description: pnpm version to install
     required: false
     default: '10.33.2'
+  runner-labels:
+    description: JSON array of labels selected for this job's runs-on value
+    required: false
+    default: '[]'
 
 runs:
   using: composite
@@ -17,8 +21,19 @@ runs:
     - name: Detect persistent pnpm store
       id: persistent-pnpm-store
       shell: bash
+      env:
+        RUNNER_LABELS_JSON: ${{ inputs.runner-labels }}
       run: |
-        if [ -n "${OPEN_DESIGN_CI_CACHE:-}" ]; then
+        case "$RUNNER_LABELS_JSON" in
+          *'"od-persistent-ci"'*) persistent_enabled=true ;;
+          *) persistent_enabled=false ;;
+        esac
+
+        if [ "$persistent_enabled" = "true" ]; then
+          if [ -z "${OPEN_DESIGN_CI_CACHE:-}" ]; then
+            echo "runner-labels contains od-persistent-ci, but OPEN_DESIGN_CI_CACHE is not set" >&2
+            exit 1
+          fi
           store_dir="$OPEN_DESIGN_CI_CACHE/pnpm-store"
           mkdir -p "$store_dir"
           {
