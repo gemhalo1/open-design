@@ -809,6 +809,66 @@ describe('ProjectView conversation run isolation', () => {
     handlers.onDone();
   });
 
+  it('reseeds from the active conversation once an API-mode stream finishes', async () => {
+    conversationAMessages = [
+      {
+        id: 'user-a',
+        role: 'user',
+        content: 'Keep the editorial grid and muted palette.',
+        createdAt: 1,
+      },
+      {
+        id: 'assistant-seeded',
+        role: 'assistant',
+        content: 'Last completed assistant output',
+        createdAt: 2,
+        runStatus: 'succeeded',
+        endedAt: 3,
+      },
+    ];
+    let byokHandlers: ByokStreamHandlers | null = null;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    streamMessage.mockImplementation(
+      async (
+        _config: unknown,
+        _systemPrompt: unknown,
+        _history: unknown,
+        _signal: unknown,
+        handlers: ByokStreamHandlers,
+      ) => {
+        byokHandlers = handlers;
+      },
+    );
+
+    renderProjectView({
+      ...config,
+      mode: 'api',
+      apiKey: 'test-key',
+      model: 'api-model',
+    });
+
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
+    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
+
+    fireEvent.click(screen.getByTestId('send-message'));
+
+    await waitFor(() => expect(streamMessage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('streaming-state').textContent).toBe('streaming'));
+
+    requireByokStreamHandlers(byokHandlers).onDone();
+
+    await waitFor(() => expect(screen.getByTestId('streaming-state').textContent).toBe('idle'));
+
+    fireEvent.click(screen.getByTestId('new-conversation'));
+
+    await waitFor(() => expect(createConversation).toHaveBeenCalledTimes(1));
+    expect(createConversation).toHaveBeenCalledWith(
+      'project-1',
+      undefined,
+      { seedFromConversationId: 'conv-a' },
+    );
+  });
+
   it('trims a trailing resumable failed turn from new-conversation seeds', async () => {
     const successfulUser: ChatMessage = {
       id: 'user-success',
@@ -1148,6 +1208,34 @@ describe('ProjectView conversation run isolation', () => {
       seedTrimAfterMessageId: null,
     });
 
+  });
+
+  it('keeps trim markers when the visible seed was shortened before the cache catches up', () => {
+    const persistedUser: ChatMessage = {
+      id: 'user-persisted',
+      role: 'user',
+      content: 'Keep the editorial grid and muted palette.',
+      createdAt: 1,
+    };
+    const persistedAssistant: ChatMessage = {
+      id: 'assistant-persisted',
+      role: 'assistant',
+      content: 'Persisted baseline draft',
+      createdAt: 3,
+      runStatus: 'succeeded',
+      endedAt: 4,
+    };
+
+    expect(buildSeedOverlayForNewConversation(
+      [persistedUser, persistedAssistant],
+      [persistedUser, persistedAssistant],
+      true,
+    )).toEqual({
+      canSeedFromConversation: true,
+      seedMessages: null,
+      seedMessageOverrides: [],
+      seedTrimAfterMessageId: persistedAssistant.id,
+    });
   });
 
   it('keeps the new conversation payload compact when the visible messages update', async () => {

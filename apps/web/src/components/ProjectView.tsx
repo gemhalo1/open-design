@@ -5186,12 +5186,14 @@ export function ProjectView({
     setConversationLoadError(null);
     try {
       const seedMessages = getSeedableMessagesForNewConversation(messages);
+      const visibleSeedWasShortened = seedMessages.length < messages.length;
       const persistedSeedMessages = activeConversationId
         ? serverMessagesByConversationRef.current.get(activeConversationId) ?? []
         : [];
       const seedOverlay = buildSeedOverlayForNewConversation(
         seedMessages,
         persistedSeedMessages,
+        visibleSeedWasShortened,
       );
       const seedFromConversationId =
         typeof activeConversationId === 'string'
@@ -5259,6 +5261,7 @@ export function ProjectView({
     project.id,
     activeConversationId,
     currentConversationHasActiveRun,
+    currentConversationStreaming,
     messages,
     navigate,
     openTabsState.active,
@@ -7161,6 +7164,7 @@ function seedMessageOverrideEquals(
 export function buildSeedOverlayForNewConversation(
   visibleMessages: ChatMessage[],
   persistedMessages: ChatMessage[],
+  visibleSeedWasShortened = false,
 ): {
   canSeedFromConversation: boolean;
   seedMessages: ChatMessage[] | null;
@@ -7210,7 +7214,10 @@ export function buildSeedOverlayForNewConversation(
     };
   }
   const seedTrimAfterMessageId =
-    persistedRetainedPrefixLength < persistedMessages.length
+    (
+      persistedRetainedPrefixLength < persistedMessages.length
+      || visibleSeedWasShortened
+    )
       ? (persistedRetainedPrefixLength > 0
           ? persistedMessages[persistedRetainedPrefixLength - 1]?.id ?? null
           : null)
