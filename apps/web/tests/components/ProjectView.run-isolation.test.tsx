@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildSeedOverlayForNewConversation,
   getSeedableMessagesForNewConversation,
+  mergePersistedConversationCache,
   ProjectView,
   mergeSavedPreviewComment,
 } from '../../src/components/ProjectView';
@@ -865,7 +866,10 @@ describe('ProjectView conversation run isolation', () => {
     expect(createConversation).toHaveBeenCalledWith(
       'project-1',
       undefined,
-      { seedFromConversationId: 'conv-a' },
+      {
+        seedFromConversationId: 'conv-a',
+        seedTrimAfterMessageId: 'assistant-seeded',
+      },
     );
   });
 
@@ -1157,7 +1161,7 @@ describe('ProjectView conversation run isolation', () => {
     expect(createConversation).toHaveBeenCalledWith(
       'project-1',
       undefined,
-      {
+      expect.objectContaining({
         seedFromConversationId: 'conv-a',
         seedMessageOverrides: expect.arrayContaining([
           expect.objectContaining({
@@ -1170,10 +1174,60 @@ describe('ProjectView conversation run isolation', () => {
             events: [{ kind: 'text', text: 'Visible-only successful draft' }],
           }),
         ]),
-      },
+        seedTrimAfterMessageId: persistedAssistant.id,
+      }),
     );
 
     deferredSaves.forEach(({ resolve }) => resolve(true));
+  });
+
+  it('preserves cached persisted message order when save requests resolve out of order', () => {
+    const persistedUser: ChatMessage = {
+      id: 'user-persisted',
+      role: 'user',
+      content: 'Keep the editorial grid and muted palette.',
+      createdAt: 1,
+    };
+    const persistedAssistant: ChatMessage = {
+      id: 'assistant-persisted',
+      role: 'assistant',
+      content: 'Persisted baseline draft',
+      createdAt: 2,
+    };
+    const newUser: ChatMessage = {
+      id: 'user-new',
+      role: 'user',
+      content: 'Add a pricing section beneath the hero.',
+      createdAt: 3,
+    };
+    const newAssistant: ChatMessage = {
+      id: 'assistant-new',
+      role: 'assistant',
+      content: 'Pricing section draft',
+      createdAt: 4,
+      events: [{ kind: 'text', text: 'Pricing section draft' }],
+    };
+    const visibleMessages = [persistedUser, persistedAssistant, newUser, newAssistant];
+
+    const assistantFirst = mergePersistedConversationCache(
+      [persistedUser, persistedAssistant],
+      newAssistant,
+      visibleMessages,
+    );
+    const reordered = mergePersistedConversationCache(assistantFirst, newUser, visibleMessages);
+
+    expect(reordered.map((message) => message.id)).toEqual([
+      persistedUser.id,
+      persistedAssistant.id,
+      newUser.id,
+      newAssistant.id,
+    ]);
+    expect(buildSeedOverlayForNewConversation(visibleMessages, reordered, false)).toEqual({
+      canSeedFromConversation: true,
+      seedMessages: null,
+      seedMessageOverrides: [],
+      seedTrimAfterMessageId: null,
+    });
   });
 
   it('skips seeding when a persisted gap would reorder the overlay', () => {

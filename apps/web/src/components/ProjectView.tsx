@@ -285,6 +285,25 @@ export function mergeServerMessagesIntoConversation(
   return merged;
 }
 
+export function mergePersistedConversationCache(
+  cachedMessages: ChatMessage[],
+  persistedMessage: ChatMessage,
+  visibleMessages: ChatMessage[] | null = null,
+): ChatMessage[] {
+  const nextById = new Map(cachedMessages.map((message) => [message.id, message]));
+  nextById.set(persistedMessage.id, persistedMessage);
+  if (!visibleMessages || visibleMessages.length === 0) {
+    return Array.from(nextById.values());
+  }
+  const visibleIds = new Set(visibleMessages.map((message) => message.id));
+  const ordered = visibleMessages.flatMap((message) => {
+    const persisted = nextById.get(message.id);
+    return persisted ? [persisted] : [];
+  });
+  const extras = Array.from(nextById.values()).filter((message) => !visibleIds.has(message.id));
+  return [...ordered, ...extras];
+}
+
 interface Props {
   project: Project;
   routeFileName: string | null;
@@ -2262,13 +2281,9 @@ export function ProjectView({
         if (!saved) return;
         const cached = serverMessagesByConversationRef.current.get(conversationId);
         if (!cached) return;
-        const next = [...cached];
-        const existingIndex = next.findIndex((item) => item.id === message.id);
-        if (existingIndex === -1) {
-          next.push(message);
-        } else {
-          next[existingIndex] = message;
-        }
+        const visibleMessages =
+          messagesConversationIdRef.current === conversationId ? messagesRef.current : null;
+        const next = mergePersistedConversationCache(cached, message, visibleMessages);
         serverMessagesByConversationRef.current.set(conversationId, next);
       });
     },
