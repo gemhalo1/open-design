@@ -1118,7 +1118,7 @@ export async function createUserDesignSystem(
   input: UserDesignSystemInput,
 ): Promise<DesignSystemSummary> {
   const title = normalizeTitle(input.title);
-  const dirId = await uniqueSlug(root, slugify(title));
+  const { dirId, dir } = await reserveUniqueSlugDirectory(root, slugify(title));
   const now = new Date().toISOString();
   const provenance = normalizeProvenance(input.provenance, {
     ...(input.summary ? { companyBlurb: input.summary } : {}),
@@ -1131,10 +1131,8 @@ export async function createUserDesignSystem(
     sourceNotes,
   });
   const surface = input.surface ?? extractSurface(body) ?? 'web';
-  const dir = path.join(root, dirId);
   let createdDir = false;
   try {
-    await mkdir(dir, { recursive: true });
     createdDir = true;
     await writeFile(path.join(dir, 'DESIGN.md'), body, 'utf8');
     const artifactMode = normalizeArtifactMode(input.artifactMode);
@@ -2674,6 +2672,31 @@ async function uniqueSlug(root: string, base: string): Promise<string> {
       return candidate;
     }
   }
+}
+
+async function reserveUniqueSlugDirectory(root: string, base: string): Promise<{ dirId: string; dir: string }> {
+  await mkdir(root, { recursive: true });
+  let candidate = base || 'design-system';
+  let index = 2;
+  for (;;) {
+    const dir = path.join(root, candidate);
+    try {
+      await mkdir(dir);
+      return { dirId: candidate, dir };
+    } catch (err) {
+      if (!isNodeErrorCode(err, 'EEXIST')) throw err;
+      candidate = `${base || 'design-system'}-${index++}`;
+    }
+  }
+}
+
+function isNodeErrorCode(error: unknown, code: string): boolean {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: unknown }).code === code,
+  );
 }
 
 function slugify(raw: string): string {

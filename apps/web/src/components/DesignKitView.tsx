@@ -1700,6 +1700,7 @@ function DesignKitViewInner({
                       className={styles.lightboxImg}
                       src={activeLightboxItem.src}
                       alt={activeLightboxItem.caption}
+                      onError={() => markBroken(activeLightboxItem.src)}
                     />
                     <div className={styles.lightboxInfo}>
                       <span className={styles.lightboxCaption}>{activeLightboxItem.caption}</span>

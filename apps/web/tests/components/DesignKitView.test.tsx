@@ -342,6 +342,56 @@ describe('DesignKitView iframe sandboxing', () => {
     );
   });
 
+  it('skips a hidden gallery image when it fails after opening in the lightbox', async () => {
+    const kit: DesignKit = {
+      ...previewKit(),
+      imagery: {
+        style: '',
+        subjects: [],
+        treatment: '',
+        avoid: [],
+        samples: [
+          { url: '/raw/projects/preview/imagery/hero.png', caption: 'Hero image', kind: 'hero' },
+          { url: '/raw/projects/preview/imagery/detail.png', caption: 'Detail image', kind: 'detail' },
+          { url: '/raw/projects/preview/imagery/filler-3.png', caption: 'Filler image 3', kind: 'detail' },
+          { url: '/raw/projects/preview/imagery/filler-4.png', caption: 'Filler image 4', kind: 'detail' },
+          { url: '/raw/projects/preview/imagery/filler-5.png', caption: 'Filler image 5', kind: 'detail' },
+          { url: '/raw/projects/preview/imagery/filler-6.png', caption: 'Filler image 6', kind: 'detail' },
+          { url: '/raw/projects/preview/imagery/filler-7.png', caption: 'Filler image 7', kind: 'detail' },
+          { url: '/raw/projects/preview/imagery/filler-8.png', caption: 'Filler image 8', kind: 'detail' },
+          { url: '/raw/projects/preview/imagery/hidden.png', caption: 'Hidden image', kind: 'detail' },
+        ],
+      },
+    };
+
+    render(
+      <I18nProvider initial="en">
+        <DesignKitView kit={kit} />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Hidden image' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hero image' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Hero image' })).getByRole('button', { name: 'Previous' }),
+    );
+
+    const hiddenDialog = screen.getByRole('dialog', { name: 'Hidden image' });
+    fireEvent.error(within(hiddenDialog).getByRole('img', { name: 'Hidden image' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Hidden image' })).toBeNull();
+      expect(screen.getByRole('dialog', { name: 'Filler image 8' })).toBeTruthy();
+    });
+
+    const fallbackDialog = screen.getByRole('dialog', { name: 'Filler image 8' });
+    expect(within(fallbackDialog).getByRole('img', { name: 'Filler image 8' }).getAttribute('src')).toBe(
+      '/raw/projects/preview/imagery/filler-8.png',
+    );
+    expect(within(fallbackDialog).getByText('8 / 8')).toBeTruthy();
+  });
+
   it('lets Escape close an image lightbox before the outer preview modal', () => {
     const onClose = vi.fn();
     const kit: DesignKit = {
