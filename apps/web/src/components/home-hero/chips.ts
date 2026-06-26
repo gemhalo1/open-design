@@ -203,6 +203,38 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     },
   },
   {
+    id: 'social-card',
+    label: 'Social card',
+    icon: 'share',
+    group: 'create',
+    description: 'Shareable post cards',
+    hint: 'Create platform-ready social cards, carousels, covers, and post visuals.',
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-new-generation',
+      projectKind: 'image',
+      projectMetadata: {
+        kind: 'image',
+      },
+    },
+  },
+  {
+    id: 'diagram',
+    label: 'Diagram',
+    icon: 'draw',
+    group: 'create',
+    description: 'Architecture & flow charts',
+    hint: 'Draw polished technical diagrams, architecture maps, UML, and workflow charts.',
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-new-generation',
+      projectKind: 'image',
+      projectMetadata: {
+        kind: 'image',
+      },
+    },
+  },
+  {
     id: 'hyperframes',
     label: 'HyperFrames',
     icon: 'orbit',
@@ -338,6 +370,8 @@ export const CREATE_RAIL_ORDER = [
   'wireframe',
   'mobile',
   'document',
+  'social-card',
+  'diagram',
   'hyperframes',
   'live-artifact',
   'image',

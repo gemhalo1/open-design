@@ -19,11 +19,10 @@ import {
   type FacetOption,
 } from '../plugins-home/facets';
 
-// Parent chips that carry a second-level rail. Media chips (image/video/
-// audio/hyperframes) own their own inline composer form and are excluded;
-// the facet table only defines children for prototype/deck/image/video, and
-// we surface the rail for prototype + deck.
-export type SubChipParentId = 'prototype' | 'deck';
+// Parent chips that carry a second-level rail. Prototype/deck draw from the
+// Community facet catalog; social-card/diagram use a local taxonomy because
+// they are template scenarios, not installed plugin subfacets.
+export type SubChipParentId = 'prototype' | 'deck' | 'social-card' | 'diagram';
 
 export interface HomeHeroSubChip {
   // Facet subcategory slug, e.g. 'business-dashboards'.
@@ -32,7 +31,7 @@ export interface HomeHeroSubChip {
   icon: IconName;
 }
 
-const PARENT_IDS: readonly SubChipParentId[] = ['prototype', 'deck'];
+const PARENT_IDS: readonly SubChipParentId[] = ['prototype', 'deck', 'social-card', 'diagram'];
 
 // Icon per facet subcategory slug. Falls back to a neutral glyph so a newly
 // added facet still renders a pill rather than crashing.
@@ -51,12 +50,45 @@ const SUBCATEGORY_ICONS: Record<string, IconName> = {
   'product-sales': 'star',
   'engineering-talks': 'terminal',
   'creative-decks': 'palette',
+  // social-card
+  'x-twitter-card': 'share',
+  'threads-card': 'comment',
+  'xiaohongshu-carousel': 'image',
+  'wechat-cover': 'file-text',
+  'linkedin-card': 'file',
+  'instagram-story': 'smartphone',
+  // diagram
+  'architecture-diagram': 'grid',
+  'workflow-diagram': 'refresh',
+  'rag-agent-diagram': 'sparkles',
+  'uml-diagram': 'blocks',
+  'data-flow-diagram': 'kanban',
+  'comparison-diagram': 'layers-filled',
 };
 const DEFAULT_SUBCATEGORY_ICON: IconName = 'blocks';
 
 export function isSubChipParent(chipId: string | null): chipId is SubChipParentId {
-  return chipId === 'prototype' || chipId === 'deck';
+  return chipId === 'prototype' || chipId === 'deck' || chipId === 'social-card' || chipId === 'diagram';
 }
+
+const LOCAL_SUBCHIPS: Record<'social-card' | 'diagram', HomeHeroSubChip[]> = {
+  'social-card': [
+    { slug: 'x-twitter-card', label: 'Twitter / X', icon: SUBCATEGORY_ICONS['x-twitter-card'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'threads-card', label: 'Threads', icon: SUBCATEGORY_ICONS['threads-card'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'xiaohongshu-carousel', label: 'Xiaohongshu / Rednote', icon: SUBCATEGORY_ICONS['xiaohongshu-carousel'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'wechat-cover', label: 'WeChat cover', icon: SUBCATEGORY_ICONS['wechat-cover'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'linkedin-card', label: 'LinkedIn', icon: SUBCATEGORY_ICONS['linkedin-card'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'instagram-story', label: 'Instagram story', icon: SUBCATEGORY_ICONS['instagram-story'] ?? DEFAULT_SUBCATEGORY_ICON },
+  ],
+  diagram: [
+    { slug: 'architecture-diagram', label: 'Architecture', icon: SUBCATEGORY_ICONS['architecture-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'workflow-diagram', label: 'Workflow', icon: SUBCATEGORY_ICONS['workflow-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'rag-agent-diagram', label: 'RAG / Agent', icon: SUBCATEGORY_ICONS['rag-agent-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'uml-diagram', label: 'UML', icon: SUBCATEGORY_ICONS['uml-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'data-flow-diagram', label: 'Data flow', icon: SUBCATEGORY_ICONS['data-flow-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
+    { slug: 'comparison-diagram', label: 'Comparison', icon: SUBCATEGORY_ICONS['comparison-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
+  ],
+};
 
 // Sub-types for a first-level chip, drawn from the Community facet catalog so
 // the labels, set, AND order match the Community section exactly. The display
@@ -69,6 +101,7 @@ export function subChipsForChip(
   plugins: InstalledPluginRecord[],
 ): HomeHeroSubChip[] {
   if (!isSubChipParent(chipId)) return [];
+  if (chipId === 'social-card' || chipId === 'diagram') return LOCAL_SUBCHIPS[chipId];
   const catalog = buildSubcategoryCatalog(plugins);
   const options: FacetOption[] = catalog[chipId] ?? [];
   return options
