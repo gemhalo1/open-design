@@ -50,6 +50,7 @@ import {
   type VelaLoginStatus,
 } from '../providers/daemon';
 import { amrProfileBadgeLabel } from '../runtime/amr-guidance';
+import { isVisibleLocalCliAgent } from '../utils/visibleAgents';
 import { ExportDiagnosticsRow } from './ExportDiagnosticsButton';
 import { Icon } from './Icon';
 import {
@@ -1619,7 +1620,7 @@ export function SettingsDialog({
   }, []);
 
   const installedCount = useMemo(
-    () => agents.filter((a) => a.available).length,
+    () => agents.filter((a) => a.available && isVisibleLocalCliAgent(a)).length,
     [agents],
   );
 
@@ -2946,8 +2947,9 @@ export function SettingsDialog({
     about: { title: t('settings.about'), subtitle: t('settings.aboutHint') },
   };
   const activeHeader = sectionHeader[activeSection];
-  const installedAgents = agents.filter((a) => a.available);
-  const unavailableAgents = agents.filter((a) => !a.available);
+  const visibleAgents = agents.filter(isVisibleLocalCliAgent);
+  const installedAgents = visibleAgents.filter((a) => a.available);
+  const unavailableAgents = visibleAgents.filter((a) => !a.available);
   const initialAgentScanRunning = agentsLoading && agents.length === 0;
   const agentModelOptionLabel = (
     model: ProviderModelOption | undefined,

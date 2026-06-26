@@ -24,7 +24,6 @@ import {
 } from '../artifacts/question-form';
 import { parseSubmittedAnswers } from './QuestionForm';
 import { useI18n } from '../i18n';
-import { streamMessage } from '../providers/anthropic';
 import {
   fetchChatRunStatus,
   fetchVelaLoginStatus,
@@ -34,18 +33,14 @@ import {
   reportChatRunFeedback,
   streamViaDaemon,
 } from '../providers/daemon';
-import { fetchElevenLabsVoiceOptions } from '../providers/elevenlabs-voices';
 import { normalizeCustomReason } from '@open-design/contracts/analytics';
 import {
   deletePreviewComment,
   fetchConnectorStatuses,
   fetchPreviewComments,
-  fetchDesignSystem,
-  fetchDesignTemplate,
   fetchProjectDesignSystemPackageAudit,
   fetchLiveArtifacts,
   fetchProjectFiles,
-  fetchSkill,
   patchPreviewCommentStatus,
   projectRawUrl,
   uploadProjectFiles,
@@ -56,9 +51,6 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { claimRunTurnIndex } from '../analytics/identity';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
-  composeSystemPrompt,
-  type AudioVoiceOption,
-  type MemorySystemPromptResponse,
   type ResearchOptions,
 } from '@open-design/contracts';
 import {
@@ -80,13 +72,7 @@ import {
   trackDesignSystemApplyResult,
   trackDesignSystemEnrichClick,
   trackPageView,
-  trackRunCreated,
-  trackRunFinished,
 } from '../analytics/events';
-import {
-  buildByokRunCreatedProps,
-  buildByokRunFinishedProps,
-} from '../analytics/byok-run';
 import {
   clearOnboardingSessionId,
   peekOnboardingSessionId,
@@ -101,7 +87,6 @@ import {
 import {
   apiProtocolAgentId,
   apiProtocolModelLabel,
-  usesAnthropicProxy,
 } from '../utils/apiProtocol';
 import { playSound, showCompletionNotification } from '../utils/notifications';
 import { randomUUID } from '../utils/uuid';
@@ -136,7 +121,6 @@ import {
   deleteConversation as deleteConversationApi,
   duplicatePluginAsProject,
   fetchAppliedPluginSnapshot,
-  getTemplate,
   installGeneratedPluginFolder,
   listConversations,
   listMessages,
@@ -170,15 +154,12 @@ import type {
   PreviewCommentAttachment,
   PreviewCommentTarget,
   ProjectFile,
-  ProjectTemplate,
   LiveArtifactEventItem,
   LiveArtifactSummary,
   SkillSummary,
 } from '../types';
-import { historyWithApiAttachmentContext } from '../api-attachment-context';
 import {
   commentsToAttachments,
-  historyWithCommentAttachmentContext,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   queuedSlideNavTarget,
@@ -326,9 +307,9 @@ interface Props {
   // Mentionable functional skills — already filtered by config.disabledSkills
   // upstream, so this drives only the chat composer's @-picker scope. For
   // resolving an existing project's `skillId` (which can also point at a
-  // design template after the skills/design-templates split) use
-  // `designTemplates` as a fallback in composedSystemPrompt() and in the
-  // skill-name / skill-mode lookups below.
+  // design template after the skills/design-templates split), use
+  // `designTemplates` as a fallback in the skill-name / skill-mode lookups
+  // below.
   skills: SkillSummary[];
   // All known design templates (unfiltered). Required so projects created
   // from the Templates surface keep composing the template body in API
@@ -482,37 +463,6 @@ function mergeChatAttachments(...groups: ChatAttachment[][]): ChatAttachment[] {
     }
   }
   return out;
-}
-
-function historyWithWorkspaceContext(
-  history: ChatMessage[],
-  messageId: string,
-  context: ChatSendMeta['context'] | undefined,
-): ChatMessage[] {
-  const items = context?.workspaceItems ?? [];
-  if (items.length === 0) return history;
-  const block = [
-    '',
-    '',
-    '<active-workspace-context>',
-    'Open Design selected the currently focused workspace tab as the default context for this turn.',
-    ...items.map((item, index) => {
-      const details = [
-        item.path ? `path: ${item.path}` : null,
-        item.absolutePath ? `absolute: ${item.absolutePath}` : null,
-        item.url ? `url: ${item.url}` : null,
-        item.title ? `title: ${item.title}` : null,
-        item.tabId ? `tab: ${item.tabId}` : null,
-      ].filter(Boolean).join(' | ');
-      return `${index + 1}. ${item.kind}: ${item.label}${details ? ` | ${details}` : ''}`;
-    }),
-    '</active-workspace-context>',
-  ].join('\n');
-  return history.map((message) =>
-    message.id === messageId && message.role === 'user'
-      ? { ...message, content: `${message.content}${block}` }
-      : message,
-  );
 }
 
 function commentTaskQuery(attachment: ChatCommentAttachment): string {
@@ -752,14 +702,6 @@ function applySplitChatPanelWidth(
   split.style.setProperty('--project-chat-panel-width', `${width}px`);
   split.style.gridTemplateColumns =
     `${width}px ${SPLIT_RESIZE_HANDLE_WIDTH}px ${workspacePanelTrack}`;
-}
-
-function shouldFetchElevenLabsVoiceOptions(project: Project): boolean {
-  const metadata = project.metadata;
-  return metadata?.kind === 'audio'
-    && metadata.audioKind === 'speech'
-    && metadata.audioModel === 'elevenlabs-v3'
-    && !metadata.voice;
 }
 
 // The media model the user picked in the New Project → Media dialog, keyed by
@@ -1019,7 +961,6 @@ export function ProjectView({
     if (!streaming) setLiveToolInput((prev) => (Object.keys(prev).length ? {} : prev));
   }, [streaming]);
   const [error, setError] = useState<string | null>(null);
-  const [audioVoiceOptionsError, setAudioVoiceOptionsError] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [filesRefresh, setFilesRefresh] = useState(0);
   // True while a working-dir replace is reindexing the new folder. Surfaced
@@ -1197,16 +1138,6 @@ export function ProjectView({
   const messagesRef = useRef<ChatMessage[]>([]);
   const startingQueuedChatSendIdRef = useRef<string | null>(null);
   const [queuedAutoStartTick, setQueuedAutoStartTick] = useState(0);
-  const skillCache = useRef<Map<string, string>>(new Map());
-  const designCache = useRef<Map<string, string>>(new Map());
-  const templateCache = useRef<Map<string, ProjectTemplate>>(new Map());
-  // The composed prompt memoizes design-system bodies in designCache. Whenever
-  // the systems list refreshes (App re-fetches it after any edit — including
-  // edits made in the in-project Design System tab), drop the cached bodies so
-  // the next message consumes the latest content from the project (the SSOT).
-  useEffect(() => {
-    designCache.current.clear();
-  }, [designSystems]);
   // We auto-save the most recent artifact to the project folder. Track the
   // last name we persisted so re-renders during streaming don't spawn
   // duplicate writes.
@@ -1465,7 +1396,6 @@ export function ProjectView({
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
     setError(null);
-    setAudioVoiceOptionsError(null);
     setArtifact(null);
     savedArtifactRef.current = null;
     pendingWritesRef.current.clear();
@@ -2259,128 +2189,6 @@ export function ProjectView({
   const handleEnsureProject = useCallback(async (): Promise<string | null> => {
     return project.id;
   }, [project.id]);
-
-  const composedSystemPrompt = useCallback(async (
-    sessionModeOverride: ChatSessionMode = activeSessionMode,
-  ): Promise<string> => {
-    let skillBody: string | undefined;
-    let skillName: string | undefined;
-    let skillMode: SkillSummary['mode'] | undefined;
-    let designSystemBody: string | undefined;
-    let designSystemTitle: string | undefined;
-
-    if (project.skillId) {
-      // project.skillId can resolve to either root after the
-      // skills/design-templates split; check both lists so a template-backed
-      // project keeps composing its template body when running in API mode.
-      const summary =
-        skills.find((s) => s.id === project.skillId) ??
-        designTemplates.find((s) => s.id === project.skillId);
-      skillName = summary?.name;
-      skillMode = summary?.mode;
-      const cached = skillCache.current.get(project.skillId);
-      if (cached !== undefined) {
-        skillBody = cached;
-      } else {
-        const detail =
-          (await fetchSkill(project.skillId)) ??
-          (await fetchDesignTemplate(project.skillId));
-        if (detail) {
-          skillBody = detail.body;
-          skillCache.current.set(project.skillId, detail.body);
-        }
-      }
-    }
-    if (projectDesignSystemId) {
-      const summary = designSystems.find((d) => d.id === projectDesignSystemId);
-      designSystemTitle = summary?.title;
-      const cached = designCache.current.get(projectDesignSystemId);
-      if (cached !== undefined) {
-        designSystemBody = cached;
-      } else {
-        const detail = await fetchDesignSystem(projectDesignSystemId);
-        if (detail) {
-          designSystemBody = detail.body;
-          designCache.current.set(projectDesignSystemId, detail.body);
-        }
-      }
-    }
-    let template: ProjectTemplate | undefined;
-    const tplId = project.metadata?.templateId;
-    if (project.metadata?.kind === 'template' && tplId) {
-      const cached = templateCache.current.get(tplId);
-      if (cached) {
-        template = cached;
-      } else {
-        const fetched = await getTemplate(tplId);
-        if (fetched) {
-          templateCache.current.set(tplId, fetched);
-          template = fetched;
-        }
-      }
-    }
-    // Fold in the auto-memory block so BYOK / API-mode chats see the
-    // same Personal-memory section a daemon-side CLI chat would. The
-    // daemon does this by calling `composeMemoryBody()` directly; the
-    // web side hits the equivalent HTTP surface so it can stay
-    // ignorant of daemon internals. Failures are swallowed — memory is
-    // best-effort, never a blocker for the chat round-trip.
-    let memoryBody: string | undefined;
-    try {
-      const resp = await fetch('/api/memory/system-prompt');
-      if (resp.ok) {
-        const json = (await resp.json()) as MemorySystemPromptResponse;
-        if (typeof json.body === 'string' && json.body.trim().length > 0) {
-          memoryBody = json.body;
-        }
-      }
-    } catch {
-      // Ignore; memory injection is best-effort.
-    }
-    let audioVoiceOptions: AudioVoiceOption[] | undefined;
-    let audioVoiceOptionsLookupError: string | undefined;
-    if (shouldFetchElevenLabsVoiceOptions(project)) {
-      try {
-        audioVoiceOptions = await fetchElevenLabsVoiceOptions();
-        setAudioVoiceOptionsError(null);
-      } catch (err) {
-        const message = err instanceof Error
-          ? err.message
-          : 'ElevenLabs voice list could not be loaded.';
-        audioVoiceOptionsLookupError = message;
-        setAudioVoiceOptionsError(message);
-      }
-    } else {
-      setAudioVoiceOptionsError(null);
-    }
-    return composeSystemPrompt({
-      skillBody,
-      skillName,
-      skillMode,
-      designSystemBody,
-      designSystemTitle,
-      memoryBody,
-      metadata: project.metadata,
-      template,
-      audioVoiceOptions,
-      audioVoiceOptionsError: audioVoiceOptionsLookupError,
-      streamFormat: config.mode === 'api' ? 'plain' : undefined,
-      sessionMode: sessionModeOverride,
-      locale,
-      userInstructions: config.customInstructions,
-    });
-  }, [
-    project.skillId,
-    projectDesignSystemId,
-    project.metadata,
-    skills,
-    designTemplates,
-    designSystems,
-    config.mode,
-    config.customInstructions,
-    activeSessionMode,
-    locale,
-  ]);
 
   const persistMessage = useCallback(
     (m: ChatMessage, options?: SaveMessageOptions) => {
@@ -3787,6 +3595,18 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
+      const byokOpenCodeProvider =
+        config.apiProtocol && config.apiKey
+          ? {
+              protocol: config.apiProtocol,
+              apiKey: config.apiKey,
+              baseUrl: config.baseUrl,
+              apiVersion:
+                config.apiProtocol === 'azure'
+                  ? config.apiVersion ?? ''
+                  : '',
+            }
+          : undefined;
       const preTurnFileNames = projectFiles.map((f) => f.name);
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
@@ -4318,6 +4138,7 @@ export function ProjectView({
           return true;
         }
         const choice = effectiveSelectedAgentChoice;
+        const daemonByokOpenCode = config.agentId === 'byok-opencode';
         // v2 analytics: when the active project is a DS workspace
         // (created by `prepareCreatedDesignSystemProject`, identifiable
         // by `metadata.importedFrom === 'design-system'`), every run
@@ -4368,12 +4189,11 @@ export function ProjectView({
             : {}),
           ...(meta?.dsEnrichment ? { dsEnrichment: true } : {}),
           hasExistingArtifact,
-          // This branch only runs in daemon (local-execution) mode, so the
-          // runtime is the bundled AMR cloud agent or a local coding CLI —
-          // never BYOK (that path streams client-side, below). Hand the daemon
-          // the authoritative value so run_created/run_finished split AMR vs
-          // CLI without relying on its agent-id re-derivation.
-          runtimeType: config.agentId === 'amr' ? ('amr_cloud' as const) : ('local_cli' as const),
+          runtimeType: daemonByokOpenCode
+            ? ('byok' as const)
+            : config.agentId === 'amr'
+              ? ('amr_cloud' as const)
+              : ('local_cli' as const),
         };
         void streamViaDaemon({
           agentId: config.agentId,
@@ -4396,8 +4216,11 @@ export function ProjectView({
             meta?.appliedPluginSnapshotId ?? meta?.appliedPluginSnapshot?.snapshotId ?? null,
           research: meta?.research,
           mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata),
-          model: choice?.model ?? null,
-          reasoning: choice?.reasoning ?? null,
+          model: daemonByokOpenCode ? config.model : choice?.model ?? null,
+          reasoning: daemonByokOpenCode ? null : choice?.reasoning ?? null,
+          ...(daemonByokOpenCode && byokOpenCodeProvider
+            ? { byokProvider: byokOpenCodeProvider }
+            : {}),
           titleGeneration: isFirstTurn ? { enabled: true } : undefined,
           locale,
           ...(runAnalyticsHints ? { analyticsHints: runAnalyticsHints } : {}),
@@ -4462,18 +4285,14 @@ export function ProjectView({
         // when no explicit memory model override is set. The picker
         // re-syncs an *explicit* override when chat config drifts;
         // this snapshot covers the implicit "Same as chat" default.
-        const byokChatProvider =
-          config.apiProtocol && config.apiKey
-            ? {
-                provider: config.apiProtocol,
-                apiKey: config.apiKey,
-                baseUrl: config.baseUrl,
-                apiVersion:
-                  config.apiProtocol === 'azure'
-                    ? config.apiVersion ?? ''
-                    : '',
-              }
-            : undefined;
+        const byokChatProvider = byokOpenCodeProvider
+          ? {
+              provider: byokOpenCodeProvider.protocol,
+              apiKey: byokOpenCodeProvider.apiKey,
+              baseUrl: byokOpenCodeProvider.baseUrl,
+              apiVersion: byokOpenCodeProvider.apiVersion,
+            }
+          : undefined;
         if (userText.length > 0) {
           try {
             await fetch('/api/memory/extract', {
@@ -4492,115 +4311,71 @@ export function ProjectView({
             // on the next event.
           }
         }
-        const systemPrompt = await composedSystemPrompt(runSessionMode);
-        const apiHistory = await historyWithApiAttachmentContext(
-          historyWithCommentAttachmentContext(
-            historyWithWorkspaceContext(nextHistory, userMsg.id, runContext),
-            userMsg.id,
-          ),
-          userMsg.id,
-          project.id,
-          projectFiles,
-          { omitNativeImageAttachments: usesAnthropicProxy(config) },
-        );
         pushEvent({ kind: 'status', label: 'requesting', detail: config.model });
-        // BYOK runs stream client-side and never reach the daemon, so the
-        // daemon's authoritative run_created/run_finished are never emitted for
-        // them. Emit them here so BYOK runs are counted in the run funnel; the
-        // `runtime_type='byok'` rides on these events from the registered
-        // super-property. The run id is client-generated (there is no daemon
-        // run record). See analytics/byok-run.ts.
-        const byokRunId = randomUUID();
-        const byokRunBase = {
+        void streamViaDaemon({
+          agentId: 'byok-opencode',
+          history: nextHistory,
+          signal: controller.signal,
+          cancelSignal: cancelController.signal,
+          handlers,
           projectId: project.id,
           conversationId: runConversationId,
-          runId: byokRunId,
-          projectKind: null,
-          hasAttachment: runAttachments.length > 0,
-          userQueryTokens: userText.length > 0 ? Math.ceil(userText.length / 4) : 0,
-          model: config.model,
-          apiProtocol: config.apiProtocol,
+          assistantMessageId: assistantId,
+          clientRequestId: randomUUID(),
           skillId: project.skillId ?? null,
-          sessionMode: (runSessionMode === 'design' ? 'design' : 'ask') as
-            | 'design'
-            | 'ask',
-        };
-        trackRunCreated(analytics.track, buildByokRunCreatedProps(byokRunBase));
-        const byokRunStartedAt = startedAt;
-        let accumulatedAssistantText = '';
-        const emitByokRunFinished = (
-          result: 'success' | 'failed' | 'cancelled',
-          artifactCount: number,
-        ): void => {
-          trackRunFinished(
-            analytics.track,
-            buildByokRunFinishedProps({
-              ...byokRunBase,
-              result,
-              artifactCount,
-              askedUserQuestion: accumulatedAssistantText.includes('<question-form'),
-              totalDurationMs: Math.max(0, Date.now() - byokRunStartedAt),
-            }),
-          );
-        };
-        void streamMessage(config, systemPrompt, apiHistory, controller.signal, {
-          onDelta: (delta) => {
-            accumulatedAssistantText += delta;
-            handlers.onDelta(delta);
-            handlers.onAgentEvent({ kind: 'text', text: delta });
+          skillIds: Array.isArray(meta?.skillIds) ? meta.skillIds : [],
+          context: runContext,
+          designSystemId: projectDesignSystemId ?? null,
+          attachments: runAttachments.map((a) => a.path),
+          commentAttachments: runCommentAttachments,
+          sessionMode: runSessionMode,
+          appliedPluginSnapshotId:
+            meta?.appliedPluginSnapshotId ?? meta?.appliedPluginSnapshot?.snapshotId ?? null,
+          research: meta?.research,
+          mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata),
+          model: config.model,
+          reasoning: null,
+          ...(byokOpenCodeProvider ? { byokProvider: byokOpenCodeProvider } : {}),
+          titleGeneration: isFirstTurn ? { enabled: true } : undefined,
+          locale,
+          analyticsHints: {
+            ...(meta?.entryFrom ? { entryFrom: meta.entryFrom } : {}),
+            runtimeType: 'byok',
           },
-          onDone: () => {
-            handlers.onDone();
-            // Count artifacts produced this turn from the project file diff,
-            // mirroring the daemon's run_finished artifact_count. The
-            // artifact-count refresh is best-effort: a rejected refetch must
-            // NOT swallow run_finished, or a successful BYOK turn leaves the
-            // funnel hanging at run_created — the exact gap this path closes.
-            void (async () => {
-              let artifactCount = 0;
-              try {
-                const files = await refreshProjectFiles();
-                artifactCount = (computeProducedFiles(beforeFileNames, files) ?? []).filter(
-                  (f) => Boolean(f.artifactManifest),
-                ).length;
-              } catch {
-                // Refresh failed — still emit run_finished with a 0 count.
-              }
-              emitByokRunFinished('success', artifactCount);
-            })();
-            const assistantText = accumulatedAssistantText.trim();
-            if (userText.length === 0 || assistantText.length === 0) return;
-            void fetch('/api/memory/extract', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userMessage: userText,
-                assistantMessage: accumulatedAssistantText,
-                projectId: project.id,
-                conversationId: runConversationId,
-                chatProvider: byokChatProvider,
+          onRunCreated: (runId) => {
+            const pinnedAssistant = {
+              ...latestAssistantMsg,
+              runId,
+              runStatus: 'queued' as const,
+            };
+            latestAssistantMsg = pinnedAssistant;
+            void saveMessage(project.id, runConversationId, pinnedAssistant);
+            updateMessageById(assistantId, (prev) => ({ ...prev, runId, runStatus: 'queued' }));
+          },
+          onRunStatus: (runStatus) => {
+            const endedAt = isTerminalRunStatus(runStatus) ? Date.now() : undefined;
+            const runMayFinalize = !supersededRunsRef.current.has(controller);
+            updateMessageById(
+              assistantId,
+              (prev) => ({
+                ...prev,
+                runStatus,
+                endedAt: endedAt === undefined ? prev.endedAt : prev.endedAt ?? endedAt,
               }),
-            }).catch(() => {
-              // Best-effort: see comment above on the pre-turn call.
-            });
+              true,
+              runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+            );
+            if (!runMayFinalize) return;
+            updateConversationLatestRun(runStatus, endedAt);
+            if (isTerminalRunStatus(runStatus)) {
+              clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
+              scheduleConversationMessageRefresh(runConversationId);
+            }
           },
-          onError: (err: Error) => {
-            handlers.onError(err);
-            emitByokRunFinished(controller.signal.aborted ? 'cancelled' : 'failed', 0);
+          onRunEventId: (lastRunEventId) => {
+            updateMessageById(assistantId, (prev) => ({ ...prev, lastRunEventId }));
+            persistAssistantSoon();
           },
-        }, {
-          projectId: project.id,
-          // SenseAudio BYOK chat reads this to pre-fill the tool param's
-          // default model. Prefer the live composer override; fall back
-          // to the Settings default when the composer dropdown is on
-          // "use default". Other protocols ignore unknown body fields.
-          byokImageModel:
-            byokImageModelOverride || config.byokImageModel || byokImageModelOptionsPV[0]?.id,
-          byokVideoModel:
-            byokVideoModelOverride || config.byokVideoModel || byokVideoModelOptionsPV[0]?.id,
-          byokSpeechModel:
-            byokSpeechModelOverride || config.byokSpeechModel || byokSpeechModelOptionsPV[0]?.id,
-          byokSpeechVoice: byokSpeechVoiceOverride || config.byokSpeechVoice,
         });
         return true;
       }
@@ -4615,18 +4390,6 @@ export function ProjectView({
       config,
       locale,
       agentsById,
-      // Per-session BYOK image/video model overrides are read inside this
-      // callback (see the streamMessage context below). Without them in the
-      // deps, the dropdown updates its state + display but handleSend keeps a
-      // stale closure and sends the previously selected model.
-      byokImageModelOverride,
-      byokVideoModelOverride,
-      byokSpeechModelOverride,
-      byokSpeechVoiceOverride,
-      byokImageModelOptionsPV,
-      byokVideoModelOptionsPV,
-      byokSpeechModelOptionsPV,
-      composedSystemPrompt,
       onTouchProject,
       project.id,
       projectDesignSystemId,
@@ -5646,7 +5409,7 @@ export function ProjectView({
 	            loading: currentConversationLoading,
 	            sendDisabled: currentConversationSendDisabled,
             queuedItems: currentConversationQueuedItems,
-            error: conversationLoadError ?? error ?? audioVoiceOptionsError,
+            error: conversationLoadError ?? error,
             onSend: handleSend,
             onRetry: handleRetry,
             onStop: handleStop,
@@ -5659,7 +5422,6 @@ export function ProjectView({
         : undefined,
     [
       activeConversationId,
-      audioVoiceOptionsError,
       conversationLoadError,
       currentConversationActionDisabled,
 	      currentConversationQueuedItems,
@@ -6535,7 +6297,7 @@ export function ProjectView({
               loading={currentConversationLoading}
               sendDisabled={currentConversationSendDisabled}
               queuedItems={currentConversationQueuedItems}
-              error={conversationLoadError ?? error ?? audioVoiceOptionsError}
+              error={conversationLoadError ?? error}
               projectId={project.id}
               sessionMode={activeSessionMode}
               onSessionModeChange={handleActiveConversationSessionModeChange}

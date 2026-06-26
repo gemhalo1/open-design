@@ -15,6 +15,7 @@ import { apiProtocolLabel } from '../utils/apiProtocol';
 import { fetchProviderModels } from '../providers/provider-models';
 import { isMacPlatform } from '../utils/platform';
 import { amrConsoleUrlForProfile } from '../runtime/amr-guidance';
+import { isVisibleLocalCliAgent } from '../utils/visibleAgents';
 
 interface Props {
   config: AppConfig;
@@ -159,7 +160,7 @@ export function AvatarMenu({
     [agents, config.agentId],
   );
 
-  const installedAgents = agents.filter((a) => a.available);
+  const installedAgents = agents.filter((a) => a.available && isVisibleLocalCliAgent(a));
   const amrAvailable = installedAgents.some((a) => a.id === 'amr');
   const showAmrAccountShortcut =
     config.mode === 'daemon' && currentAgent?.id === 'amr' && amrAvailable;

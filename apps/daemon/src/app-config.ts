@@ -205,6 +205,7 @@ const AGENT_CLI_ENV_KEYS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['kiro', new Set(['KIRO_BIN'])],
   ['kilo', new Set(['KILO_BIN'])],
   ['opencode', new Set(['OPENCODE_BIN'])],
+  ['byok-opencode', new Set(['OPENCODE_BIN'])],
   ['pi', new Set(['PI_BIN'])],
   ['qoder', new Set(['QODER_BIN'])],
   ['qwen', new Set(['QWEN_BIN'])],

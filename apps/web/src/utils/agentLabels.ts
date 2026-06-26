@@ -14,10 +14,10 @@ const AGENT_LABELS: Record<string, string> = {
   copilot: 'Copilot',
   deepseek: 'DeepSeek',
   antigravity: 'Antigravity',
-  'anthropic-api': 'Anthropic API',
-  'openai-api': 'OpenAI API',
-  'azure-openai-api': 'Azure OpenAI',
-  'google-gemini-api': 'Google Gemini',
+  'anthropic-api': 'Anthropic API via OpenCode',
+  'openai-api': 'OpenAI API via OpenCode',
+  'azure-openai-api': 'Azure OpenAI via OpenCode',
+  'google-gemini-api': 'Google Gemini via OpenCode',
 };
 
 const AGENT_ALIASES: Record<string, string> = {

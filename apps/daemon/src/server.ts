@@ -147,6 +147,7 @@ import {
 } from './runtimes/models.js';
 import { loadMmdRouteLaunchEnv } from './runtimes/mmd-routes.js';
 import { preparePromptFileForAgent } from './runtimes/prompt-file.js';
+import { buildOpenCodeByokProviderConfig } from './runtimes/byok-opencode.js';
 import {
   readVelaLoginStatus,
   resolveAmrProfile,
@@ -5362,6 +5363,7 @@ export async function startServer({
       research,
       context,
       titleGeneration,
+      byokProvider,
     } = chatBody;
     run.analyticsTelemetry = {
       ...(run.analyticsTelemetry ?? {}),
@@ -5403,6 +5405,17 @@ export async function startServer({
       );
     if (!def.bin)
       return design.runs.fail(run, 'AGENT_UNAVAILABLE', 'agent has no binary');
+    const byokOpenCodeProvider = buildOpenCodeByokProviderConfig(
+      byokProvider,
+      typeof model === 'string' ? model : null,
+    );
+    if (def.id === 'byok-opencode' && !byokOpenCodeProvider) {
+      return design.runs.fail(
+        run,
+        'BYOK_PROVIDER_REQUIRED',
+        'BYOK OpenCode requires a provider, API key, and model for this run.',
+      );
+    }
     // Validate the checked-in `inactivityTimeoutMs` hint immediately
     // after the runtime def is selected and before any side-effectful
     // setup (auto-memory extract, `.mcp.json` write/unlink,
@@ -6483,6 +6496,9 @@ export async function startServer({
           oauthTokensForSpawn,
           {
             allowedDirectories: [effectiveCwd, ...extraAllowedDirs],
+            ...(byokOpenCodeProvider
+              ? { extraConfig: byokOpenCodeProvider.config }
+              : {}),
           },
         );
       } catch (err) {
@@ -7178,6 +7194,7 @@ export async function startServer({
         ...agentSpawnEnv,
         ...(mmdRouteLaunchEnv || {}),
         ...odMediaEnv,
+        ...(byokOpenCodeProvider ? byokOpenCodeProvider.env : {}),
         ...openDesignAmrTraceEnv({
           agentId: def.id,
           runId: run.id,

@@ -1,0 +1,181 @@
+import type { ByokChatProviderConfig } from '@open-design/contracts';
+
+export const BYOK_OPENCODE_AGENT_ID = 'byok-opencode';
+export const BYOK_OPENCODE_PROVIDER_ID = 'open-design-byok';
+export const BYOK_OPENCODE_API_KEY_ENV = 'OPEN_DESIGN_BYOK_API_KEY';
+const DEFAULT_CONTEXT_TOKEN_LIMIT = 128_000;
+const DEFAULT_OUTPUT_TOKEN_LIMIT = 16_384;
+
+const DEFAULT_BASE_URL_BY_PROTOCOL: Record<ByokChatProviderConfig['protocol'], string> = {
+  anthropic: 'https://api.anthropic.com/v1',
+  openai: 'https://api.openai.com/v1',
+  azure: '',
+  google: 'https://generativelanguage.googleapis.com/v1beta',
+  ollama: 'https://ollama.com',
+  senseaudio: 'https://api.senseaudio.cn',
+  aihubmix: 'https://aihubmix.com/v1',
+};
+
+type ProviderPackage =
+  | '@ai-sdk/anthropic'
+  | '@ai-sdk/openai'
+  | '@ai-sdk/openai-compatible'
+  | '@ai-sdk/azure'
+  | '@ai-sdk/google'
+  | '@ai-sdk/ollama';
+
+export interface OpenCodeByokProviderConfig {
+  providerId: string;
+  modelId: string;
+  env: Record<string, string>;
+  config: Record<string, unknown>;
+}
+
+export function opencodeByokModelId(model: string | null | undefined): string | null {
+  const trimmed = typeof model === 'string' ? model.trim() : '';
+  if (!trimmed || trimmed.toLowerCase() === 'default') return null;
+  if (trimmed.startsWith(`${BYOK_OPENCODE_PROVIDER_ID}/`)) return trimmed;
+  return `${BYOK_OPENCODE_PROVIDER_ID}/${trimmed}`;
+}
+
+export function buildOpenCodeByokProviderConfig(
+  provider: ByokChatProviderConfig | null | undefined,
+  model: string | null | undefined,
+): OpenCodeByokProviderConfig | null {
+  if (!provider || typeof provider !== 'object') return null;
+  const protocol = provider.protocol;
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_BASE_URL_BY_PROTOCOL, protocol)) {
+    return null;
+  }
+  const apiKey = typeof provider.apiKey === 'string' ? provider.apiKey.trim() : '';
+  const rawModel = typeof model === 'string' ? model.trim() : '';
+  if (!apiKey || !rawModel || rawModel.toLowerCase() === 'default') return null;
+  const defaultBaseUrl = DEFAULT_BASE_URL_BY_PROTOCOL[protocol];
+  const baseUrl = normalizeProviderBaseUrl(
+    protocol,
+    typeof provider.baseUrl === 'string' && provider.baseUrl.trim()
+      ? provider.baseUrl.trim()
+      : defaultBaseUrl,
+  );
+  if (!baseUrl && protocol !== 'azure') return null;
+
+  const modelId = opencodeByokModelId(rawModel);
+  if (!modelId) return null;
+
+  const providerEntry = buildProviderEntry(protocol, baseUrl, provider.apiVersion);
+  const config = {
+    provider: {
+      [BYOK_OPENCODE_PROVIDER_ID]: {
+        name: 'Open Design BYOK',
+        ...providerEntry,
+        models: {
+          [rawModel]: {
+            name: rawModel,
+            limit: {
+              context: DEFAULT_CONTEXT_TOKEN_LIMIT,
+              output: DEFAULT_OUTPUT_TOKEN_LIMIT,
+            },
+          },
+        },
+      },
+    },
+  };
+
+  return {
+    providerId: BYOK_OPENCODE_PROVIDER_ID,
+    modelId,
+    env: {
+      [BYOK_OPENCODE_API_KEY_ENV]: apiKey,
+    },
+    config,
+  };
+}
+
+function normalizeProviderBaseUrl(
+  protocol: ByokChatProviderConfig['protocol'],
+  baseUrl: string,
+): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  if (!trimmed) return trimmed;
+  if (protocol === 'anthropic' && isExactOrigin(trimmed, 'https://api.anthropic.com')) {
+    return 'https://api.anthropic.com/v1';
+  }
+  if (protocol === 'openai' && isExactOrigin(trimmed, 'https://api.openai.com')) {
+    return 'https://api.openai.com/v1';
+  }
+  if (protocol === 'google' && isExactOrigin(trimmed, 'https://generativelanguage.googleapis.com')) {
+    return 'https://generativelanguage.googleapis.com/v1beta';
+  }
+  return trimmed;
+}
+
+function isExactOrigin(value: string, origin: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.origin === origin && (parsed.pathname === '' || parsed.pathname === '/');
+  } catch {
+    return value === origin;
+  }
+}
+
+function buildProviderEntry(
+  protocol: ByokChatProviderConfig['protocol'],
+  baseUrl: string,
+  apiVersion: string | undefined,
+): { npm: ProviderPackage; options: Record<string, unknown> } {
+  const keyRef = `{env:${BYOK_OPENCODE_API_KEY_ENV}}`;
+  switch (protocol) {
+    case 'anthropic':
+      return {
+        npm: '@ai-sdk/anthropic',
+        options: {
+          apiKey: keyRef,
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+        },
+      };
+    case 'azure':
+      return {
+        npm: '@ai-sdk/azure',
+        options: {
+          apiKey: keyRef,
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+          apiVersion: apiVersion?.trim() || '2024-10-21',
+        },
+      };
+    case 'google':
+      return {
+        npm: '@ai-sdk/google',
+        options: {
+          apiKey: keyRef,
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+        },
+      };
+    case 'ollama':
+      return {
+        npm: '@ai-sdk/ollama',
+        options: {
+          baseURL: baseUrl.replace(/\/+$/, ''),
+          headers: {
+            Authorization: `Bearer ${keyRef}`,
+          },
+        },
+      };
+    case 'openai':
+      return {
+        npm: '@ai-sdk/openai',
+        options: {
+          apiKey: keyRef,
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+        },
+      };
+    case 'senseaudio':
+    case 'aihubmix':
+      return {
+        npm: '@ai-sdk/openai-compatible',
+        options: {
+          baseURL: baseUrl,
+          apiKey: keyRef,
+        },
+      };
+  }
+}
