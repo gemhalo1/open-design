@@ -45,7 +45,12 @@ export type SocialPalette =
   | 'forest' // forest ink (nature)
   | 'wechat' // WeChat green
   | 'indigo' // indigo porcelain (tech/research)
-  | 'midnight'; // midnight ink + champagne gold
+  | 'midnight' // midnight ink + champagne gold
+  | 'reddit' // Reddit orange
+  | 'youtube' // YouTube red
+  | 'facebook' // Facebook blue
+  | 'producthunt' // Product Hunt orange-red
+  | 'spotify'; // Spotify green on near-black
 
 // Diagram layout skeletons (rendered as SVG, 248x150).
 export type DiagramPreviewLayout =
@@ -407,6 +412,157 @@ const PRESET_SOURCES: LocalizedPresetSource[] = [
     },
   },
 
+  // ---- Reddit (overflow) ----
+  {
+    id: 'social-reddit-post',
+    chipId: 'social-card',
+    subcategorySlug: 'reddit-card',
+    preview: { kind: 'social', layout: 'post', palette: 'reddit' },
+    title: { en: 'Reddit Post Card', zh: 'Reddit 帖子卡' },
+    description: { en: 'Subreddit + upvotes', zh: '版块 + 点赞数' },
+    promptText: {
+      en: 'Turn this into a realistic Reddit post card: subreddit + author header, a punchy title, a short body, and an upvote / comment bar with real-looking counts. Reddit-orange accent, light surface.',
+      zh: '把内容做成拟真 Reddit 帖子卡：版块 + 作者头部、有冲击力的标题、一段正文，以及带真实感数据的点赞 / 评论栏。Reddit 橙强调色、浅色背景。',
+    },
+  },
+  {
+    id: 'social-reddit-thread',
+    chipId: 'social-card',
+    subcategorySlug: 'reddit-card',
+    preview: { kind: 'social', layout: 'thread-strip', palette: 'reddit' },
+    title: { en: 'Reddit Recap', zh: 'Reddit 串楼' },
+    description: { en: 'Top comments strip', zh: '热评串图' },
+    promptText: {
+      en: 'Create a Reddit comment-recap strip: the original post on top, then 3 highlighted top comments as connected cards with upvote chips. Reddit-orange accent, clean and scannable.',
+      zh: '做一组 Reddit 热评串图：顶部是原帖，下面 3 条高赞评论做成串联卡片，带点赞徽标。Reddit 橙强调色、干净易扫读。',
+    },
+  },
+  // ---- YouTube thumbnail (overflow) ----
+  {
+    id: 'social-youtube-thumb',
+    chipId: 'social-card',
+    subcategorySlug: 'youtube-thumbnail',
+    preview: { kind: 'social', layout: 'cover', palette: 'youtube' },
+    title: { en: 'YouTube Thumbnail', zh: 'YouTube 封面' },
+    description: { en: '16:9 high-CTR cover', zh: '16:9 高点击封面' },
+    promptText: {
+      en: 'Design a high-CTR 16:9 YouTube thumbnail: a bold 3-4 word title with a highlighted keyword, a strong subject crop area, an arrow or circle callout, and high contrast. Punchy, readable at small size.',
+      zh: '设计一张高点击率的 16:9 YouTube 封面：3-4 个字的醒目标题（高亮一个关键词）、突出的主体区域、箭头或圈选标注，高对比度。有冲击力、缩略也清晰。',
+    },
+  },
+  {
+    id: 'social-youtube-metric',
+    chipId: 'social-card',
+    subcategorySlug: 'youtube-thumbnail',
+    preview: { kind: 'social', layout: 'metric', palette: 'youtube' },
+    title: { en: 'YouTube Milestone', zh: 'YouTube 里程碑' },
+    description: { en: 'Subscriber / view stat', zh: '订阅 / 播放数据' },
+    promptText: {
+      en: 'Create a YouTube milestone card: one hero number (subscribers or views), a short caption, and a small growth sparkline. Red accent, bold sans, screenshot-ready 16:9.',
+      zh: '做一张 YouTube 里程碑卡：一个核心数字（订阅或播放量）、一句说明和一条小增长趋势线。红色强调色、粗体无衬线、16:9 截图可用。',
+    },
+  },
+  // ---- Facebook (overflow) ----
+  {
+    id: 'social-facebook-post',
+    chipId: 'social-card',
+    subcategorySlug: 'facebook-card',
+    preview: { kind: 'social', layout: 'post', palette: 'facebook' },
+    title: { en: 'Facebook Post Card', zh: 'Facebook 帖子卡' },
+    description: { en: 'Page update + reactions', zh: '主页更新 + 互动' },
+    promptText: {
+      en: 'Turn this into a realistic Facebook post card: page avatar + name header, an update body, and a reactions / comments / shares bar with real-looking counts. Facebook-blue accent, white surface.',
+      zh: '把内容做成拟真 Facebook 帖子卡：主页头像 + 名称头部、一段更新正文，以及带真实感数据的表情 / 评论 / 分享栏。Facebook 蓝强调色、白色背景。',
+    },
+  },
+  {
+    id: 'social-facebook-event',
+    chipId: 'social-card',
+    subcategorySlug: 'facebook-card',
+    preview: { kind: 'social', layout: 'cover', palette: 'facebook' },
+    title: { en: 'Facebook Event Cover', zh: 'Facebook 活动封面' },
+    description: { en: 'Date, place, hook', zh: '时间 · 地点 · 钩子' },
+    promptText: {
+      en: 'Design a Facebook event cover: a bold title, the date and place, a one-line hook, and an RSVP affordance. Facebook-blue accent, image-led, mobile-readable crop.',
+      zh: '设计一张 Facebook 活动封面：醒目标题、时间地点、一句钩子和报名提示。Facebook 蓝强调色、图片主导、手机裁切可读。',
+    },
+  },
+  // ---- Product Hunt (overflow) ----
+  {
+    id: 'social-producthunt-launch',
+    chipId: 'social-card',
+    subcategorySlug: 'product-hunt-card',
+    preview: { kind: 'social', layout: 'metric', palette: 'producthunt' },
+    title: { en: 'Product Hunt Launch', zh: 'Product Hunt 发布' },
+    description: { en: 'Upvotes + #1 badge', zh: '点赞 + 第一徽标' },
+    promptText: {
+      en: 'Create a Product Hunt launch card: product name + tagline, a big upvote number, a "#1 Product of the Day" badge, and a maker line. Product-Hunt orange accent, clean light surface.',
+      zh: '做一张 Product Hunt 发布卡：产品名 + 一句话简介、大号点赞数、"#1 Product of the Day" 徽标和制作者署名。Product Hunt 橙红强调色、干净浅色背景。',
+    },
+  },
+  {
+    id: 'social-producthunt-framework',
+    chipId: 'social-card',
+    subcategorySlug: 'product-hunt-card',
+    preview: { kind: 'social', layout: 'framework', palette: 'producthunt' },
+    title: { en: 'Launch Checklist', zh: '发布清单卡' },
+    description: { en: 'Pre-launch steps', zh: '发布前步骤' },
+    promptText: {
+      en: 'Turn this into a Product Hunt launch checklist card: a title, numbered pre-launch steps with check markers, and a "launch day" CTA. Orange accent, friendly and scannable.',
+      zh: '把内容做成 Product Hunt 发布清单卡：标题、带勾选标记的编号发布前步骤，以及"发布日"CTA。橙色强调色、亲切易扫读。',
+    },
+  },
+  // ---- Spotify (overflow) ----
+  {
+    id: 'social-spotify-nowplaying',
+    chipId: 'social-card',
+    subcategorySlug: 'spotify-card',
+    preview: { kind: 'social', layout: 'cover', palette: 'spotify' },
+    title: { en: 'Now Playing Card', zh: 'Spotify 播放卡' },
+    description: { en: 'Track + progress bar', zh: '歌曲 + 进度条' },
+    promptText: {
+      en: 'Design a Spotify-style now-playing card: a square album-art block (CSS gradient), track title + artist, a progress bar with timestamps, and playback controls. Spotify-green accent on near-black.',
+      zh: '设计一张 Spotify 风格的播放卡：方形专辑封面块（CSS 渐变）、歌曲名 + 艺人、带时间戳的进度条和播放控件。近黑底 + Spotify 绿强调色。',
+    },
+  },
+  {
+    id: 'social-spotify-wrapped',
+    chipId: 'social-card',
+    subcategorySlug: 'spotify-card',
+    preview: { kind: 'social', layout: 'metric', palette: 'spotify' },
+    title: { en: 'Wrapped Stat', zh: '年度报告卡' },
+    description: { en: 'Minutes / top artist', zh: '分钟数 / 最爱艺人' },
+    promptText: {
+      en: 'Create a Spotify-Wrapped-style stat card: one playful hero number (minutes listened or top artist), a bold caption, and a vivid gradient. Spotify-green accent, energetic 9:16 or 1:1.',
+      zh: '做一张 Spotify Wrapped 风格的数据卡：一个有趣的核心数字（收听分钟数或最爱艺人）、醒目标题和鲜亮渐变。Spotify 绿强调色、活力 9:16 或 1:1。',
+    },
+  },
+  // ---- Quote poster (overflow) ----
+  {
+    id: 'social-quote-midnight',
+    chipId: 'social-card',
+    subcategorySlug: 'quote-poster',
+    preview: { kind: 'social', layout: 'quote', palette: 'midnight' },
+    title: { en: 'Gold Quote Poster', zh: '烫金金句海报' },
+    description: { en: 'Serif quote, gold mark', zh: '衬线金句 · 烫金引号' },
+    promptText: {
+      en: 'Create a premium quote poster: a deep midnight-ink ground, a centered serif pull-quote, an oversized champagne-gold quote mark, and a refined attribution. Editorial, high-end, 4:5.',
+      zh: '做一张高级感的金句海报：深墨夜底色、居中的衬线金句、香槟金的超大引号和雅致署名。编辑感、高端、4:5。',
+    },
+  },
+  {
+    id: 'social-quote-ink',
+    chipId: 'social-card',
+    subcategorySlug: 'quote-poster',
+    preview: { kind: 'social', layout: 'quote', palette: 'ink' },
+    title: { en: 'Editorial Quote', zh: '编辑金句卡' },
+    description: { en: 'Ink-on-cream pull-quote', zh: '米底墨字金句' },
+    promptText: {
+      en: 'Design an editorial quote poster: ink-on-cream, a large serif statement, a thin rule, and a small attribution. Restrained magazine layout, generous margins.',
+      zh: '设计一张编辑感金句海报：米底墨字、放大的衬线主张、一条细分割线和小字署名。克制的杂志版式、宽裕留白。',
+    },
+  },
+
   // ============================ DIAGRAM ============================
   // ---- Architecture ----
   {
@@ -700,6 +856,156 @@ const PRESET_SOURCES: LocalizedPresetSource[] = [
     promptText: {
       en: 'Draw a 2x2 tradeoff quadrant positioning options on two axes (e.g. effort vs impact), with each option as a labeled dot, quadrant labels, and a highlighted recommended zone. Pure-white clean style.',
       zh: '画一张 2x2 取舍四象限，把方案放在两条轴上（如工作量 vs 影响），每个方案为带标签的点，标注象限并高亮推荐区。纯白干净风。',
+    },
+  },
+  // ---- Sequence (overflow) ----
+  {
+    id: 'diagram-sequence-auth',
+    chipId: 'diagram',
+    subcategorySlug: 'sequence-diagram',
+    preview: { kind: 'diagram', layout: 'sequence', palette: 'flat' },
+    title: { en: 'Auth Sequence', zh: '鉴权时序图' },
+    description: { en: 'Login / token handshake', zh: '登录 / 令牌握手' },
+    promptText: {
+      en: 'Create a sequence diagram for an auth handshake: client, gateway, auth service, and token store, with activation bars, a success path, a token-refresh path, and an error path. Clean flat style.',
+      zh: '画一张鉴权握手的时序图：客户端、网关、鉴权服务和令牌存储，含激活条、成功路径、令牌刷新路径和错误路径。干净扁平风。',
+    },
+  },
+  {
+    id: 'diagram-sequence-payment',
+    chipId: 'diagram',
+    subcategorySlug: 'sequence-diagram',
+    preview: { kind: 'diagram', layout: 'sequence', palette: 'notion' },
+    title: { en: 'Payment Sequence', zh: '支付时序图' },
+    description: { en: 'Checkout call timeline', zh: '下单调用时间线' },
+    promptText: {
+      en: 'Draw a checkout sequence diagram: user, frontend, API, payment provider, and webhook handler, with activation bars, a confirmation callback, and a retry on failure. Minimal Notion-clean style.',
+      zh: '画一张下单时序图：用户、前端、API、支付服务和 webhook 处理器，含激活条、确认回调和失败重试。极简 Notion 风。',
+    },
+  },
+  // ---- Mind map (overflow) ----
+  {
+    id: 'diagram-mindmap-topic',
+    chipId: 'diagram',
+    subcategorySlug: 'mindmap-diagram',
+    preview: { kind: 'diagram', layout: 'mesh', palette: 'flat' },
+    title: { en: 'Topic Mind Map', zh: '主题思维导图' },
+    description: { en: 'Central idea + branches', zh: '中心主题 + 分支' },
+    promptText: {
+      en: 'Draw a mind map: a central topic node with labeled branches radiating to sub-topics and leaf ideas, color-coded by branch. Clean flat style, readable labels, balanced layout.',
+      zh: '画一张思维导图：中心主题节点向外辐射出带标签的分支到子主题与叶节点，按分支配色。干净扁平风、标签清晰、布局均衡。',
+    },
+  },
+  {
+    id: 'diagram-mindmap-plan',
+    chipId: 'diagram',
+    subcategorySlug: 'mindmap-diagram',
+    preview: { kind: 'diagram', layout: 'mesh', palette: 'claude' },
+    title: { en: 'Project Map', zh: '项目脑图' },
+    description: { en: 'Goals, tasks, owners', zh: '目标 · 任务 · 负责人' },
+    promptText: {
+      en: 'Create a project mind map: a central goal, primary branches for workstreams, and leaf nodes for tasks and owners. Warm cream style, one accent per branch.',
+      zh: '做一张项目脑图：中心目标、工作流主分支和任务 / 负责人叶节点。暖米色风、每条分支一个强调色。',
+    },
+  },
+  // ---- Network (overflow) ----
+  {
+    id: 'diagram-network-topology',
+    chipId: 'diagram',
+    subcategorySlug: 'network-diagram',
+    preview: { kind: 'diagram', layout: 'lineage', palette: 'blueprint' },
+    title: { en: 'Network Topology', zh: '网络拓扑图' },
+    description: { en: 'VPC, subnets, nodes', zh: 'VPC · 子网 · 节点' },
+    promptText: {
+      en: 'Draw a network topology diagram: internet gateway, load balancer, public and private subnets, compute nodes, and a database tier, with security-group boundaries and traffic edges. Blueprint style, cyan strokes.',
+      zh: '画一张网络拓扑图：互联网网关、负载均衡、公有 / 私有子网、计算节点和数据库层，标注安全组边界和流量连线。蓝图风、青色线条。',
+    },
+  },
+  {
+    id: 'diagram-network-mesh',
+    chipId: 'diagram',
+    subcategorySlug: 'network-diagram',
+    preview: { kind: 'diagram', layout: 'mesh', palette: 'notion' },
+    title: { en: 'Peer Network', zh: '对等网络图' },
+    description: { en: 'Nodes & connections', zh: '节点与连接' },
+    promptText: {
+      en: 'Draw a peer-to-peer network diagram: a central coordinator and peer nodes in a ring with bidirectional connections and a few cross-links. Minimal Notion-clean style, single accent.',
+      zh: '画一张对等网络图：中心协调者与环形排列的对等节点，带双向连接和少量交叉连线。极简 Notion 风、单一强调色。',
+    },
+  },
+  // ---- ER model (overflow) ----
+  {
+    id: 'diagram-er-schema',
+    chipId: 'diagram',
+    subcategorySlug: 'er-diagram',
+    preview: { kind: 'diagram', layout: 'class', palette: 'flat' },
+    title: { en: 'ER Schema', zh: 'ER 模型图' },
+    description: { en: 'Entities & relations', zh: '实体与关系' },
+    promptText: {
+      en: 'Create an entity-relationship diagram: entity tables with primary/foreign keys and typed columns, plus relationship lines with crow’s-foot multiplicity. Clean flat style, tidy alignment.',
+      zh: '画一张实体关系（ER）图：含主键 / 外键和带类型列的实体表，以及带鱼尾纹多重性的关系连线。干净扁平风、对齐整洁。',
+    },
+  },
+  {
+    id: 'diagram-er-domain',
+    chipId: 'diagram',
+    subcategorySlug: 'er-diagram',
+    preview: { kind: 'diagram', layout: 'class', palette: 'openai' },
+    title: { en: 'Domain Model', zh: '领域模型图' },
+    description: { en: 'Aggregates & links', zh: '聚合与关联' },
+    promptText: {
+      en: 'Draw a domain model: aggregate-root entities with their fields, value objects, and association lines showing one-to-many and many-to-many links. Pure-white clean style.',
+      zh: '画一张领域模型图：含字段的聚合根实体、值对象，以及表示一对多 / 多对多的关联连线。纯白干净风。',
+    },
+  },
+  // ---- Timeline (overflow) ----
+  {
+    id: 'diagram-timeline-roadmap',
+    chipId: 'diagram',
+    subcategorySlug: 'timeline-diagram',
+    preview: { kind: 'diagram', layout: 'pipeline', palette: 'flat' },
+    title: { en: 'Roadmap Timeline', zh: '路线图时间线' },
+    description: { en: 'Phases & milestones', zh: '阶段与里程碑' },
+    promptText: {
+      en: 'Draw a roadmap timeline left-to-right: quarters as stages, milestone markers, a highlighted "now" point, and a branch for a parallel track. Clean flat style, clear date labels.',
+      zh: '从左到右画一张路线图时间线：季度为阶段、里程碑标记、高亮的"现在"节点，以及一条并行轨道分支。干净扁平风、清晰日期标签。',
+    },
+  },
+  {
+    id: 'diagram-timeline-release',
+    chipId: 'diagram',
+    subcategorySlug: 'timeline-diagram',
+    preview: { kind: 'diagram', layout: 'pipeline', palette: 'claude' },
+    title: { en: 'Release Timeline', zh: '发布时间线' },
+    description: { en: 'Versions & dates', zh: '版本与日期' },
+    promptText: {
+      en: 'Create a release timeline: sequential version markers with dates, a highlighted current release, and a branch for a hotfix. Warm cream style, clear labels.',
+      zh: '做一张发布时间线：带日期的连续版本标记、高亮当前版本，以及一条热修复分支。暖米色风、清晰标签。',
+    },
+  },
+  // ---- State machine (overflow) ----
+  {
+    id: 'diagram-statemachine-order',
+    chipId: 'diagram',
+    subcategorySlug: 'state-machine-diagram',
+    preview: { kind: 'diagram', layout: 'state', palette: 'flat' },
+    title: { en: 'Order State Machine', zh: '订单状态机' },
+    description: { en: 'Lifecycle transitions', zh: '生命周期转移' },
+    promptText: {
+      en: 'Draw an order state machine: initial state, named states (placed, paid, shipped, delivered), guarded transitions, a cancel path, and a self-loop for retries. Clean flat style.',
+      zh: '画一张订单状态机：初始态、命名状态（已下单、已支付、已发货、已送达）、带守卫的转移、取消路径和重试自环。干净扁平风。',
+    },
+  },
+  {
+    id: 'diagram-statemachine-job',
+    chipId: 'diagram',
+    subcategorySlug: 'state-machine-diagram',
+    preview: { kind: 'diagram', layout: 'state', palette: 'terminal' },
+    title: { en: 'Job State Machine', zh: '任务状态机' },
+    description: { en: 'Queued → done / failed', zh: '排队 → 完成 / 失败' },
+    promptText: {
+      en: 'Draw a background-job state machine in dark-terminal style: queued, running, retrying (self-loop), succeeded, and failed terminal states, with guarded transitions and neon accents.',
+      zh: '用暗色终端风画一张后台任务状态机：排队、运行、重试（自环）、成功和失败终止态，带守卫转移和霓虹强调色。',
     },
   },
 ];

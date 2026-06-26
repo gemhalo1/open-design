@@ -579,6 +579,8 @@ export const id: Dict = {
   'homeHero.moreShortcuts': 'Lainnya',
   'homeHero.railAria': 'Pilih kategori project atau pintasan starter',
   'homeHero.subTypeAria': 'Pilih sub-tipe',
+  'homeHero.subTypeMore': 'Lainnya',
+  'homeHero.subTypeLess': 'Lebih sedikit',
   'homeHero.confirmReplaceTitle': 'Ganti prompt saat ini?',
   'homeHero.confirmReplaceBody': 'Menggunakan {title} akan mengganti teks yang ada di input saat ini.',
   'homeHero.confirmReplace': 'Ganti',

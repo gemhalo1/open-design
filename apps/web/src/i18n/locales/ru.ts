@@ -579,6 +579,8 @@ export const ru: Dict = {
   'homeHero.moreShortcuts': 'Еще',
   'homeHero.railAria': 'Выберите категорию проекта или быстрый старт',
   'homeHero.subTypeAria': 'Выберите подтип',
+  'homeHero.subTypeMore': 'Ещё',
+  'homeHero.subTypeLess': 'Свернуть',
   'homeHero.confirmReplaceTitle': 'Заменить текущий запрос?',
   'homeHero.confirmReplaceBody': 'Использование {title} заменит текст, который сейчас введён в поле.',
   'homeHero.confirmReplace': 'Заменить',

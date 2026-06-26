@@ -30,6 +30,11 @@ export interface HomeHeroSubChip {
   slug: string;
   label: string;
   icon: IconName;
+  // When true the chip is hidden behind the "More …" overflow toggle in the
+  // sub-type rail instead of rendering inline. Lets a rich taxonomy stay
+  // comprehensive without spilling the row onto three lines. Only meaningful
+  // for the local social-card / diagram rails.
+  overflow?: boolean;
 }
 
 const PARENT_IDS: readonly SubChipParentId[] = ['prototype', 'deck', 'social-card', 'diagram'];
@@ -58,6 +63,12 @@ const SUBCATEGORY_ICONS: Record<string, IconName> = {
   'wechat-cover': 'file-text',
   'linkedin-card': 'file',
   'instagram-story': 'smartphone',
+  'reddit-card': 'comment',
+  'youtube-thumbnail': 'play',
+  'facebook-card': 'share',
+  'product-hunt-card': 'star',
+  'spotify-card': 'mic',
+  'quote-poster': 'file-text',
   // diagram
   'architecture-diagram': 'grid',
   'workflow-diagram': 'refresh',
@@ -65,6 +76,12 @@ const SUBCATEGORY_ICONS: Record<string, IconName> = {
   'uml-diagram': 'blocks',
   'data-flow-diagram': 'kanban',
   'comparison-diagram': 'layers-filled',
+  'sequence-diagram': 'kanban',
+  'mindmap-diagram': 'sparkles',
+  'network-diagram': 'grid',
+  'er-diagram': 'blocks',
+  'timeline-diagram': 'refresh',
+  'state-machine-diagram': 'refresh',
 };
 const DEFAULT_SUBCATEGORY_ICON: IconName = 'blocks';
 
@@ -72,23 +89,46 @@ export function isSubChipParent(chipId: string | null): chipId is SubChipParentI
   return chipId === 'prototype' || chipId === 'deck' || chipId === 'social-card' || chipId === 'diagram';
 }
 
+function subChip(slug: string, label: string, overflow = false): HomeHeroSubChip {
+  return {
+    slug,
+    label,
+    icon: SUBCATEGORY_ICONS[slug] ?? DEFAULT_SUBCATEGORY_ICON,
+    ...(overflow ? { overflow: true } : {}),
+  };
+}
+
 const LOCAL_SUBCHIPS: Record<'social-card' | 'diagram', HomeHeroSubChip[]> = {
   // Overseas-facing platforms lead; domestic (Xiaohongshu, WeChat) follow.
+  // The first six render inline; the rest collapse behind the "More …" toggle
+  // so the rail stays comprehensive without overflowing onto extra rows.
   'social-card': [
-    { slug: 'x-twitter-card', label: 'Twitter / X', icon: SUBCATEGORY_ICONS['x-twitter-card'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'threads-card', label: 'Threads', icon: SUBCATEGORY_ICONS['threads-card'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'linkedin-card', label: 'LinkedIn', icon: SUBCATEGORY_ICONS['linkedin-card'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'instagram-story', label: 'Instagram story', icon: SUBCATEGORY_ICONS['instagram-story'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'xiaohongshu-carousel', label: 'Xiaohongshu / Rednote', icon: SUBCATEGORY_ICONS['xiaohongshu-carousel'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'wechat-cover', label: 'WeChat cover', icon: SUBCATEGORY_ICONS['wechat-cover'] ?? DEFAULT_SUBCATEGORY_ICON },
+    subChip('x-twitter-card', 'Twitter / X'),
+    subChip('threads-card', 'Threads'),
+    subChip('linkedin-card', 'LinkedIn'),
+    subChip('instagram-story', 'Instagram story'),
+    subChip('xiaohongshu-carousel', 'Xiaohongshu / Rednote'),
+    subChip('wechat-cover', 'WeChat cover'),
+    subChip('reddit-card', 'Reddit', true),
+    subChip('youtube-thumbnail', 'YouTube thumbnail', true),
+    subChip('facebook-card', 'Facebook', true),
+    subChip('product-hunt-card', 'Product Hunt', true),
+    subChip('spotify-card', 'Spotify', true),
+    subChip('quote-poster', 'Quote poster', true),
   ],
   diagram: [
-    { slug: 'architecture-diagram', label: 'Architecture', icon: SUBCATEGORY_ICONS['architecture-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'workflow-diagram', label: 'Workflow', icon: SUBCATEGORY_ICONS['workflow-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'rag-agent-diagram', label: 'RAG / Agent', icon: SUBCATEGORY_ICONS['rag-agent-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'uml-diagram', label: 'UML', icon: SUBCATEGORY_ICONS['uml-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'data-flow-diagram', label: 'Data flow', icon: SUBCATEGORY_ICONS['data-flow-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
-    { slug: 'comparison-diagram', label: 'Comparison', icon: SUBCATEGORY_ICONS['comparison-diagram'] ?? DEFAULT_SUBCATEGORY_ICON },
+    subChip('architecture-diagram', 'Architecture'),
+    subChip('workflow-diagram', 'Workflow'),
+    subChip('rag-agent-diagram', 'RAG / Agent'),
+    subChip('uml-diagram', 'UML'),
+    subChip('data-flow-diagram', 'Data flow'),
+    subChip('comparison-diagram', 'Comparison'),
+    subChip('sequence-diagram', 'Sequence', true),
+    subChip('mindmap-diagram', 'Mind map', true),
+    subChip('network-diagram', 'Network', true),
+    subChip('er-diagram', 'ER model', true),
+    subChip('timeline-diagram', 'Timeline', true),
+    subChip('state-machine-diagram', 'State machine', true),
   ],
 };
 
@@ -99,12 +139,24 @@ const LOCAL_SUBCHIP_LABELS_ZH: Record<string, string> = {
   'wechat-cover': '公众号封面',
   'linkedin-card': 'LinkedIn',
   'instagram-story': 'Instagram Story',
+  'reddit-card': 'Reddit',
+  'youtube-thumbnail': 'YouTube 封面',
+  'facebook-card': 'Facebook',
+  'product-hunt-card': 'Product Hunt',
+  'spotify-card': 'Spotify',
+  'quote-poster': '金句海报',
   'architecture-diagram': '架构图',
   'workflow-diagram': '流程图',
   'rag-agent-diagram': 'RAG / Agent',
   'uml-diagram': 'UML',
   'data-flow-diagram': '数据流',
   'comparison-diagram': '对比图',
+  'sequence-diagram': '时序图',
+  'mindmap-diagram': '思维导图',
+  'network-diagram': '网络拓扑',
+  'er-diagram': 'ER 模型',
+  'timeline-diagram': '时间线',
+  'state-machine-diagram': '状态机',
 };
 
 function localizeLocalSubChip(sub: HomeHeroSubChip, locale: Locale | undefined): HomeHeroSubChip {

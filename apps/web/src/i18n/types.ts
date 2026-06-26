@@ -976,6 +976,8 @@ export interface Dict {
   'homeHero.moreShortcuts': string;
   'homeHero.railAria': string;
   'homeHero.subTypeAria': string;
+  'homeHero.subTypeMore': string;
+  'homeHero.subTypeLess': string;
   'homeHero.confirmReplaceTitle': string;
   'homeHero.confirmReplaceBody': string;
   'homeHero.confirmReplace': string;

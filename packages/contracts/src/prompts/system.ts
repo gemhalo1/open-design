@@ -575,6 +575,12 @@ function renderMetadataBlock(
   }
 
   if (metadata.kind === 'prototype') {
+    if (metadata.intent === 'wireframe') {
+      lines.push('- **intent**: wireframe — the user chose the Wireframe scenario. Keep the first output structure-first, greybox/lo-fi, annotated, and suitable for flow review rather than final visual styling.');
+    }
+    if (metadata.intent === 'mobile-app') {
+      lines.push('- **intent**: mobile-app — the user chose the Mobile app scenario. Produce handheld-screen layouts with native mobile navigation, touch-safe controls, and iOS/Android-appropriate density instead of a desktop web page.');
+    }
     lines.push(
       `- **fidelity**: ${metadata.fidelity ?? '(unknown — ask: wireframe vs high-fidelity)'}`,
     );

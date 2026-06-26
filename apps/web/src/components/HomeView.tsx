@@ -1649,7 +1649,7 @@ export function HomeView({
       // fields (`subject`/`style`/`aspect`/`mediaKind` stay), so the
       // od-media-generation apply still validates.
       const submittedPluginInputs = submittedActive
-        ? stripArtifactFooterInputs(submittedApplyInputs)
+        ? stripArtifactFooterInputs(submittedApplyInputs, submittedActive)
         : defaultInputs;
       const activeInputsChangedForSubmit = submittedActive
         ? !inputsEqual(submittedActive.result?.appliedPlugin?.inputs ?? submittedActive.inputs, submittedPluginInputs)
@@ -2129,13 +2129,25 @@ const ARTIFACT_FOOTER_FIELD_NAMES = new Set([
   'voice',
 ]);
 
+const LEGACY_ARTIFACT_FIELD_STRIP_PLUGIN_IDS = new Set([
+  'example-web-prototype',
+  'example-simple-deck',
+]);
+
 // The prototype/deck footer no longer exposes these settings, so any plugin
 // default for them must NOT be seeded into the Home composer's inputs — that
 // would forward a prefilled value (e.g. `fidelity: high-fidelity`) to the run
 // instead of leaving it "unknown" for the first-turn discovery flow to ask.
 function stripArtifactFooterInputs(
   inputs: Record<string, unknown>,
+  active: ActivePlugin,
 ): Record<string, unknown> {
+  if (
+    !active.mediaSurface &&
+    !LEGACY_ARTIFACT_FIELD_STRIP_PLUGIN_IDS.has(active.record.id)
+  ) {
+    return inputs;
+  }
   if (!Object.keys(inputs).some((key) => ARTIFACT_FOOTER_FIELD_NAMES.has(key))) {
     return inputs;
   }
@@ -2255,17 +2267,109 @@ function withHomeDesignSystemDefault(
   };
 }
 
-function estimatePluginContextItemCount(
-  record: InstalledPluginRecord,
-): number {
-  const context = record.manifest?.od?.context;
-  if (!context) return 0;
-  const assetCount = context.assets?.length ?? 0;
-  const mcpCount = context.mcp?.length ?? 0;
-  const claudePluginCount = context.claudePlugins?.length ?? 0;
-  const atomCount = context.atoms?.length ?? 0;
-  const craftCount = context.craft?.length ?? 0;
-  return assetCount + mcpCount + claudePluginCount + atomCount + craftCount;
+function deriveSuppressedPromptInputsFromPrompt(
+  active: ActivePlugin,
+  prompt: string,
+): ActivePlugin {
+  if (!active.suppressPromptSync || active.mediaSurface || !active.chipId) return active;
+  const trimmed = prompt.trim();
+  if (!trimmed) return active;
+  const defaults = promptDerivedInputsForChip(active.chipId, trimmed);
+  if (!defaults) return active;
+
+  let changed = false;
+  const nextInputs: Record<string, unknown> = { ...active.inputs };
+  for (const field of active.inputFields) {
+    const nextValue = defaults[field.name];
+    if (nextValue === undefined) continue;
+    if (PROMPT_DERIVED_INPUT_NAMES.has(field.name)) {
+      if (nextInputs[field.name] !== nextValue) {
+        nextInputs[field.name] = nextValue;
+        changed = true;
+      }
+      continue;
+    }
+    if (!hasPluginInputValue(nextInputs[field.name])) {
+      nextInputs[field.name] = nextValue;
+      changed = true;
+    }
+  }
+  if (!changed) return active;
+
+  return {
+    ...active,
+    inputs: nextInputs,
+    inputsValid: pluginInputsAreValid(active.inputFields, nextInputs),
+    result: inputsEqual(active.result?.appliedPlugin?.inputs, nextInputs) ? active.result : null,
+    projectMetadata: homeCreateProjectMetadata(active.projectKind, nextInputs, active.projectMetadata),
+  };
+}
+
+const PROMPT_DERIVED_INPUT_NAMES = new Set([
+  'content',
+  'prompt',
+  'screenFlow',
+  'systemContext',
+  'topic',
+]);
+
+function promptDerivedInputsForChip(
+  chipId: string,
+  prompt: string,
+): Record<string, string> | null {
+  switch (chipId) {
+    case 'wireframe':
+      return {
+        screenFlow: prompt,
+        platform: 'responsive web',
+        audience: 'product team and stakeholders',
+        fidelity: 'annotated greybox',
+        designSystem: 'the active project design system',
+      };
+    case 'mobile':
+      return {
+        screenFlow: prompt,
+        platformTargets: 'iOS and Android',
+        audience: 'mobile product users',
+        deviceFrame: 'iPhone-style frame',
+        designSystem: 'the active project design system',
+      };
+    case 'document':
+      return {
+        documentType: 'report',
+        topic: prompt,
+        audience: 'readers',
+        format: 'single-page PDF',
+        tone: 'concise and professional',
+        designSystem: 'document editorial system',
+        prompt,
+      };
+    case 'social-card':
+      return {
+        platform: 'multi-platform',
+        layout: 'single post card',
+        content: prompt,
+        audience: 'social feed viewers',
+        palette: 'restrained platform-appropriate palette',
+        designSystem: 'the active project design system',
+        prompt,
+      };
+    case 'diagram':
+      return {
+        diagramType: 'architecture diagram',
+        systemContext: prompt,
+        audience: 'engineering and product readers',
+        detailLevel: 'product doc',
+        visualStyle: 'clean product-doc',
+        prompt,
+      };
+    default:
+      return null;
+  }
+}
+
+function hasPluginInputValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== '';
 }
 
 function hydratePluginInputs(

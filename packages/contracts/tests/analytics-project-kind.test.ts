@@ -45,6 +45,8 @@ describe('projectKindToTracking', () => {
       projectKindToTracking('prototype', null, { platformTargets: ['mobile-ios', 'mobile-android'] }),
     ).toBe('mobile');
     expect(projectKindToTracking('prototype', null, { intent: 'live-artifact' })).toBe('live_artifact');
+    expect(projectKindToTracking('prototype', null, { intent: 'wireframe' })).toBe('wireframe');
+    expect(projectKindToTracking('prototype', null, { intent: 'mobile-app' })).toBe('mobile');
     // A bare prototype (no discriminators) stays prototype.
     expect(projectKindToTracking('prototype', null, {})).toBe('prototype');
     expect(projectKindToTracking('prototype', null, { platform: 'web-desktop' })).toBe('prototype');
@@ -94,6 +96,12 @@ describe('projectKindToTracking', () => {
     expect(
       projectKindFromMetadataToTracking({ kind: 'prototype', intent: 'live-artifact' }),
     ).toBe('live_artifact');
+    expect(projectKindFromMetadataToTracking({ kind: 'prototype', intent: 'wireframe' })).toBe(
+      'wireframe',
+    );
+    expect(projectKindFromMetadataToTracking({ kind: 'prototype', intent: 'mobile-app' })).toBe(
+      'mobile',
+    );
     expect(projectKindFromMetadataToTracking({ kind: 'other', intent: 'document' })).toBe('document');
     expect(projectKindFromMetadataToTracking({ kind: 'image', intent: 'social-card' })).toBe(
       'social_card',

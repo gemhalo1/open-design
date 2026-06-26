@@ -41,6 +41,11 @@ const SOCIAL_PALETTES: Record<SocialPalette, Vars> = {
   wechat: { '--p-bg': '#e8f3ea', '--p-surface': '#ffffff', '--p-surface2': '#ddefe1', '--p-ink': '#122017', '--p-sub': '#5a6f60', '--p-accent': '#07c160', '--p-accent-soft': '#d4f0de', '--p-line': '#d6ebdc' },
   indigo: { '--p-bg': '#e9ebf3', '--p-surface': '#f5f6fb', '--p-surface2': '#dfe2ef', '--p-ink': '#161a2b', '--p-sub': '#5f6680', '--p-accent': '#3b4a8c', '--p-accent-soft': '#dde1f0', '--p-line': '#dde0ee' },
   midnight: { '--p-bg': '#15141b', '--p-surface': '#1d1b25', '--p-surface2': '#262430', '--p-ink': '#f3ecdd', '--p-sub': '#b6a98c', '--p-accent': '#d4a04a', '--p-accent-soft': '#3a3322', '--p-line': '#2e2b39' },
+  reddit: { '--p-bg': '#fdeee6', '--p-surface': '#ffffff', '--p-surface2': '#fbe4d6', '--p-ink': '#1a1a1b', '--p-sub': '#787c7e', '--p-accent': '#ff4500', '--p-accent-soft': '#ffe1d2', '--p-line': '#f3ddcf' },
+  youtube: { '--p-bg': '#f6eded', '--p-surface': '#ffffff', '--p-surface2': '#f4e3e3', '--p-ink': '#0f0f0f', '--p-sub': '#606060', '--p-accent': '#ff0000', '--p-accent-soft': '#ffdada', '--p-line': '#efdcdc' },
+  facebook: { '--p-bg': '#eef2f9', '--p-surface': '#ffffff', '--p-surface2': '#e7eefb', '--p-ink': '#1c1e21', '--p-sub': '#606770', '--p-accent': '#1877f2', '--p-accent-soft': '#dbe7fb', '--p-line': '#e2e8f3' },
+  producthunt: { '--p-bg': '#fdeee9', '--p-surface': '#ffffff', '--p-surface2': '#fbe2d9', '--p-ink': '#21130d', '--p-sub': '#7c685e', '--p-accent': '#da552f', '--p-accent-soft': '#fbdacd', '--p-line': '#f3ddd2' },
+  spotify: { '--p-bg': '#0c130e', '--p-surface': '#16201a', '--p-surface2': '#1f2c24', '--p-ink': '#eafff1', '--p-sub': '#9ab8a6', '--p-accent': '#1db954', '--p-accent-soft': '#143222', '--p-line': '#26352c' },
 };
 
 // --- Diagram palettes: four light fireworks styles + the two canonical dark

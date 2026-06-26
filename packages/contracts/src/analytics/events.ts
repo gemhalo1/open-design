@@ -3396,7 +3396,9 @@ export function projectKindToTracking(
       // metadata field. Precedence (a prototype matching several): live_artifact
       // > wireframe > mobile, then plain prototype.
       if (hints?.intent === 'live-artifact') return 'live_artifact';
+      if (hints?.intent === 'wireframe') return 'wireframe';
       if (hints?.fidelity === 'wireframe') return 'wireframe';
+      if (hints?.intent === 'mobile-app') return 'mobile';
       if (isMobileSurface(hints)) return 'mobile';
       return 'prototype';
     case 'deck':

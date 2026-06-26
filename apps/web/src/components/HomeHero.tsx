@@ -3026,6 +3026,41 @@ function SubTypeRow({
 }) {
   const t = useT();
   const allActive = selectedSlug === null;
+  const [expanded, setExpanded] = useState(false);
+
+  const primaryChips = subChips.filter((sub) => !sub.overflow);
+  const overflowChips = subChips.filter((sub) => sub.overflow);
+  const hasOverflow = overflowChips.length > 0;
+  // Auto-reveal the overflow set whenever the active sub-type lives inside it,
+  // so the selected pill is always visible (e.g. after a programmatic pick).
+  const selectedIsOverflow = overflowChips.some((sub) => sub.slug === selectedSlug);
+  const showOverflow = expanded || selectedIsOverflow;
+  const visibleChips = showOverflow ? subChips : primaryChips;
+
+  const renderChip = (sub: HomeHeroSubChip) => {
+    const isActive = sub.slug === selectedSlug;
+    const cls = ['home-hero__subtype-chip'];
+    if (isActive) cls.push('is-active');
+    return (
+      <button
+        key={sub.slug}
+        type="button"
+        className={cls.join(' ')}
+        data-sub-chip-id={sub.slug}
+        data-testid={`home-hero-subtype-${sub.slug}`}
+        onClick={() => onPickSubChip(sub)}
+        disabled={pluginsLoading}
+        role="tab"
+        aria-selected={isActive}
+      >
+        <Icon name={sub.icon} size={13} className="home-hero__subtype-chip-icon" />
+        <span className="home-hero__subtype-chip-label">
+          {subChipLabel(sub, t)}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div
       className="home-hero__subtype-row"
@@ -3045,29 +3080,28 @@ function SubTypeRow({
       >
         <span className="home-hero__subtype-chip-label">{t('common.all')}</span>
       </button>
-      {subChips.map((sub) => {
-        const isActive = sub.slug === selectedSlug;
-        const cls = ['home-hero__subtype-chip'];
-        if (isActive) cls.push('is-active');
-        return (
-          <button
-            key={sub.slug}
-            type="button"
-            className={cls.join(' ')}
-            data-sub-chip-id={sub.slug}
-            data-testid={`home-hero-subtype-${sub.slug}`}
-            onClick={() => onPickSubChip(sub)}
-            disabled={pluginsLoading}
-            role="tab"
-            aria-selected={isActive}
-          >
-            <Icon name={sub.icon} size={13} className="home-hero__subtype-chip-icon" />
-            <span className="home-hero__subtype-chip-label">
-              {subChipLabel(sub, t)}
-            </span>
-          </button>
-        );
-      })}
+      {visibleChips.map(renderChip)}
+      {hasOverflow ? (
+        <button
+          type="button"
+          className={`home-hero__subtype-chip home-hero__subtype-more${showOverflow ? ' is-open' : ''}`}
+          data-testid="home-hero-subtype-more"
+          onClick={() => setExpanded((open) => !open)}
+          disabled={pluginsLoading || selectedIsOverflow}
+          aria-expanded={showOverflow}
+          aria-label={showOverflow ? t('homeHero.subTypeLess') : t('homeHero.subTypeMore')}
+          title={showOverflow ? t('homeHero.subTypeLess') : t('homeHero.subTypeMore')}
+        >
+          <Icon
+            name="more-horizontal"
+            size={14}
+            className="home-hero__subtype-chip-icon"
+          />
+          <span className="home-hero__subtype-chip-label">
+            {showOverflow ? t('homeHero.subTypeLess') : t('homeHero.subTypeMore')}
+          </span>
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -579,6 +579,8 @@ export const en: Dict = {
   'homeHero.moreShortcuts': 'More',
   'homeHero.railAria': 'Pick a project category or starter shortcut',
   'homeHero.subTypeAria': 'Pick a sub-type',
+  'homeHero.subTypeMore': 'More',
+  'homeHero.subTypeLess': 'Less',
   'homeHero.confirmReplaceTitle': 'Replace current prompt?',
   'homeHero.confirmReplaceBody': 'Using {title} will replace the text currently in the input.',
   'homeHero.confirmReplace': 'Replace',

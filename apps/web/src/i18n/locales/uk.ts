@@ -579,6 +579,8 @@ export const uk: Dict = {
   'homeHero.moreShortcuts': 'Більше',
   'homeHero.railAria': 'Виберіть категорію проєкту або стартовий ярлик',
   'homeHero.subTypeAria': 'Виберіть підтип',
+  'homeHero.subTypeMore': 'Більше',
+  'homeHero.subTypeLess': 'Менше',
   'homeHero.confirmReplaceTitle': 'Замінити поточний запит?',
   'homeHero.confirmReplaceBody': 'Використання {title} замінить текст, який зараз є у полі введення.',
   'homeHero.confirmReplace': 'Замінити',
