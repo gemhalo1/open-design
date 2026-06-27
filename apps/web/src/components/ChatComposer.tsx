@@ -4180,6 +4180,19 @@ function isDesignToolboxSkill(skill: SkillSummary): boolean {
     'anti slop',
     'anti ai',
     'image',
+    'asset',
+    'reference',
+    'icon',
+    'logo',
+    'chart',
+    'diagram',
+    'echarts',
+    'three',
+    'spline',
+    'rive',
+    'lottie',
+    'mapbox',
+    'deck.gl',
     'video',
     'frontend',
     'beautify',
@@ -4306,6 +4319,26 @@ function designToolboxActionPrompt({
         t('chat.designToolbox.prompt.autoMatchStep3'),
         t('chat.designToolbox.prompt.autoMatchStep4'),
       ].join('\n');
+    case 'asset-search':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.assetSearch'),
+      ].join('\n');
+    case 'icon-workflow':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.iconWorkflow'),
+      ].join('\n');
+    case 'image-replace':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.imageReplace'),
+      ].join('\n');
+    case 'reference-extract':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.referenceExtract'),
+      ].join('\n');
     case 'motion':
       return [
         ...base,
@@ -4315,6 +4348,21 @@ function designToolboxActionPrompt({
       return [
         ...base,
         t('chat.designToolbox.prompt.motionPolish'),
+      ].join('\n');
+    case 'transition-motion':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.transitionMotion'),
+      ].join('\n');
+    case 'plan-outline':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.planOutline'),
+      ].join('\n');
+    case 'threejs-scene':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.threejsScene'),
       ].join('\n');
     case 'anti-ai-polish':
       return [
@@ -4331,12 +4379,27 @@ function designToolboxActionPrompt({
         ...base,
         t('chat.designToolbox.prompt.imageGen'),
       ].join('\n');
+    case 'chart-gen':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.chartGen'),
+      ].join('\n');
+    case 'logo-gen':
+      return [
+        ...base,
+        t('chat.designToolbox.prompt.logoGen'),
+      ].join('\n');
     case 'video-gen':
       return [
         ...base,
         t('chat.designToolbox.prompt.videoGen'),
       ].join('\n');
   }
+
+  return [
+    ...base,
+    t('chat.designToolbox.prompt.autoMatchIntro'),
+  ].join('\n');
 }
 
 function designToolboxSkillPrompt({

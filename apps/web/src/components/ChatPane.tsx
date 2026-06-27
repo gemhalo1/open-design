@@ -880,11 +880,13 @@ export function ChatPane({
   const handlePickSkill = useCallback((skillId: string) => {
     composerRef.current?.applyDesignToolboxSkill(skillId);
   }, []);
-  const nextStepVariant: NextStepActionsVariant = isDesignSystemNextStepProject(projectMetadata)
-    ? isBrandExtractionNextStepProject(projectMetadata)
-      ? 'brand-extraction'
-      : 'design-system'
-    : 'default';
+  const nextStepVariant: NextStepActionsVariant = sessionMode === 'plan'
+    ? 'plan'
+    : isDesignSystemNextStepProject(projectMetadata)
+      ? isBrandExtractionNextStepProject(projectMetadata)
+        ? 'brand-extraction'
+        : 'design-system'
+      : 'default';
   // The `@skill` shown in each featured row's hover detail — matched the same
   // way the composer matches it, using the raw skill name (what gets inlined
   // into the draft). Recomputed only when the skill list changes.
@@ -912,11 +914,28 @@ export function ChatPane({
         chipId: 'design-system',
       }));
     }
+    if (nextStepVariant === 'plan') {
+      return [
+        {
+          id: 'plan-generate-from-doc',
+          text: t('nextStep.planGeneratePrompt'),
+          chipId: 'plan',
+        },
+        {
+          id: 'plan-improve-doc',
+          text: t('nextStep.planImprovePrompt'),
+          chipId: 'plan',
+        },
+      ];
+    }
     const promptPairs: Array<[string, string]> = [
       ['auto-match', t('chat.designToolbox.prompt.autoMatchIntro')],
       ['visual-polish', t('chat.designToolbox.prompt.visualPolish')],
+      ['asset-search', t('chat.designToolbox.prompt.assetSearch')],
+      ['icon-workflow', t('chat.designToolbox.prompt.iconWorkflow')],
       ['anti-ai-polish', t('chat.designToolbox.prompt.antiAiPolish')],
       ['motion-polish', t('chat.designToolbox.prompt.motionPolish')],
+      ['chart-gen', t('chat.designToolbox.prompt.chartGen')],
     ];
     return promptPairs.map(([id, text]) => ({
       id: `follow-up-${id}`,
@@ -3778,14 +3797,17 @@ function MessageSessionModeChip({
 }) {
   const label = mode === 'chat'
     ? t('chat.mode.chat.label')
-    : t('chat.mode.design.label');
+    : mode === 'plan'
+      ? t('chat.mode.plan.label')
+      : t('chat.mode.design.label');
+  const icon = mode === 'chat' ? 'comment' : mode === 'plan' ? 'file' : 'sparkles';
   return (
     <div
       className={`msg-mode-chip msg-mode-chip--${mode}`}
       data-testid="msg-session-mode-chip"
       title={label}
     >
-      <Icon name={mode === 'chat' ? 'comment' : 'sparkles'} size={12} />
+      <Icon name={icon} size={12} />
       <span>{label}</span>
     </div>
   );

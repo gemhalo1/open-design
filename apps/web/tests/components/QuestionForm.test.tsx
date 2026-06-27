@@ -195,6 +195,50 @@ describe('QuestionFormView', () => {
     expect(onSubmit.mock.calls[0]?.[1]).toEqual({ platform: 'mobile' });
   });
 
+  it('lets users override generated radio options with a custom answer', () => {
+    const onSubmit = vi.fn();
+    render(<QuestionFormView form={richForm} interactive onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByLabelText('Custom answer'), {
+      target: { value: 'Wearable kiosk' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.stringContaining('- Primary surface: Wearable kiosk'),
+      { platform: 'Wearable kiosk' },
+    );
+  });
+
+  it('combines checkbox presets with custom user entries', () => {
+    const onSubmit = vi.fn();
+    render(<QuestionFormView form={checkboxObjectForm} interactive onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByLabelText('Editorial / magazine'));
+    fireEvent.change(screen.getByLabelText('Custom answer'), {
+      target: { value: 'Neo-museum, Field notebook' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+
+    expect(onSubmit.mock.calls[0]?.[0]).toContain('Editorial / magazine [value: editorial]');
+    expect(onSubmit.mock.calls[0]?.[0]).toContain('Neo-museum');
+    expect(onSubmit.mock.calls[0]?.[0]).toContain('Field notebook');
+    expect(onSubmit.mock.calls[0]?.[1]).toEqual({
+      tone: ['editorial', 'Neo-museum', 'Field notebook'],
+    });
+  });
+
+  it('can hide custom choice input for exact machine-id pickers', () => {
+    const exactForm = {
+      ...selectObjectForm,
+      questions: [{ ...selectObjectForm.questions[0], allowCustom: false }],
+    } as QuestionForm;
+
+    render(<QuestionFormView form={exactForm} interactive onSubmit={vi.fn()} />);
+
+    expect(screen.queryByLabelText('Custom answer')).toBeNull();
+  });
+
   it('submits required checkbox object options with stable values', () => {
     const onSubmit = vi.fn();
     const { container } = render(

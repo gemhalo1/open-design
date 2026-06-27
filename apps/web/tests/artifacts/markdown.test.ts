@@ -64,7 +64,7 @@ describe('renderMarkdownToSafeHtml', () => {
 
   it('does not render unsafe link protocols', () => {
     const out = renderMarkdownToSafeHtml('[Bad](javascript:alert(1))');
-    expect(out).toContain('<p>Bad)</p>');
+    expect(out).toContain('<p>Bad</p>');
     expect(out).not.toContain('javascript:');
     expect(out).not.toContain('<a ');
   });

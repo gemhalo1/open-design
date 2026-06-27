@@ -11,7 +11,7 @@ interface Props {
 
 const MODE_META: Array<{
   mode: ChatSessionMode;
-  icon: 'comment' | 'sparkles';
+  icon: 'comment' | 'file' | 'sparkles';
   labelKey: ModeCopyKey;
   titleKey: ModeCopyKey;
   summaryKey: ModeCopyKey;
@@ -26,6 +26,15 @@ const MODE_META: Array<{
     summaryKey: 'chat.mode.chat.summary',
     solvesKey: 'chat.mode.chat.solves',
     queryKeys: ['chat.mode.chat.query1', 'chat.mode.chat.query2', 'chat.mode.chat.query3'],
+  },
+  {
+    mode: 'plan',
+    icon: 'file',
+    labelKey: 'chat.mode.plan.label',
+    titleKey: 'chat.mode.plan.title',
+    summaryKey: 'chat.mode.plan.summary',
+    solvesKey: 'chat.mode.plan.solves',
+    queryKeys: ['chat.mode.plan.query1', 'chat.mode.plan.query2', 'chat.mode.plan.query3'],
   },
   {
     mode: 'design',
@@ -46,6 +55,13 @@ type ModeCopyKey =
   | 'chat.mode.chat.query1'
   | 'chat.mode.chat.query2'
   | 'chat.mode.chat.query3'
+  | 'chat.mode.plan.label'
+  | 'chat.mode.plan.title'
+  | 'chat.mode.plan.summary'
+  | 'chat.mode.plan.solves'
+  | 'chat.mode.plan.query1'
+  | 'chat.mode.plan.query2'
+  | 'chat.mode.plan.query3'
   | 'chat.mode.design.label'
   | 'chat.mode.design.title'
   | 'chat.mode.design.summary'
@@ -56,7 +72,7 @@ type ModeCopyKey =
 
 interface ModeView {
   mode: ChatSessionMode;
-  icon: 'comment' | 'sparkles';
+  icon: 'comment' | 'file' | 'sparkles';
   label: string;
   title: string;
   summary: string;
@@ -124,7 +140,7 @@ export function SessionModeToggle({ mode, onChange, disabled = false }: Props) {
     solves: t(item.solvesKey),
     queries: item.queryKeys.map((queryKey) => t(queryKey)),
   }));
-  const active = modes.find((item) => item.mode === mode) ?? modes[1]!;
+  const active = modes.find((item) => item.mode === mode) ?? modes.find((item) => item.mode === 'design') ?? modes[0]!;
   const preview = modes.find((item) => item.mode === (previewMode ?? mode)) ?? active;
   const disabledState = disabled || !onChange;
   const showCard = open && !disabledState;

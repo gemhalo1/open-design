@@ -827,7 +827,7 @@ export function DesignFilesPanel({
         <span>{t('designFiles.newSketch')}</span>
       </button>
       <button type="button" onClick={onPaste} title={t('designFiles.paste.title')}>
-        <Icon name="copy" size={13} />
+        <Icon name="file" size={13} />
         <span>{t('designFiles.paste.label')}</span>
       </button>
       <button

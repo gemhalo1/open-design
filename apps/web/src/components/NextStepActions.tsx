@@ -23,7 +23,7 @@ import type { SkillSummary } from '../types';
 import styles from './NextStepActions.module.css';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
-export type NextStepActionsVariant = 'default' | 'design-system' | 'brand-extraction';
+export type NextStepActionsVariant = 'default' | 'design-system' | 'brand-extraction' | 'plan';
 
 export const DESIGN_SYSTEM_NEXT_STEP_ACTIONS = [
   {
@@ -56,6 +56,23 @@ export const BRAND_EXTRACTION_NEXT_STEP_ACTIONS = [
     titleKey: 'nextStep.brandCreateDesignTitle' as keyof Dict,
     descriptionKey: 'nextStep.brandCreateDesignBody' as keyof Dict,
     busyKey: 'nextStep.createDesignBusy' as keyof Dict,
+  },
+] as const;
+
+const PLAN_NEXT_STEP_ACTIONS = [
+  {
+    id: 'plan-generate-from-doc',
+    icon: 'sparkles' as IconName,
+    titleKey: 'nextStep.planGenerateTitle' as keyof Dict,
+    descriptionKey: 'nextStep.planGenerateBody' as keyof Dict,
+    promptKey: 'nextStep.planGeneratePrompt' as keyof Dict,
+  },
+  {
+    id: 'plan-improve-doc',
+    icon: 'file' as IconName,
+    titleKey: 'nextStep.planImproveTitle' as keyof Dict,
+    descriptionKey: 'nextStep.planImproveBody' as keyof Dict,
+    promptKey: 'nextStep.planImprovePrompt' as keyof Dict,
   },
 ] as const;
 
@@ -140,6 +157,7 @@ function place(
 type Anchor = { left: number; top: number };
 type SubKind = 'toolbox' | 'share';
 type BrandExtractionActionId = (typeof BRAND_EXTRACTION_NEXT_STEP_ACTIONS)[number]['id'];
+type PlanAction = (typeof PLAN_NEXT_STEP_ACTIONS)[number];
 type Detail =
   | ({ kind: 'toolbox'; id: DesignToolboxActionId } & Anchor)
   | ({ kind: 'brand'; id: BrandExtractionActionId } & Anchor);
@@ -300,6 +318,15 @@ export function NextStepActions({
     },
     [closeAll, onPromptAction, track],
   );
+  const handlePlanPromptAction = useCallback(
+    (action: PlanAction) => {
+      if (!fileName) return;
+      track('toolbox_action', action.id);
+      onPromptAction?.(t(action.promptKey, { file: fileName }));
+      closeAll();
+    },
+    [closeAll, fileName, onPromptAction, t, track],
+  );
 
   const handleAiOptimize = useCallback(() => {
     if (aiOptimizeBusy) return;
@@ -358,6 +385,7 @@ export function NextStepActions({
   const hasShareGroup = canShare || canDownload || canContribute;
   const hasMore = !!onToolboxAction || hasShareGroup;
   const showToolbox = !!onToolboxAction;
+  const showPlanRows = variant === 'plan' && !!fileName && !!onPromptAction;
   const showDesignSystemRows = variant === 'design-system' && !!onPromptAction;
   const showBrandRows = variant === 'brand-extraction' && (!!onAiOptimize || !!onCreateDesign);
 
@@ -367,8 +395,32 @@ export function NextStepActions({
   return (
     <div className={styles.root} data-testid="next-step-actions">
       <div className={styles.label}>{t('nextStep.title')}</div>
-      {showBrandRows || showDesignSystemRows || showToolbox || hasMore ? (
+      {showBrandRows || showPlanRows || showDesignSystemRows || showToolbox || hasMore ? (
         <div className={styles.toolboxList} data-testid="next-step-toolbox">
+          {showPlanRows
+            ? PLAN_NEXT_STEP_ACTIONS.map((action) => {
+                const title = t(action.titleKey);
+                const description = t(action.descriptionKey);
+                return (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className={styles.toolboxRow}
+                    data-testid={`next-step-plan-action-${action.id}`}
+                    aria-label={`${title}. ${description}`}
+                    title={description}
+                    onClick={() => handlePlanPromptAction(action)}
+                  >
+                    <Icon name={action.icon} size={14} className={styles.toolboxRowIcon} />
+                    <span className={styles.toolboxRowText}>
+                      <span className={styles.toolboxRowTitle}>{title}</span>
+                      <span className={styles.toolboxRowDescription}>{description}</span>
+                    </span>
+                    <Icon name="chevron-right" size={13} className={styles.toolboxRowArrow} />
+                  </button>
+                );
+              })
+            : null}
           {showBrandRows
             ? BRAND_EXTRACTION_NEXT_STEP_ACTIONS.map((action) => {
                 const busy =
@@ -425,6 +477,7 @@ export function NextStepActions({
             : null}
           {showToolbox && !showDesignSystemRows
             && !showBrandRows
+            && !showPlanRows
             ? FEATURED_DESIGN_TOOLBOX_ACTION_IDS.map((id) => {
                 const action = getDesignToolboxAction(id);
                 if (!action) return null;

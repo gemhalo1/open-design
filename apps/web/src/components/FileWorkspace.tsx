@@ -103,7 +103,6 @@ import { SideChatTab, type ActiveConversationChatState } from './workspace/SideC
 import { TerminalViewer } from './workspace/TerminalViewer';
 import { LiveArtifactBadges } from './LiveArtifactBadges';
 import { MissingBrandFontsBanner } from './MissingBrandFontsBanner';
-import { PasteTextDialog } from './PasteTextDialog';
 import { LibraryPicker } from './LibraryPicker';
 import { QuestionsPanel } from './QuestionsPanel';
 import { QuickSwitcher } from './QuickSwitcher';
@@ -504,7 +503,6 @@ export function FileWorkspace({
     tabsState.active ?? defaultRootTab,
   );
 
-  const [showPasteDialog, setShowPasteDialog] = useState(false);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   // The folder the Design Files panel is currently viewing (synced via
@@ -1380,6 +1378,15 @@ export function FileWorkspace({
     activatePending(name);
   }
 
+  async function createMarkdownDocument() {
+    const target = nextMarkdownDocumentPath(files, uploadDir);
+    const file = await writeProjectTextFile(projectId, target, initialMarkdownDocument(target));
+    if (!file) return;
+    await onRefreshFiles();
+    await refreshProjectFolders();
+    openFile(file.name);
+  }
+
   // When the active tab is a sketch we don't have items for yet, load from
   // disk. Pending sketches start with loaded=true and skip this path.
   useEffect(() => {
@@ -2219,7 +2226,7 @@ export function FileWorkspace({
                 area: 'file_manager',
                 element: 'paste',
               });
-              setShowPasteDialog(true);
+              void createMarkdownDocument();
             }}
             onNewSketch={() => {
               trackFileManagerClick(analytics.track, {
@@ -2374,23 +2381,6 @@ export function FileWorkspace({
         style={{ display: 'none' }}
         onChange={handleFilePicked}
       />
-      <AnimatePresence>
-        {showPasteDialog ? (
-          <PasteTextDialog
-            onClose={() => setShowPasteDialog(false)}
-            onSave={async (name, content) => {
-              setShowPasteDialog(false);
-              // Save under the folder currently being viewed, if any.
-              const target = uploadDir ? `${uploadDir}/${name}` : name;
-              const file = await writeProjectTextFile(projectId, target, content);
-              if (file) {
-                await onRefreshFiles();
-                openFile(file.name);
-              }
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
       <AnimatePresence>
         {showLibraryPicker ? (
           <LibraryPicker
@@ -4302,6 +4292,49 @@ function designSystemPathMatchesSection(path: string, sectionTitle: string): boo
 
 function normalizeDesignSystemPath(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\.?\//, '').toLowerCase();
+}
+
+function normalizeProjectFilePath(path: string): string {
+  return path.replace(/\\/g, '/').split('/').filter(Boolean).join('/');
+}
+
+function joinProjectFilePath(dir: string, name: string): string {
+  const normalizedDir = normalizeProjectFilePath(dir);
+  return normalizedDir ? `${normalizedDir}/${name}` : name;
+}
+
+function nextMarkdownDocumentPath(files: ProjectFile[], dir: string): string {
+  const existing = new Set(files.map((file) => normalizeProjectFilePath(file.name).toLowerCase()));
+  for (let index = 1; index < 1000; index += 1) {
+    const name = index === 1 ? 'document.md' : `document-${index}.md`;
+    const candidate = joinProjectFilePath(dir, name);
+    if (!existing.has(normalizeProjectFilePath(candidate).toLowerCase())) return candidate;
+  }
+  return joinProjectFilePath(dir, `document-${Date.now()}.md`);
+}
+
+function initialMarkdownDocument(path: string): string {
+  const title = normalizeProjectFilePath(path)
+    .split('/')
+    .pop()
+    ?.replace(/\.mdx?$/i, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Document';
+  return `# ${title}
+
+## Goal
+
+Describe what this document should help Open Design generate next.
+
+## Notes
+
+- Add requirements, outline, references, or open questions here.
+- Use images with Markdown syntax such as \`![caption](image.png)\`; pasted images are saved into Design Files.
+
+## Next step
+
+Review and edit this document, then ask Open Design to generate from it.
+`;
 }
 
 function designSystemBasename(path: string): string {
