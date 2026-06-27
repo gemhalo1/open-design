@@ -17,7 +17,7 @@ import {
 import type { AmrModelsResponse, ChatSessionMode } from '@open-design/contracts';
 import { EntryView } from './components/EntryView';
 import { DemoControlBar, isInviteScenario, type DemoPlan, type DemoScenario, type DemoUseMode } from './components/DemoControlBar';
-import type { IntegrationTab } from './components/IntegrationsView';
+import type { IntegrationTab } from './components/integration-tabs';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
 import type { CreateInput, ImportClaudeDesignOutcome } from './components/NewProjectPanel';
@@ -2158,6 +2158,42 @@ function AppInner() {
       onDesignSystemImportRebuildJob={handleDesignSystemImportRebuildJob}
       providerModelsCache={providerModelsCache}
       onProviderModelsCacheChange={setProviderModelsCache}
+      demoScenario={projectDemoScenario}
+      demoPlan={projectDemoPlan}
+      demoUseMode={projectDemoUseMode}
+      onDemoPlan={(plan) => setProjectDemoPlan(projectDemoUseMode === 'local' && plan === 'team' ? 'max' : plan)}
+      onDemoUseMode={(mode) => {
+        setProjectDemoUseMode(mode);
+        if (mode === 'local' && projectDemoPlan === 'team') {
+          setProjectDemoPlan('max');
+        }
+      }}
+      onDemoLowCredits={() => {}}
+      onDemoAcceptInvite={(role) => {
+        const scenario: DemoScenario =
+          role === 'editor'
+            ? 'invite-editor'
+            : role === 'admin'
+              ? 'invite-admin'
+              : 'invite-viewer';
+        setProjectDemoScenario(scenario);
+        setProjectDemoPlan(projectDemoUseMode === 'local' ? 'max' : 'team');
+        window.history.replaceState(null, '', '/onboarding#invite');
+        navigate({ kind: 'home', view: 'onboarding' });
+      }}
+      onDemoQueue={() => window.dispatchEvent(new CustomEvent('open-design:demo-queue'))}
+      onDemoEdit={() => window.dispatchEvent(new CustomEvent('open-design:demo-edit'))}
+      onDemoScenario={(scenario) => {
+        setProjectDemoScenario(scenario);
+        if (scenario === 'onboarding-new') setProjectDemoPlan('free');
+        else if (scenario !== 'home') setProjectDemoPlan(projectDemoUseMode === 'local' ? 'max' : 'team');
+        if (scenario === 'home') {
+          navigate({ kind: 'home', view: 'home' });
+        } else if (scenario === 'onboarding-new' || isInviteScenario(scenario)) {
+          window.history.replaceState(null, '', isInviteScenario(scenario) ? '/onboarding#invite' : '/onboarding');
+          navigate({ kind: 'home', view: 'onboarding' });
+        }
+      }}
     />
   );
 

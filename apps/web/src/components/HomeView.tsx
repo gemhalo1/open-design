@@ -733,6 +733,21 @@ export function HomeView({
     if (!promptHandoff || consumedHandoffIdRef.current === promptHandoff.id) return;
     consumedHandoffIdRef.current = promptHandoff.id;
     setError(null);
+    if (promptHandoff.source === 'marketplace-plugin-try') {
+      setActive(null);
+      setActiveSkill(null);
+      setSelectedPluginContexts([]);
+      setSelectedMcpContexts([]);
+      setSelectedConnectorContexts([]);
+      if (promptHandoff.focus) {
+        pendingPromptFocusEndRef.current = true;
+      }
+      setPrompt(promptHandoff.prompt);
+      setPromptEditedByUser(false);
+      scrollHomeToTop();
+      return;
+    }
+
     if (promptHandoff.source === 'plugin-use') {
       setPendingPluginUseHandoff({
         pluginId: promptHandoff.pluginId,

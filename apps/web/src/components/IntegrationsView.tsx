@@ -14,7 +14,7 @@ import { McpClientSection } from './McpClientSection';
 import { UseEverywhereGuidePanel } from './UseEverywhereModal';
 import { useT } from '../i18n';
 
-export type IntegrationTab = 'mcp' | 'connectors' | 'skills' | 'use-everywhere';
+import type { IntegrationTab } from './integration-tabs';
 
 interface Props {
   config: AppConfig;

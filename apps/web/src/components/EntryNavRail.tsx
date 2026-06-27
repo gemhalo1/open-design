@@ -3,7 +3,7 @@
 // Renders a narrow icon-only column. The first slot is the brand logo,
 // followed by the primary destinations users expect to keep in reach:
 // New project, home, projects, brand kit, automations, plugins,
-// and integrations. Footer controls are reserved for lower-frequency
+// and plugin capabilities. Footer controls are reserved for lower-frequency
 // support affordances such as the help launcher.
 // Language switching and other account-scoped controls live behind the
 // floating settings cog in the top-right corner of the main content.
@@ -126,76 +126,88 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose, 
       aria-hidden={open ? undefined : true}
     >
       <div className="entry-nav-rail__group">
-        <div className="entry-nav-rail__account">
-          <button
-            type="button"
-            className="entry-nav-rail__account-trigger"
-            onClick={() => setAccountOpen((v) => !v)}
-            aria-expanded={accountOpen}
-          >
-            <span className="entry-nav-rail__account-avatar" aria-hidden>琼</span>
-            <span className="entry-nav-rail__account-name">琼羽</span>
-            <Icon name="chevron-down" size={14} />
-          </button>
-          {credits ? (
+        {cloudWorkspace ? (
+          <div className="entry-nav-rail__account">
             <button
               type="button"
-              className="entry-nav-rail__credits-chip"
-              onClick={() => setCreditsOpen((v) => !v)}
-              aria-expanded={creditsOpen}
-              aria-label={`${credits.tierLabel} · 剩余积分 ${credits.balance}`}
+              className="entry-nav-rail__account-trigger"
+              onClick={() => setAccountOpen((v) => !v)}
+              aria-expanded={accountOpen}
             >
-              <span className="entry-nav-rail__credits-tier">{credits.tierLabel}</span>
-              <span className="entry-nav-rail__credits-sep" aria-hidden>·</span>
-              <Icon name="sparkles" size={12} />
-              {credits.balance.toLocaleString('en-US')}
+              <span className="entry-nav-rail__account-avatar" aria-hidden>琼</span>
+              <span className="entry-nav-rail__account-name">琼羽</span>
+              <Icon name="chevron-down" size={14} />
             </button>
-          ) : null}
-          {credits ? (
-            <CreditsPanel
-              open={creditsOpen}
-              onClose={() => setCreditsOpen(false)}
-              info={credits}
-              onUpgrade={() => {
-                setCreditsOpen(false);
-                onUpgrade?.();
-              }}
-            />
-          ) : null}
-          {accountOpen ? (
-            <>
-              <div className="entry-nav-rail__menu-backdrop" onClick={() => setAccountOpen(false)} />
-              <div className="entry-nav-rail__account-menu" role="menu">
-                <div className="entry-nav-rail__account-head">
-                  <span className="entry-nav-rail__account-head-avatar" aria-hidden>琼</span>
-                  <span className="entry-nav-rail__account-head-name">琼羽</span>
-                  <span className="entry-nav-rail__account-head-email">qiongyu1999@gmail.com</span>
+            {credits ? (
+              <button
+                type="button"
+                className="entry-nav-rail__credits-chip"
+                onClick={() => setCreditsOpen((v) => !v)}
+                aria-expanded={creditsOpen}
+                aria-label={`${credits.tierLabel} · 剩余积分 ${credits.balance}`}
+              >
+                <span className="entry-nav-rail__credits-tier">{credits.tierLabel}</span>
+                <span className="entry-nav-rail__credits-sep" aria-hidden>·</span>
+                <Icon name="sparkles" size={12} />
+                {credits.balance.toLocaleString('en-US')}
+              </button>
+            ) : null}
+            {credits ? (
+              <CreditsPanel
+                open={creditsOpen}
+                onClose={() => setCreditsOpen(false)}
+                info={credits}
+                onUpgrade={() => {
+                  setCreditsOpen(false);
+                  onUpgrade?.();
+                }}
+              />
+            ) : null}
+            {accountOpen ? (
+              <>
+                <div className="entry-nav-rail__menu-backdrop" onClick={() => setAccountOpen(false)} />
+                <div className="entry-nav-rail__account-menu" role="menu">
+                  <div className="entry-nav-rail__account-head">
+                    <span className="entry-nav-rail__account-head-avatar" aria-hidden>琼</span>
+                    <span className="entry-nav-rail__account-head-name">琼羽</span>
+                    <span className="entry-nav-rail__account-head-email">qiongyu1999@gmail.com</span>
+                  </div>
+                  <button type="button" className="entry-nav-rail__menu-item is-primary" role="menuitem">
+                    <Icon name="layout" size={15} /> 切换主题 <span className="entry-nav-rail__menu-chevron"><Icon name="chevron-right" size={13} /></span>
+                  </button>
+                  <button
+                    type="button"
+                    className="entry-nav-rail__menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountOpen(false);
+                      onOpenSettings?.();
+                    }}
+                  >
+                    <Icon name="settings" size={15} /> 设置
+                  </button>
+                  <div className="entry-nav-rail__menu-divider" />
+                  <button type="button" className="entry-nav-rail__menu-item" role="menuitem">
+                    <Icon name="plus" size={15} /> 添加账号
+                  </button>
+                  <button type="button" className="entry-nav-rail__menu-item" role="menuitem">
+                    <Icon name="log-out" size={15} /> 退出登录
+                  </button>
                 </div>
-                <button type="button" className="entry-nav-rail__menu-item is-primary" role="menuitem">
-                  <Icon name="layout" size={15} /> 切换主题 <span className="entry-nav-rail__menu-chevron"><Icon name="chevron-right" size={13} /></span>
-                </button>
-                <button
-                  type="button"
-                  className="entry-nav-rail__menu-item"
-                  role="menuitem"
-                  onClick={() => {
-                    setAccountOpen(false);
-                    onOpenSettings?.();
-                  }}
-                >
-                  <Icon name="settings" size={15} /> 设置
-                </button>
-                <div className="entry-nav-rail__menu-divider" />
-                <button type="button" className="entry-nav-rail__menu-item" role="menuitem">
-                  <Icon name="plus" size={15} /> 添加账号
-                </button>
-                <button type="button" className="entry-nav-rail__menu-item" role="menuitem">
-                  <Icon name="log-out" size={15} /> 退出登录
-                </button>
-              </div>
-            </>
-          ) : null}
-        </div>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="entry-nav-rail__local-logo"
+            onClick={() => selectView('home')}
+            aria-label={brandLabel}
+            data-testid="entry-local-logo"
+          >
+            <img src="/brand-icon.svg" alt="" aria-hidden />
+          </button>
+        )}
         <div className="entry-nav-rail__search" aria-hidden>
           <Icon name="search" size={14} />
           <input type="text" placeholder={t('common.search')} readOnly tabIndex={-1} />
@@ -303,6 +315,15 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose, 
             >
               <Icon name="palette" size={18} />
             </NavButton>
+            <NavButton
+              active={view === 'plugins'}
+              ariaLabel={t('entry.navPlugins')}
+              tooltip={t('entry.navPlugins')}
+              onClick={() => selectView('plugins')}
+              testId="entry-nav-plugins"
+            >
+              <Icon name="grid" size={18} />
+            </NavButton>
           </>
         ) : null}
 {null /* demo: hide content-plan nav item */}
@@ -329,25 +350,20 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose, 
           </>
         ) : null}
 
-        <div className="entry-nav-rail__section">更多</div>
-        <NavButton
-          active={view === 'plugins'}
-          ariaLabel={t('entry.navPlugins')}
-          tooltip={t('entry.navPlugins')}
-          onClick={() => selectView('plugins')}
-          testId="entry-nav-plugins"
-        >
-          <Icon name="grid" size={18} />
-        </NavButton>
-        <NavButton
-          active={view === 'integrations'}
-          ariaLabel={t('entry.navIntegrations')}
-          tooltip={t('entry.navIntegrations')}
-          onClick={() => selectView('integrations')}
-          testId="entry-nav-integrations"
-        >
-          <Icon name="link" size={18} />
-        </NavButton>
+        {!cloudWorkspace ? (
+          <>
+            <div className="entry-nav-rail__section">更多</div>
+            <NavButton
+              active={view === 'plugins'}
+              ariaLabel={t('entry.navPlugins')}
+              tooltip={t('entry.navPlugins')}
+              onClick={() => selectView('plugins')}
+              testId="entry-nav-plugins"
+            >
+              <Icon name="grid" size={18} />
+            </NavButton>
+          </>
+        ) : null}
       </div>
       <div className="entry-nav-rail__footer">
         <div className="entry-rail-actions">

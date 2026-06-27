@@ -73,7 +73,6 @@ import type { KnownProvider } from '../state/config';
 import { navigate as navigateRoute, useRoute } from '../router';
 import {
   API_PROTOCOL_LABELS,
-  API_PROTOCOL_TABS,
   isFixedOriginGateway,
   resolveFixedOriginBaseUrl,
   SUGGESTED_MODELS_BY_PROTOCOL,
@@ -117,11 +116,10 @@ import {
   fetchLatestGithubReleaseInfo,
   openExternalUrl,
 } from '../providers/registry';
-import { MEDIA_PROVIDERS } from '../media/models';
+import { MEDIA_PROVIDERS, type MediaProvider } from '../media/models';
 import { useByokImageModelOptions, useByokVideoModelOptions, useByokSpeechModelOptions } from '../media/aihubmix-image-models';
 import { isVisualStabilityMode } from '../utils/visualStability';
 import { XaiOAuthControl } from './XaiOAuthControl';
-import type { MediaProvider } from '../media/models';
 import { Toast } from './Toast';
 import { PetSettings } from './pet/PetSettings';
 import { McpClientSection } from './McpClientSection';
@@ -131,6 +129,13 @@ import { PrivacySection } from './PrivacySection';
 import { ProjectLocationsSection } from './ProjectLocationsSection';
 import { RoutinesSection } from './RoutinesSection';
 import { ConnectorsBrowser } from './ConnectorsBrowser';
+import {
+  DemoControlBar,
+  type DemoPlan,
+  type DemoScenario,
+  type DemoUseMode,
+  type InviteRole,
+} from './DemoControlBar';
 import { MemoryModelInline } from './MemoryModelInline';
 import { MemorySection } from './MemorySection';
 import { ByokConnectionTestControl } from './byok/ByokConnectionTestControl';
@@ -197,8 +202,19 @@ export type SettingsSection =
   | 'library'
   | 'about';
 
+interface DemoByokProviderTab {
+  id: string;
+  title: string;
+  protocol: ApiProtocol;
+  baseUrl: string;
+  model: string;
+  custom?: boolean;
+}
+
 function normalizeSettingsSection(section: SettingsSection): SettingsSection {
   switch (section) {
+    case 'skills':
+      return 'execution';
     case 'language':
     case 'appearance':
     case 'notifications':
@@ -275,6 +291,16 @@ interface Props {
   onDesignSystemsChanged?: (affectedDesignSystemId?: string) => void;
   onDesignSystemImportRebuildJob?: (designSystemId: string, job: DesignSystemGenerationJob) => void;
   onProviderModelsCacheChange?: Dispatch<SetStateAction<ProviderModelsCache>>;
+  demoScenario?: DemoScenario;
+  demoPlan?: DemoPlan;
+  demoUseMode?: DemoUseMode;
+  onDemoScenario?: (scenario: DemoScenario) => void;
+  onDemoPlan?: (plan: DemoPlan) => void;
+  onDemoUseMode?: (mode: DemoUseMode) => void;
+  onDemoLowCredits?: () => void;
+  onDemoAcceptInvite?: (role: InviteRole) => void;
+  onDemoQueue?: () => void;
+  onDemoEdit?: () => void;
 }
 
 export interface AgentRefreshOptions {
@@ -358,12 +384,6 @@ type TestState =
   | { status: 'idle' }
   | { status: 'running' }
   | { status: 'done'; result: ConnectionTestResponse };
-
-const GATEWAY_API_PROTOCOLS = new Set<ApiProtocol>([
-  'ollama',
-  'senseaudio',
-  'aihubmix',
-]);
 
 // Providers whose live model fetch IS their full account catalogue, so the
 // per-option "from your account" badge and the "Loaded N from your account"
@@ -1140,6 +1160,16 @@ export function SettingsDialog({
   onDesignSystemImportRebuildJob,
   providerModelsCache: sharedProviderModelsCache,
   onProviderModelsCacheChange,
+  demoScenario,
+  demoPlan,
+  demoUseMode,
+  onDemoScenario,
+  onDemoPlan,
+  onDemoUseMode,
+  onDemoLowCredits,
+  onDemoAcceptInvite,
+  onDemoQueue,
+  onDemoEdit,
 }: Props) {
   const { t, locale, setLocale } = useI18n();
   const analytics = useAnalytics();
@@ -1656,11 +1686,23 @@ export function SettingsDialog({
       return { ...c, mode };
     });
   };
-  const setApiProtocol = (protocol: ApiProtocol) => {
+  const setByokProvider = (provider: DemoByokProviderTab) => {
     setApiModelCustomEditing(false);
     apiModelUserSelectedRef.current = false;
-    focusByokRequiredFieldAfterProtocolSwitchRef.current = true;
-    setCfg((c) => switchApiProtocolConfig(c, protocol));
+    focusByokRequiredFieldAfterProtocolSwitchRef.current = !provider.custom;
+    setCfg((current) => {
+      const switched = switchApiProtocolConfig(current, provider.protocol);
+      if (provider.custom) {
+        return updateCurrentApiProtocolConfig(switched, {
+          apiProviderBaseUrl: null,
+        });
+      }
+      return updateCurrentApiProtocolConfig(switched, {
+        baseUrl: provider.baseUrl,
+        model: provider.model,
+        apiProviderBaseUrl: provider.baseUrl,
+      });
+    });
   };
   const updateApiConfig = (patch: Partial<ApiProtocolConfig>) =>
     setCfg((c) => updateCurrentApiProtocolConfig(c, patch));
@@ -2315,18 +2357,65 @@ export function SettingsDialog({
 
   const apiProtocol = cfg.apiProtocol ?? 'anthropic';
   const apiKeyConsoleLink = API_KEY_CONSOLE_LINKS[apiProtocol];
-  const apiProtocolTabGroups = [
+  const byokProviderTabs: ReadonlyArray<DemoByokProviderTab> = [
     {
-      id: 'protocols',
-      label: t('settings.protocolGroupProtocols'),
-      tabs: API_PROTOCOL_TABS.filter((tab) => !GATEWAY_API_PROTOCOLS.has(tab.id)),
+      id: 'openai',
+      title: 'OpenAI',
+      protocol: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o',
     },
     {
-      id: 'gateways',
-      label: t('settings.protocolGroupGateways'),
-      tabs: API_PROTOCOL_TABS.filter((tab) => GATEWAY_API_PROTOCOLS.has(tab.id)),
+      id: 'openrouter',
+      title: 'OpenRouter',
+      protocol: 'openai',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      model: 'anthropic/claude-3.7-sonnet',
+    },
+    {
+      id: 'anthropic',
+      title: 'Anthropic',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      model: 'claude-sonnet-4-5',
+    },
+    {
+      id: 'zhipu',
+      title: '智谱',
+      protocol: 'openai',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      model: 'glm-4.6',
+    },
+    {
+      id: 'kimi',
+      title: 'Kimi',
+      protocol: 'openai',
+      baseUrl: 'https://api.moonshot.cn/v1',
+      model: 'kimi-k2-0711-preview',
+    },
+    {
+      id: 'stepfun',
+      title: '阶跃星辰',
+      protocol: 'openai',
+      baseUrl: 'https://api.stepfun.com/v1',
+      model: 'step-2-mini',
+    },
+    {
+      id: 'custom',
+      title: '自定义',
+      protocol: 'openai',
+      baseUrl: cfg.baseUrl || '',
+      model: cfg.model || '',
+      custom: true,
     },
   ];
+  const selectedByokProvider =
+    byokProviderTabs.find(
+      (provider) =>
+        !provider.custom &&
+        provider.protocol === apiProtocol &&
+        provider.baseUrl === cfg.baseUrl,
+    ) ?? byokProviderTabs[byokProviderTabs.length - 1];
   const baseUrlValid = isValidApiBaseUrl(cfg.baseUrl);
   const baseUrlInvalid = Boolean(cfg.baseUrl.trim() && !baseUrlValid);
   const byokRequiredLabel = (field: ByokRequiredField): string => {
@@ -2963,8 +3052,9 @@ export function SettingsDialog({
     about: { title: t('settings.about'), subtitle: t('settings.aboutHint') },
   };
   const activeHeader = sectionHeader[activeSection];
-  const installedAgents = agents.filter((a) => a.available);
-  const unavailableAgents = agents.filter((a) => !a.available);
+  const visibleAgents = agents.filter((a) => a.id !== 'amr');
+  const installedAgents = visibleAgents.filter((a) => a.available);
+  const unavailableAgents = visibleAgents.filter((a) => !a.available);
   const initialAgentScanRunning = agentsLoading && agents.length === 0;
   const agentModelOptionLabel = (
     model: ProviderModelOption | undefined,
@@ -3202,6 +3292,14 @@ export function SettingsDialog({
     ? t('common.exitFullscreen')
     : t('common.fullscreen');
   const pageMode = presentation === 'page';
+  const showCloudSignInCallout = demoUseMode === 'local';
+  const showSettingsDemoControl = pageMode
+    && demoScenario
+    && demoPlan
+    && demoUseMode
+    && onDemoScenario
+    && onDemoPlan
+    && onDemoUseMode;
 
   const surface = (
       <div
@@ -3328,7 +3426,7 @@ export function SettingsDialog({
                   onClick={onClose}
                 >
                   <Icon name="arrow-left" size={15} />
-                  <span>返回应用</span>
+                  <span>返回首页</span>
                 </button>
                 <label className="settings-page-search">
                   <Icon name="search" size={14} />
@@ -3339,17 +3437,6 @@ export function SettingsDialog({
             ) : null}
             <button
               type="button"
-              className={`settings-nav-item${activeSection === 'general' ? ' active' : ''}`}
-              onClick={() => setActiveSection('general')}
-            >
-              <Icon name="settings" size={18} />
-              <span>
-                <strong>通用</strong>
-                <small>语言、外观与个性化</small>
-              </span>
-            </button>
-            <button
-              type="button"
               className={`settings-nav-item${activeSection === 'execution' ? ' active' : ''}`}
               onClick={() => setActiveSection('execution')}
             >
@@ -3357,6 +3444,17 @@ export function SettingsDialog({
               <span>
                 <strong>{t('settings.envConfigure')}</strong>
                 <small>{`${t('settings.localCli')} / ${t('settings.modeApiMeta')}`}</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`settings-nav-item${activeSection === 'general' ? ' active' : ''}`}
+              onClick={() => setActiveSection('general')}
+            >
+              <Icon name="settings" size={18} />
+              <span>
+                <strong>通用</strong>
+                <small>语言、外观与个性化</small>
               </span>
             </button>
             <button
@@ -3394,39 +3492,6 @@ export function SettingsDialog({
             </button>
             <button
               type="button"
-              className={`settings-nav-item${activeSection === 'skills' ? ' active' : ''}`}
-              onClick={() => setActiveSection('skills')}
-            >
-              <Icon name="grid" size={18} />
-              <span>
-                <strong>{t('settings.skills')}</strong>
-                <small>{t('settings.skillsHint')}</small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className={`settings-nav-item${activeSection === 'mcpClient' ? ' active' : ''}`}
-              onClick={() => setActiveSection('mcpClient')}
-            >
-              <Icon name="sparkles" size={18} />
-              <span>
-                <strong>{t('settings.externalMcpTitle')}</strong>
-                <small>{t('settings.externalMcpHint')}</small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className={`settings-nav-item${activeSection === 'composio' ? ' active' : ''}`}
-              onClick={() => setActiveSection('composio')}
-            >
-              <Icon name="sliders" size={18} />
-              <span>
-                <strong>{t('connectors.title')}</strong>
-                <small>{t('settings.connectorsNavHint')}</small>
-              </span>
-            </button>
-            <button
-              type="button"
               className={`settings-nav-item${activeSection === 'integrations' ? ' active' : ''}`}
               onClick={() => setActiveSection('integrations')}
             >
@@ -3445,17 +3510,6 @@ export function SettingsDialog({
               <span>
                 <strong>{t('critiqueTheater.settingsNav')}</strong>
                 <small>{t('critiqueTheater.settingsNavHint')}</small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className={`settings-nav-item${activeSection === 'designSystems' ? ' active' : ''}`}
-              onClick={() => setActiveSection('designSystems')}
-            >
-              <Icon name="draw" size={18} />
-              <span>
-                <strong>{t('settings.designSystems')}</strong>
-                <small>{t('settings.designSystemsHint')}</small>
               </span>
             </button>
             <button
@@ -3485,46 +3539,35 @@ export function SettingsDialog({
           {activeSection === 'general' ? (
             <section className="settings-section settings-general-section">
               <div className="settings-general-block settings-general-block--appearance">
-                <div className="settings-general-block-head">
-                  <h3>外观</h3>
-                  <p className="hint">设置界面语言、主题和品牌强调色。</p>
-                </div>
                 <div className="settings-general-field">
                   <span className="settings-general-label">{t('settings.language')}</span>
-                  <div className="settings-language-grid" role="radiogroup" aria-label={t('settings.language')}>
-                    {LOCALES.map((code) => {
-                      const active = locale === code;
-                      return (
-                        <button
-                          key={code}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          className={`settings-language-tile${active ? ' active' : ''}`}
-                          onClick={() => {
-                            trackSettingsLanguageClick(analytics.track, {
-                              page_name: 'settings',
-                              area: 'language',
-                              element: code,
-                            });
-                            setLocale(code as Locale);
-                          }}
-                        >
-                          <span className="settings-language-tile-text">
-                            <span className="settings-language-tile-title">
-                              {LOCALE_LABEL[code]}
-                            </span>
-                            <span className="settings-language-tile-code">
-                              {code}
-                            </span>
-                          </span>
-                          {active ? <Icon name="check" size={16} /> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <label className="settings-general-select">
+                    <select
+                      value={locale}
+                      aria-label={t('settings.language')}
+                      onChange={(event) => {
+                        const next = event.target.value as Locale;
+                        trackSettingsLanguageClick(analytics.track, {
+                          page_name: 'settings',
+                          area: 'language',
+                          element: next,
+                        });
+                        setLocale(next);
+                      }}
+                    >
+                      {LOCALES.map((code) => (
+                        <option key={code} value={code}>
+                          {LOCALE_LABEL[code]} · {code}
+                        </option>
+                      ))}
+                    </select>
+                    <Icon name="chevron-down" size={14} />
+                  </label>
                 </div>
-                <AppearanceSection cfg={cfg} setCfg={setCfg} />
+                <div className="settings-general-field">
+                  <span className="settings-general-label">主题</span>
+                  <AppearanceSection cfg={cfg} setCfg={setCfg} />
+                </div>
               </div>
 
               <div className="settings-general-block">
@@ -3544,6 +3587,10 @@ export function SettingsDialog({
               </div>
 
               <div className="settings-general-block">
+                <div className="settings-general-block-head">
+                  <h3>{t('settings.projectLocations')}</h3>
+                  <p className="hint">{t('settings.projectLocationsHint')}</p>
+                </div>
                 <ProjectLocationsSection cfg={cfg} setCfg={setCfg} onProjectsRefresh={onProjectsRefresh} />
               </div>
             </section>
@@ -3594,46 +3641,64 @@ export function SettingsDialog({
                   <span className="seg-meta">{t('settings.modeApi')}</span>
                 </button>
               </div>
+              {showCloudSignInCallout ? (
+                <div className="settings-cloud-signin-callout">
+                  <div>
+                    <strong>使用 Open Design Cloud</strong>
+                    <p>
+                      登录云端版本后可启用团队空间、共享项目、成员权限和审计大盘。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="settings-cloud-signin-callout__button"
+                    onClick={() => navigateRoute({ kind: 'home', view: 'onboarding' })}
+                  >
+                    登录 / 注册
+                  </button>
+                </div>
+              ) : null}
               {cfg.mode === 'api' ? (
                 <div
-                  className="protocol-chips"
+                  className="protocol-chips protocol-chips--providers"
                   role="tablist"
-                  aria-label={t('settings.protocolAria')}
+                  aria-label="模型供应商"
                 >
-                  {apiProtocolTabGroups.map((group) => (
-                    <div className="protocol-chip-group" key={group.id}>
+                    <div className="protocol-chip-group protocol-chip-group--providers">
                       <span className="protocol-chip-group-label">
-                        {group.label}
+                        模型供应商
                       </span>
                       <div className="protocol-chip-group-options">
-                        {group.tabs.map((tab) => (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={apiProtocol === tab.id}
-                            className={'protocol-chip' + (apiProtocol === tab.id ? ' active' : '')}
-                            onClick={() => {
-                              const byokProviderId = byokProtocolToTracking(tab.id);
-                              if (byokProviderId) {
-                                trackSettingsByokProviderOptionClick(analytics.track, {
-                                  page_name: 'settings',
-                                  area: 'configure_execution_mode_byok',
-                                  element: 'byok_provider_option',
-                                  action: 'select_byok_provider',
-                                  provider_id: byokProviderId,
-                                  is_selected: apiProtocol === tab.id,
-                                });
-                              }
-                              setApiProtocol(tab.id);
-                            }}
-                          >
-                            {tab.title}
-                          </button>
-                        ))}
+                        {byokProviderTabs.map((provider) => {
+                          const active = selectedByokProvider?.id === provider.id;
+                          return (
+                            <button
+                              key={provider.id}
+                              type="button"
+                              role="tab"
+                              aria-selected={active}
+                              className={'protocol-chip' + (active ? ' active' : '')}
+                              onClick={() => {
+                                const byokProviderId = byokProtocolToTracking(provider.protocol);
+                                if (byokProviderId) {
+                                  trackSettingsByokProviderOptionClick(analytics.track, {
+                                    page_name: 'settings',
+                                    area: 'configure_execution_mode_byok',
+                                    element: 'byok_provider_option',
+                                    action: 'select_byok_provider',
+                                    provider_id: byokProviderId,
+                                    is_selected: active,
+                                  });
+                                }
+                                setByokProvider(provider);
+                              }}
+                            >
+                              {provider.title}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                  ))}
                 </div>
               ) : null}
           {cfg.mode === 'daemon' ? (
@@ -4245,49 +4310,6 @@ export function SettingsDialog({
                 </>
               )}
               {(() => {
-                const selected = agents.find(
-                  (a) => a.id === cfg.agentId && a.available,
-                );
-                if (!selected) return null;
-                const hasModels =
-                  Array.isArray(selected.models) && selected.models.length > 0;
-                const choice = cfg.agentModels?.[selected.id] ?? {};
-                const knownModelIds = selected.models?.map((m) => m.id) ?? [];
-                const configuredModel =
-                  typeof choice.model === 'string' && choice.model
-                    ? choice.model
-                    : null;
-                const modelValue =
-                  selected.id === 'amr' &&
-                  configuredModel &&
-                  !knownModelIds.includes(configuredModel)
-                    ? selected.models?.[0]?.id ?? ''
-                    : configuredModel ?? selected.models?.[0]?.id ?? '';
-                return (
-                  <details className="agent-cli-env settings-memory-advanced">
-                    <summary className="agent-cli-env-summary">
-                      <span className="agent-cli-env-summary-title">
-                        {t('settings.memoryModelInlineLabel')}
-                      </span>
-                    </summary>
-                    <div className="agent-cli-env-body">
-                      <MemoryModelInline
-                        mode="daemon"
-                        apiProtocol={apiProtocol}
-                        chatApiKey={cfg.apiKey}
-                        chatBaseUrl={cfg.baseUrl}
-                        chatApiVersion={cfg.apiVersion ?? ''}
-                        chatModel={modelValue}
-                        cliAgentId={selected.id}
-                        cliModelOptions={
-                          hasModels ? selected.models!.map((m) => m.id) : []
-                        }
-                      />
-                    </div>
-                  </details>
-                );
-              })()}
-              {(() => {
                 /*
                   Per-agent CLI environment overrides — proxy URLs, custom
                   config dirs, and a binary path override. The previous
@@ -4631,31 +4653,6 @@ export function SettingsDialog({
                   updateApiConfig({ model: nextValue });
                 }}
               />
-              <details className="agent-cli-env settings-memory-advanced">
-                <summary className="agent-cli-env-summary">
-                  <span className="agent-cli-env-summary-title">
-                    {t('settings.memoryModelInlineLabel')}
-                  </span>
-                  <span className="settings-memory-summary-value">
-                    {cfg.model.trim()
-                      ? t('settings.memoryModelInlineSameAsChatWithModel', {
-                          model: cfg.model.trim(),
-                        })
-                      : t('settings.memoryModelInlineSameAsChat')}
-                  </span>
-                </summary>
-                <div className="agent-cli-env-body">
-                  <MemoryModelInline
-                    mode="api"
-                    apiProtocol={apiProtocol}
-                    chatApiKey={cfg.apiKey}
-                    chatBaseUrl={cfg.baseUrl}
-                    chatApiVersion={cfg.apiVersion ?? ''}
-                    chatModel={cfg.model}
-                    apiModelOptions={apiModelOptions}
-                  />
-                </div>
-              </details>
               {apiProtocol === 'azure' ? (
                 <label className="field">
                   <span className="field-label">{t('settings.apiVersion')}</span>
@@ -4934,11 +4931,51 @@ export function SettingsDialog({
           ) : null}
 
           {activeSection === 'memory' ? (
-            <MemorySection
-              onOpenConnectors={() => setActiveSection('composio')}
-              chatAgentId={cfg.mode === 'daemon' ? cfg.agentId ?? null : null}
-              chatModel={selectedMemoryChatModel}
-            />
+            <>
+              <section className="settings-section settings-section-card settings-memory-model-card">
+                <div className="memory-block-head">
+                  <div>
+                    <h4>{t('settings.memoryModelInlineLabel')}</h4>
+                    <p className="hint">
+                      Choose the model used when Open Design extracts and rewrites memory.
+                    </p>
+                  </div>
+                  <span className="settings-memory-summary-value">
+                    {cfg.mode === 'api'
+                      ? cfg.model.trim()
+                        ? t('settings.memoryModelInlineSameAsChatWithModel', {
+                            model: cfg.model.trim(),
+                          })
+                        : t('settings.memoryModelInlineSameAsChat')
+                      : selectedMemoryChatModel
+                        ? t('settings.memoryModelInlineSameAsChatWithModel', {
+                            model: selectedMemoryChatModel,
+                          })
+                        : t('settings.memoryModelInlineSameAsChat')}
+                  </span>
+                </div>
+                <MemoryModelInline
+                  mode={cfg.mode}
+                  apiProtocol={apiProtocol}
+                  chatApiKey={cfg.apiKey}
+                  chatBaseUrl={cfg.baseUrl}
+                  chatApiVersion={cfg.apiVersion ?? ''}
+                  chatModel={cfg.mode === 'api' ? cfg.model : selectedMemoryChatModel ?? ''}
+                  cliAgentId={cfg.mode === 'daemon' ? selectedMemoryChatAgent?.id ?? null : null}
+                  cliModelOptions={
+                    cfg.mode === 'daemon' && selectedMemoryChatAgent?.models
+                      ? selectedMemoryChatAgent.models.map((model) => model.id)
+                      : []
+                  }
+                  apiModelOptions={cfg.mode === 'api' ? apiModelOptions : undefined}
+                />
+              </section>
+              <MemorySection
+                onOpenConnectors={() => setActiveSection('composio')}
+                chatAgentId={cfg.mode === 'daemon' ? cfg.agentId ?? null : null}
+                chatModel={selectedMemoryChatModel}
+              />
+            </>
           ) : null}
 
           {activeSection === 'privacy' ? (
@@ -5017,7 +5054,25 @@ export function SettingsDialog({
   );
 
   if (pageMode) {
-    return <div className="settings-page-shell">{surface}</div>;
+    return (
+      <div className="settings-page-shell">
+        {surface}
+        {showSettingsDemoControl ? (
+          <DemoControlBar
+            scenario={demoScenario}
+            plan={demoPlan}
+            useMode={demoUseMode}
+            onScenario={onDemoScenario}
+            onPlan={onDemoPlan}
+            onUseMode={onDemoUseMode}
+            onLowCredits={onDemoLowCredits ?? (() => {})}
+            onAcceptInvite={onDemoAcceptInvite ?? (() => {})}
+            onQueueDemo={onDemoQueue}
+            onEditDemo={onDemoEdit}
+          />
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -6434,6 +6489,53 @@ function MediaProvidersSection({
     .filter((p) => !p.integrated)
     .slice()
     .sort((a, b) => a.label.localeCompare(b.label));
+  const groupedAvailableProviders = useMemo(() => {
+    const groups: Array<{
+      id: 'recommended' | 'visual' | 'voice' | 'research' | 'custom';
+      label: string;
+      description: string;
+      providers: MediaProvider[];
+    }> = [
+      { id: 'recommended', label: 'Recommended', description: 'Official and no-key defaults that work well for most review demos.', providers: [] },
+      { id: 'visual', label: 'Image & video', description: 'Generate images, product visuals, motion, and short videos.', providers: [] },
+      { id: 'voice', label: 'Speech & voice', description: 'Voice, narration, sound effects, and audio generation.', providers: [] },
+      { id: 'research', label: 'Research', description: 'Search and research providers used by agent workflows.', providers: [] },
+      { id: 'custom', label: 'Custom / gateway', description: 'Bring your own routing layer or OpenAI-compatible endpoint.', providers: [] },
+    ];
+    const groupById = new Map(groups.map((group) => [group.id, group]));
+    for (const provider of availableProviders) {
+      const hint = provider.hint.toLowerCase();
+      const label = provider.label.toLowerCase();
+      if (provider.id === 'openai' || provider.id === 'codex' || provider.id === 'nanobanana') {
+        groupById.get('recommended')?.providers.push(provider);
+      } else if (provider.id === 'tavily' || hint.includes('research') || label.includes('search')) {
+        groupById.get('research')?.providers.push(provider);
+      } else if (
+        provider.id === 'custom-image'
+        || provider.id === 'openrouter'
+        || provider.id === 'aihubmix'
+        || provider.id === 'imagerouter'
+      ) {
+        groupById.get('custom')?.providers.push(provider);
+      } else if (/voice|speech|audio|sfx|tts|clone/.test(hint) || provider.id === 'senseaudio') {
+        groupById.get('voice')?.providers.push(provider);
+      } else {
+        groupById.get('visual')?.providers.push(provider);
+      }
+    }
+    return groups.filter((group) => group.providers.length > 0);
+  }, [availableProviders]);
+  const providerCapabilityLabel = (provider: MediaProvider) => {
+    const hint = provider.hint.toLowerCase();
+    const parts: string[] = [];
+    if (/image|imagen|flux|dall|banana|leonardo|gpt-image|seedream/.test(hint)) parts.push('Image');
+    if (/video|sora|veo|wan|seedance|grok-imagine/.test(hint)) parts.push('Video');
+    if (/voice|speech|audio|sfx|tts|clone/.test(hint) || provider.id === 'senseaudio') parts.push('Audio');
+    if (/research|search/.test(hint)) parts.push('Research');
+    if (provider.supportsCustomModel) parts.push('Custom model');
+    if (parts.length === 0) return provider.credentialsRequired === false ? 'No key required' : 'API key';
+    return parts.slice(0, 3).join(' · ');
+  };
   const updateProvider = (
     provider: MediaProvider,
     patch: {
@@ -6519,8 +6621,12 @@ function MediaProvidersSection({
           {reloadNotice.message}
         </VisuallyHidden>
       ) : null}
-      {onReloadMediaProviders ? (
-        <div className="media-provider-reload-row">
+      <div className="media-provider-page-head">
+        <div>
+          <h3>Media providers</h3>
+          <p>Connect image, video, voice, and research providers for generation tasks.</p>
+        </div>
+        {onReloadMediaProviders ? (
           <button
             type="button"
             className={`ghost media-provider-reload-btn${
@@ -6551,193 +6657,191 @@ function MediaProvidersSection({
               </>
             )}
           </button>
-        </div>
-      ) : null}
-      <div className="media-provider-list">
-        {availableProviders.map((provider) => {
-          const entry = cfg.mediaProviders?.[provider.id] ?? { apiKey: '', baseUrl: '', model: '' };
-          const hasPendingEdit = Boolean(entry.apiKey.trim());
-          const isSavedState = Boolean((hasPendingEdit || entry.apiKeyConfigured) && !hasPendingEdit);
-          const tail = entry.apiKeyTail?.trim();
-          // Every provider rendered in the main list is integrated by
-          // construction (see availableProviders filter), so the inputs
-          // are always editable here. Non-integrated entries live in
-          // the "Coming soon" <details> below.
-          const disabled = false;
-          const supportsCustomModel = provider.supportsCustomModel === true;
-          const requiresCredentials = provider.credentialsRequired !== false;
-          const clearable = isStoredMediaProviderEntryPresent(entry);
-          const apiKeyVisible = visibleApiKeys.has(provider.id);
-          return (
-            <div key={provider.id} className="media-provider-row">
-              <div className="media-provider-head">
-                <div className="media-provider-meta">
-                  {/*
-                    Provider name + "Saved" badge sit on a single row.
-                    The badge used to render below the name with a green
-                    success-pill treatment, which clashed with the green
-                    "Integrated" badge on the right of the same row and
-                    pushed the model hint two lines down. Inline + a
-                    neutral muted treatment keeps the row scannable: green
-                    means "we support this", blue means "you configured
-                    it", gray means "your key is persisted" — three
-                    distinct hues, three distinct meanings.
-                  */}
-                  <div className="media-provider-name-row">
-                    <span className="media-provider-name">{provider.label}</span>
-                    {isSavedState ? (
-                      <span
-                        className="field-status-badge field-status-badge--inline"
-                        title={t('settings.connectorsSavedTitle')}
-                      >
-                        {tail
-                          ? t('settings.connectorsSavedWithTail', { tail })
-                          : t('settings.connectorsSaved')}
-                      </span>
-                    ) : null}
-                  </div>
-                  <span className="media-provider-hint">{provider.hint}</span>
-                </div>
-                {/*
-                  Right-side badges deliberately omitted now: every row
-                  in this list is "Integrated" by definition and the
-                  "Configured" pill duplicated the inline "Saved" chip
-                  next to the provider name. Three pills per row read
-                  as warnings; one chip reads as status.
-                */}
+        ) : null}
+      </div>
+      <div className="media-provider-groups">
+        {groupedAvailableProviders.map((group) => (
+          <section key={group.id} className="media-provider-card-group" aria-labelledby={`media-provider-group-${group.id}`}>
+            <div className="media-provider-group-head">
+              <div>
+                <h4 id={`media-provider-group-${group.id}`}>{group.label}</h4>
+                <p>{group.description}</p>
               </div>
-              {provider.id === 'grok' ? <XaiOAuthControl /> : null}
-              {requiresCredentials ? (
-                <div className="media-provider-body">
-                  <div className="media-provider-secret-field">
-                    <input
-                      type={apiKeyVisible ? 'text' : 'password'}
-                      value={entry.apiKey}
-                      placeholder={isSavedState ? t('settings.connectorsReplaceKeyPlaceholder') : t('settings.mediaProviderPlaceholder')}
-                      aria-label={`${provider.label} ${t('settings.mediaProviderApiKey')}`}
-                      disabled={disabled}
-                      onFocus={() => {
-                        trackSettingsMediaProvidersClick(analytics.track, {
-                          page_name: 'settings',
-                          area: 'media_providers',
-                          element: 'key_input',
-                          providers_id: provider.id,
-                          is_configured: clearable,
-                        });
-                      }}
-                      onChange={(e) => updateProvider(provider, { apiKey: e.target.value })}
-                    />
-                    <button
-                      type="button"
-                      className="secret-visibility-button"
-                      disabled={disabled}
-                      aria-label={
-                        apiKeyVisible
-                          ? `${provider.label} ${t('settings.hideKey')}`
-                          : `${provider.label} ${t('settings.showKey')}`
-                      }
-                      aria-pressed={apiKeyVisible}
-                      onClick={() => toggleApiKeyVisibility(provider.id)}
-                    >
-                        <Icon name={apiKeyVisible ? 'eye' : 'eye-off'} size={15} />
+              <span>{group.providers.length}</span>
+            </div>
+            <div className="media-provider-card-list">
+              {group.providers.map((provider) => {
+                const entry = cfg.mediaProviders?.[provider.id] ?? { apiKey: '', baseUrl: '', model: '' };
+                const hasPendingEdit = Boolean(entry.apiKey.trim());
+                const isSavedState = Boolean(
+                  (hasPendingEdit || entry.apiKeyConfigured) && !hasPendingEdit,
+                );
+                const tail = entry.apiKeyTail?.trim();
+                const clearable = isStoredMediaProviderEntryPresent(entry);
+                const apiKeyVisible = visibleApiKeys.has(provider.id);
+                const requiresCredentials = provider.credentialsRequired !== false;
+                return (
+                  <article key={provider.id} className="media-provider-card">
+                    <div className="media-provider-card-head">
+                      <div>
+                        <div className="media-provider-name-row">
+                          <h3>{provider.label}</h3>
+                          {isSavedState ? (
+                            <span
+                              className="field-status-badge field-status-badge--inline"
+                              title={t('settings.connectorsSavedTitle')}
+                            >
+                              {tail
+                                ? t('settings.connectorsSavedWithTail', { tail })
+                                : t('settings.connectorsSaved')}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p>{provider.hint || providerCapabilityLabel(provider)}</p>
+                      </div>
+                      <span className="media-provider-badge integrated">
+                        {providerCapabilityLabel(provider)}
+                      </span>
+                    </div>
+                    {provider.id === 'grok' ? <XaiOAuthControl /> : null}
+                    {requiresCredentials ? (
+                      <div className="media-provider-card-fields">
+                        <label className="media-provider-detail-field">
+                          <span>{t('settings.mediaProviderApiKey')}</span>
+                          <div className="media-provider-secret-field">
+                            <input
+                              type={apiKeyVisible ? 'text' : 'password'}
+                              value={entry.apiKey}
+                              placeholder={isSavedState ? t('settings.connectorsReplaceKeyPlaceholder') : t('settings.mediaProviderPlaceholder')}
+                              aria-label={`${provider.label} ${t('settings.mediaProviderApiKey')}`}
+                              onFocus={() => {
+                                trackSettingsMediaProvidersClick(analytics.track, {
+                                  page_name: 'settings',
+                                  area: 'media_providers',
+                                  element: 'key_input',
+                                  providers_id: provider.id,
+                                  is_configured: clearable,
+                                });
+                              }}
+                              onChange={(e) => updateProvider(provider, { apiKey: e.target.value })}
+                            />
+                            <button
+                              type="button"
+                              className="secret-visibility-button"
+                              aria-label={
+                                apiKeyVisible
+                                  ? `${provider.label} ${t('settings.hideKey')}`
+                                  : `${provider.label} ${t('settings.showKey')}`
+                              }
+                              aria-pressed={apiKeyVisible}
+                              onClick={() => toggleApiKeyVisibility(provider.id)}
+                            >
+                              <Icon name={apiKeyVisible ? 'eye' : 'eye-off'} size={15} />
+                            </button>
+                          </div>
+                        </label>
+                        <label className="media-provider-detail-field">
+                          <span>{t('settings.mediaProviderBaseUrl')}</span>
+                          <input
+                            value={entry.baseUrl}
+                            placeholder={provider.defaultBaseUrl || t('settings.mediaProviderBaseUrlPlaceholder')}
+                            aria-label={`${provider.label} ${t('settings.mediaProviderBaseUrl')}`}
+                            onFocus={() => {
+                              trackSettingsMediaProvidersClick(analytics.track, {
+                                page_name: 'settings',
+                                area: 'media_providers',
+                                element: 'url_input',
+                                providers_id: provider.id,
+                                is_configured: clearable,
+                              });
+                            }}
+                            onChange={(e) => updateProvider(provider, { baseUrl: e.target.value })}
+                          />
+                        </label>
+                        {provider.supportsCustomModel ? (
+                          <label className="media-provider-detail-field">
+                            <span>Model</span>
+                            <input
+                              value={entry.model ?? ''}
+                              placeholder={provider.customModelPlaceholder ?? 'gemini-3.1-flash-image-preview'}
+                              aria-label={`${provider.label} model`}
+                              onChange={(e) => updateProvider(provider, { model: e.target.value })}
+                            />
+                          </label>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="media-provider-no-key">
+                        <Icon name="check" size={15} />
+                        <div>
+                          <strong>No key required</strong>
+                          <span>This provider uses a local login or bundled runtime.</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="media-provider-card-actions">
+                      {provider.docsUrl ? (
+                        <a
+                          href={sanitizeHttpsUrl(provider.docsUrl) ?? undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ghost-link"
+                        >
+                          {t('settings.agentInstall.docs')}
+                          <Icon name="external-link" size={11} />
+                        </a>
+                      ) : <span />}
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={!clearable}
+                        onClick={() => {
+                          trackSettingsMediaProvidersClick(analytics.track, {
+                            page_name: 'settings',
+                            area: 'media_providers',
+                            element: 'clear',
+                            providers_id: provider.id,
+                            is_configured: clearable,
+                          });
+                          if (
+                            !confirm(
+                              t('settings.mediaProviderClearConfirm', {
+                                name: provider.label,
+                              }),
+                            )
+                          ) {
+                            return;
+                          }
+                          updateProvider(provider, {
+                            apiKey: '',
+                            baseUrl: '',
+                            model: '',
+                            apiKeyConfigured: false,
+                            apiKeyTail: '',
+                          });
+                        }}
+                      >
+                        {t('settings.mediaProviderClear')}
                       </button>
                     </div>
-                  <input
-                    value={entry.baseUrl}
-                    placeholder={provider.defaultBaseUrl || t('settings.mediaProviderBaseUrlPlaceholder')}
-                    aria-label={`${provider.label} ${t('settings.mediaProviderBaseUrl')}`}
-                    disabled={disabled}
-                    onFocus={() => {
-                      trackSettingsMediaProvidersClick(analytics.track, {
-                        page_name: 'settings',
-                        area: 'media_providers',
-                        element: 'url_input',
-                        providers_id: provider.id,
-                        is_configured: clearable,
-                      });
-                    }}
-                    onChange={(e) => updateProvider(provider, { baseUrl: e.target.value })}
-                  />
-                  {supportsCustomModel ? (
-                    <input
-                      value={entry.model ?? ''}
-                      placeholder="gemini-3.1-flash-image-preview"
-                      aria-label={`${provider.label} model`}
-                      disabled={disabled}
-                      onChange={(e) => updateProvider(provider, { model: e.target.value })}
-                    />
-                  ) : null}
-                  <button
-                    type="button"
-                    className="ghost"
-                    disabled={!clearable}
-                    onClick={() => {
-                      trackSettingsMediaProvidersClick(analytics.track, {
-                        page_name: 'settings',
-                        area: 'media_providers',
-                        element: 'clear',
-                        providers_id: provider.id,
-                        // The click reports the state at the moment the
-                        // user pressed Clear; the actual clear only lands
-                        // after they confirm the dialog below, but the
-                        // dashboard cares about the intent signal.
-                        is_configured: clearable,
-                      });
-                      // Match the existing window.confirm guard the rest of
-                      // the app uses for destructive actions (conversation
-                      // delete, design delete, file delete in FileWorkspace).
-                      // Without this a stray click on the row's Clear button
-                      // wipes the saved key with no recovery. Issue #737.
-                      if (
-                        !confirm(
-                          t('settings.mediaProviderClearConfirm', {
-                            name: provider.label,
-                          }),
-                        )
-                      ) {
-                        return;
-                      }
-                      updateProvider(provider, {
-                        apiKey: '',
-                        baseUrl: '',
-                        model: '',
-                        apiKeyConfigured: false,
-                        apiKeyTail: '',
-                      });
-                    }}
-                  >
-                    {t('settings.mediaProviderClear')}
-                  </button>
-                </div>
-              ) : null}
+                  </article>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
-      {comingSoonProviders.length > 0 ? (
-        // Roadmap drawer. We still want to advertise that we know
-        // these providers exist (so users don't ask "where is Fal?"),
-        // but disabled placeholder cards in the main list were noise.
-        // Closed by default — opens to a compact name + hint + docs
-        // link list, no inputs because there's nothing to wire up yet.
-        // TODO(i18n): inline English placeholders; promote to locale
-        // keys when we touch this section again.
-        <details className="library-group media-provider-coming-soon">
-          <summary className="memory-details-summary">
-            <span className="memory-details-title">
-              {t('tasks.comingSoon')}
-            </span>
-            <span className="filter-pill-count">
-              {comingSoonProviders.length}
-            </span>
-          </summary>
-          <p className="hint" style={{ marginTop: 4, marginBottom: 8 }}>
-            {t('settings.mediaProviderComingSoonHint')}
-          </p>
-          <ul className="media-provider-coming-soon-list">
-            {comingSoonProviders.map((provider) => {
-              const docsHref = sanitizeHttpsUrl(provider.docsUrl);
-              return (
+          </section>
+        ))}
+        {comingSoonProviders.length > 0 ? (
+          <details className="library-group media-provider-coming-soon">
+            <summary className="memory-details-summary">
+              <span className="memory-details-title">
+                {t('tasks.comingSoon')}
+              </span>
+              <span className="filter-pill-count">
+                {comingSoonProviders.length}
+              </span>
+            </summary>
+            <ul className="media-provider-coming-soon-list">
+              {comingSoonProviders.map((provider) => (
                 <li
                   key={provider.id}
                   className="media-provider-coming-soon-item"
@@ -6750,23 +6854,12 @@ function MediaProvidersSection({
                       {provider.hint}
                     </span>
                   </div>
-                  {docsHref ? (
-                    <a
-                      href={docsHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ghost-link"
-                    >
-                      {t('settings.agentInstall.docs')}
-                      <Icon name="external-link" size={11} />
-                    </a>
-                  ) : null}
                 </li>
-              );
-            })}
-          </ul>
-        </details>
-      ) : null}
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -7550,6 +7643,22 @@ function CritiqueTheaterSection() {
   const enabled = useCritiqueTheaterEnabled();
   const route = useRoute();
   const activeProjectId = route.kind === 'project' ? route.projectId : null;
+  const handleToggle = () => {
+    const next = !enabled;
+    trackSettingsDesignReviewClick(analytics.track, {
+      page_name: 'settings',
+      area: 'design_review',
+      element: 'enable_toggle',
+      status_before: enabled ? 'on' : 'off',
+      status_after: next ? 'on' : 'off',
+      has_active_project: activeProjectId !== null,
+    });
+    if (activeProjectId !== null) {
+      void setCritiqueTheaterEnabled(next, { projectId: activeProjectId });
+    } else {
+      void setCritiqueTheaterEnabled(next);
+    }
+  };
   return (
     <section className="settings-section">
       <div className="section-head">
@@ -7558,44 +7667,28 @@ function CritiqueTheaterSection() {
           <p className="hint">{t('critiqueTheater.settingsNavHint')}</p>
         </div>
       </div>
-      <label className="field">
-        <span className="field-label">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => {
-              const next = e.target.checked;
-              trackSettingsDesignReviewClick(analytics.track, {
-                page_name: 'settings',
-                area: 'design_review',
-                element: 'enable_toggle',
-                status_before: enabled ? 'on' : 'off',
-                status_after: next ? 'on' : 'off',
-                has_active_project: activeProjectId !== null,
-              });
-              if (activeProjectId !== null) {
-                void setCritiqueTheaterEnabled(next, { projectId: activeProjectId });
-              } else {
-                void setCritiqueTheaterEnabled(next);
-              }
-            }}
-          />
-          {' '}
-          {t('critiqueTheater.settingsEnabledLabel')}
+      <button
+        type="button"
+        className={`toggle-row critique-theater-toggle${enabled ? ' on' : ''}`}
+        role="switch"
+        aria-checked={enabled}
+        onClick={handleToggle}
+      >
+        <span className="toggle-row-text">
+          <span className="toggle-row-label">
+            {t('critiqueTheater.settingsEnabledLabel')}
+          </span>
+          <span className="toggle-row-hint">
+            {t('critiqueTheater.settingsEnabledDescription')}
+          </span>
+          <span className="toggle-row-hint">
+            {activeProjectId !== null
+              ? t('critiqueTheater.settingsEnabledProjectHint')
+              : t('critiqueTheater.settingsEnabledNoProjectHint')}
+          </span>
         </span>
-        <small className="hint">
-          {t('critiqueTheater.settingsEnabledDescription')}
-        </small>
-        {activeProjectId !== null ? (
-          <small className="hint">
-            {t('critiqueTheater.settingsEnabledProjectHint')}
-          </small>
-        ) : (
-          <small className="hint">
-            {t('critiqueTheater.settingsEnabledNoProjectHint')}
-          </small>
-        )}
-      </label>
+        <span className="toggle-row-switch" aria-hidden="true" />
+      </button>
     </section>
   );
 }

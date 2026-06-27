@@ -110,14 +110,15 @@ import type { PluginUseAction } from './plugins-home/useActions';
 import { Icon } from './Icon';
 import { AgentIcon } from './AgentIcon';
 import { LanguageMenu } from './LanguageMenu';
-import { IntegrationsView, type IntegrationTab } from './IntegrationsView';
+import type { IntegrationTab } from './integration-tabs';
 import { InlineModelSwitcher } from './InlineModelSwitcher';
 import {
   type EntrySettingsSection,
 } from './EntrySettingsMenu';
 import { NewProjectModal } from './NewProjectModal';
-import { PluginsView } from './PluginsView';
+import { PluginMarketplaceDemo } from './PluginMarketplaceDemo';
 import { CommunityView } from './CommunityView';
+import { resolveCommunityTemplatePreset } from './community-template-presets';
 import { ContentPlanView } from './ContentPlanView';
 import { MembersView } from './MembersView';
 import { TeamDashboardView } from './TeamDashboardView';
@@ -126,9 +127,11 @@ import { EntryBlankState } from './EntryBlankState';
 import type { CreateInput, CreateTab, ImportClaudeDesignOutcome } from './NewProjectPanel';
 import type { PluginLoopSubmit } from './PluginLoopHome';
 import {
+  createProject,
   type PluginShareAction,
   type PluginShareProjectOutcome,
 } from '../state/projects';
+import { writeProjectTextFile } from '../providers/registry';
 import { TasksView } from './TasksView';
 import {
   API_KEY_PLACEHOLDERS,
@@ -635,6 +638,16 @@ export function EntryShell({
     changeView('home');
   }
 
+  function tryMarketplacePlugin(plugin: { name: string; description: string }) {
+    setHomePromptHandoff({
+      id: Date.now(),
+      source: 'marketplace-plugin-try',
+      focus: true,
+      prompt: `Use ${plugin.name} to ${plugin.description.charAt(0).toLowerCase()}${plugin.description.slice(1)}`,
+    });
+    changeView('home');
+  }
+
   useEffect(() => {
     if (view !== 'home' || !homePromptHandoff) return;
     const frame = window.requestAnimationFrame(() => {
@@ -651,12 +664,49 @@ export function EntryShell({
 
   function openIntegrationTab(tab: IntegrationTab) {
     setIntegrationTab(tab);
-    changeView('integrations');
+    changeView('plugins');
   }
 
   function openNewProject(tab: CreateTab = 'prototype') {
     setNewProjectInitialTab(tab);
     setNewProjectOpen(true);
+  }
+
+  async function openCommunityTemplateProject(templateId: string) {
+    const preset = resolveCommunityTemplatePreset(templateId);
+
+    const existing =
+      projects.find((project) => {
+        const demoPresetId =
+          (project.metadata as { demoPresetId?: unknown } | undefined)?.demoPresetId;
+        return demoPresetId === preset.id;
+      })
+      ?? projects.find((project) => project.name === preset.projectName);
+
+    if (existing) {
+      navigate({
+        kind: 'project',
+        projectId: existing.id,
+        conversationId: null,
+        fileName: preset.metadata.entryFile ?? null,
+      });
+      return;
+    }
+
+    const { project } = await createProject({
+      name: preset.projectName,
+      skillId: null,
+      designSystemId: null,
+      pendingPrompt: preset.prompt,
+      metadata: preset.metadata,
+    });
+    await writeProjectTextFile(project.id, 'index.html', preset.html);
+    navigate({
+      kind: 'project',
+      projectId: project.id,
+      conversationId: null,
+      fileName: 'index.html',
+    });
   }
 
   // Empty-state CTA for brand-new users: skip the modal, create a blank
@@ -1109,14 +1159,14 @@ export function EntryShell({
               />
             </div>
             <div data-testid="entry-view-plugins" data-active={view === 'plugins' ? 'true' : 'false'} {...inactiveViewProps(view === 'plugins')}>
-              <PluginsView
-                onCreatePlugin={startPluginAuthoring}
-                onUsePlugin={usePluginFromLibrary}
-                onCreatePluginShareProject={onCreatePluginShareProject}
-              />
+              <PluginMarketplaceDemo onTryPlugin={tryMarketplacePlugin} />
             </div>
             <div data-testid="entry-view-community" data-active={view === 'community' ? 'true' : 'false'} {...inactiveViewProps(view === 'community')}>
-              <CommunityView />
+              <CommunityView
+                onRemixTemplate={(templateId) => {
+                  void openCommunityTemplateProject(templateId);
+                }}
+              />
             </div>
             <div data-testid="entry-view-drafts" data-active={view === 'drafts' ? 'true' : 'false'} {...inactiveViewProps(view === 'drafts')}>
               {projectsLoading ? (
@@ -1217,14 +1267,9 @@ export function EntryShell({
                 onOpenProject={onOpenProject}
               />
             </div>
-            {view === 'integrations' ? (
-              <IntegrationsView
-                config={config}
-                initialTab={integrationTab}
-                composioConfigLoading={composioConfigLoading}
-                onPersistComposioKey={onPersistComposioKey}
-              />
-            ) : null}
+            <div data-testid="entry-view-integrations" data-active={view === 'integrations' ? 'true' : 'false'} {...inactiveViewProps(view === 'integrations')}>
+              <PluginMarketplaceDemo onTryPlugin={tryMarketplacePlugin} />
+            </div>
           </div>
         </main>
       </div>

@@ -26,7 +26,7 @@ import type {
 // component lets future rebases against upstream `EntryView` (props,
 // connector lifecycle, exported helpers) stay close to a no-op here.
 import { EntryShell } from './EntryShell';
-import type { IntegrationTab } from './IntegrationsView';
+import type { IntegrationTab } from './integration-tabs';
 import type { CreateInput, ImportClaudeDesignOutcome } from './NewProjectPanel';
 import {
   CONNECTOR_CALLBACK_MESSAGE_TYPE,

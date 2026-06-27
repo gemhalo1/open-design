@@ -221,17 +221,19 @@
 }
 
 /* Bottom-left action cluster (GitHub star / Discord / settings / help).
-   Compact toolbar: Star keeps copy, secondary actions collapse to icons. */
+   Compact toolbar: Star keeps the GitHub icon plus live count; secondary
+   actions collapse to icons. */
 .entry-rail-actions {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px;
-  width: 218px;
+  width: 100%;
   max-width: calc(100% - 18px);
   padding: 0 0 4px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 .entry-rail-actions > * {
   align-self: center;
@@ -4110,8 +4112,8 @@
   box-shadow: none;
 }
 .entry-rail-actions .entry-star-badge {
-  flex: 1 1 auto;
-  min-width: 108px;
+  flex: 1 1 0;
+  min-width: 0;
   justify-content: flex-start;
   padding: 0 9px;
 }
@@ -4124,6 +4126,8 @@
 .entry-rail-actions .entry-discord-badge__label,
 .entry-rail-actions .entry-discord-badge__sep,
 .entry-rail-actions .entry-discord-badge__online,
+.entry-rail-actions .entry-star-badge__label,
+.entry-rail-actions .entry-star-badge__sep,
 .entry-rail-actions .entry-settings-chip__label,
 .entry-rail-actions .entry-help-menu__label {
   display: none;
@@ -4138,6 +4142,12 @@
 .entry-rail-actions .entry-settings-chip:hover {
   border-color: transparent;
   background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.entry-rail-actions .entry-star-badge__label,
+.entry-rail-actions .entry-star-badge__count {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .entry-star-badge:hover {
   background: var(--bg-subtle);
@@ -4741,6 +4751,42 @@
   text-overflow: ellipsis;
 }
 .entry-nav-rail__account-trigger svg { color: var(--text-soft); }
+
+.entry-nav-rail__local-logo {
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  margin: 0 0 12px 2px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 140ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+
+.entry-nav-rail__local-logo:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.entry-nav-rail__local-logo:active {
+  transform: scale(0.96);
+}
+
+.entry-nav-rail__local-logo:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.entry-nav-rail__local-logo img {
+  width: 27px;
+  height: 27px;
+  display: block;
+}
 
 /* ── Credits chip (✨ N) — separate region from the account dropdown ── */
 .entry-nav-rail__credits-chip {

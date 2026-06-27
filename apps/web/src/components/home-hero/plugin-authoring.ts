@@ -17,6 +17,12 @@ export type HomePromptHandoff =
     source: 'plugin-use';
     action: PluginUseAction;
     inputs?: Record<string, unknown>;
+  }
+  | {
+    id: number;
+    prompt: string;
+    focus: boolean;
+    source: 'marketplace-plugin-try';
   };
 
 export const PLUGIN_AUTHORING_GOAL_INPUT = 'pluginGoal';
