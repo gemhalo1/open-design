@@ -77,6 +77,7 @@ import { pluginSubfacetLabel } from './plugins-home/subfacetLabel';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import { TemplatePicker } from './home-hero/TemplatePicker';
 import { LibraryPicker } from './LibraryPicker';
+import { SessionModeToggle } from './SessionModeToggle';
 import { assetTitle } from './LibraryAssetMeta';
 import { libraryAssetRawUrl } from '../providers/registry';
 import type { LibraryAsset } from '@open-design/contracts';
@@ -263,6 +264,8 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     onPromptChange,
     onSubmit,
     onSubmitScenario = () => undefined,
+    sessionMode = 'design',
+    onSessionModeChange,
     firstRunGuide,
     activePluginTitle,
     activePluginIsExplicit = false,
@@ -1622,6 +1625,12 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
             ) : null}
           </div>
           <div className="home-hero__foot-right">
+            <div className="home-hero__mode-switcher">
+              <SessionModeToggle
+                mode={sessionMode}
+                onChange={onSessionModeChange}
+              />
+            </div>
             {executionSwitcher ? (
               <div className="home-hero__execution-switcher">
                 {executionSwitcher}

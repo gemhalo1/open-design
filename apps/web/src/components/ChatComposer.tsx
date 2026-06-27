@@ -56,6 +56,7 @@ import { ComposerPlusMenu } from './ComposerPlusMenu';
 import { LibraryPicker } from './LibraryPicker';
 import { FigmaImportModal } from './FigmaImportModal';
 import { assetTitle, elementMetaOf } from './LibraryAssetMeta';
+import { SessionModeToggle } from './SessionModeToggle';
 import type { LibraryAsset, LibraryElementMeta } from '@open-design/contracts';
 import {
   DESIGN_TOOLBOX_ACTIONS,
@@ -2567,6 +2568,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             {leadingAccessory}
             <span className="composer-spacer" />
             {footerAccessory}
+            <SessionModeToggle
+              mode={sessionMode}
+              onChange={onSessionModeChange}
+            />
             {showStopButton ? (
               <button
                 type="button"
