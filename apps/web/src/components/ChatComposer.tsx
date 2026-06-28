@@ -508,9 +508,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const pendingEntryFromRef = useRef<ChatAnalyticsEntryFrom | null>(null);
     const petEnabled = Boolean(onAdoptPet && onTogglePet);
     const linkedDirs = projectMetadata?.linkedDirs ?? [];
-    const workspaceContextLinkedDirs = useMemo(
-      () => new Set(Object.values(workspaceLinkedDirAdds).map((tracked) => tracked.dir)),
+    const workspaceContextLinkedDirList = useMemo(
+      () =>
+        Array.from(new Set(Object.values(workspaceLinkedDirAdds).map((tracked) => tracked.dir))),
       [workspaceLinkedDirAdds],
+    );
+    const workspaceContextLinkedDirs = useMemo(
+      () => new Set(workspaceContextLinkedDirList),
+      [workspaceContextLinkedDirList],
     );
     // The project's working directory: the local folder the agent can read
     // (via `linkedDirs` → `--add-dir`). Shown in the WorkingDirPicker below
@@ -1820,14 +1825,26 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       await addLinkedDir(selected);
     }
 
+    function linkedDirsWithWorkspaceContext(primaryDir: string | null): string[] {
+      const primary = primaryDir?.trim();
+      return Array.from(new Set([
+        ...(primary ? [primary] : []),
+        ...workspaceContextLinkedDirList,
+      ]));
+    }
+
     // The WorkingDirPicker treats the project's working directory as a single
-    // primary folder, so selecting one replaces `linkedDirs`. The folder is
-    // read-only awareness for the agent (→ `--add-dir`), not a Design Files
-    // import, and `baseDir` is never touched.
+    // primary folder, so selecting one replaces the primary `linkedDirs` entry
+    // while preserving staged workspace-context dirs. The folder is read-only
+    // awareness for the agent (→ `--add-dir`), not a Design Files import, and
+    // `baseDir` is never touched.
     async function setWorkingDirFolder(dir: string) {
       if (!projectId) return;
       const base = projectMetadata ?? { kind: 'prototype' as const };
-      const metadata: ProjectMetadata = { ...base, linkedDirs: [dir] };
+      const metadata: ProjectMetadata = {
+        ...base,
+        linkedDirs: linkedDirsWithWorkspaceContext(dir),
+      };
       const result = await patchProject(projectId, { metadata });
       // The daemon rejects stale/inaccessible/system dirs with
       // INVALID_LINKED_DIR (patchProject → null). Only commit the selection
@@ -1848,7 +1865,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     async function clearWorkingDir() {
       if (!projectId) return;
       const base = projectMetadata ?? { kind: 'prototype' as const };
-      const metadata: ProjectMetadata = { ...base, linkedDirs: [] };
+      const metadata: ProjectMetadata = {
+        ...base,
+        linkedDirs: linkedDirsWithWorkspaceContext(null),
+      };
       const result = await patchProject(projectId, { metadata });
       if (result?.metadata) onProjectMetadataChange?.(result.metadata);
     }

@@ -128,6 +128,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 let plugins = [COMMUNITY_PLUGIN, USER_PLUGIN];
 let skills = [SKILL];
 let servers = [MCP_SERVER];
+let openFolderPaths: string[];
 
 function composerElement(
   overrides: Partial<ComponentProps<typeof ChatComposer>> = {},
@@ -187,6 +188,7 @@ beforeEach(() => {
   plugins = [COMMUNITY_PLUGIN, USER_PLUGIN];
   skills = [SKILL];
   servers = [MCP_SERVER];
+  openFolderPaths = ['/Users/me/reference-dir'];
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/mcp/servers') {
       return new Response(JSON.stringify({ servers, templates: [] }), {
@@ -213,10 +215,13 @@ beforeEach(() => {
       });
     }
     if (url === '/api/dialog/open-folder' && init?.method === 'POST') {
-      return new Response(JSON.stringify({ path: '/Users/me/reference-dir' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ path: openFolderPaths.shift() ?? '/Users/me/reference-dir' }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
     }
     if (url === '/api/projects/project-1' && init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body ?? '{}')) as { metadata?: unknown };
@@ -457,6 +462,47 @@ describe('ChatComposer context pickers', () => {
     expect(onProjectMetadataChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ linkedDirs: [] }),
     );
+  });
+
+  it('preserves staged local-code linked dirs when changing or clearing the working dir', async () => {
+    openFolderPaths = ['/Users/me/reference-dir', '/Users/me/other-work-dir'];
+    const onProjectMetadataChange = vi.fn();
+    renderComposer({
+      projectMetadata: { kind: 'prototype', linkedDirs: ['/Users/me/work-dir'] },
+      onProjectMetadataChange,
+    });
+    await flushMounts();
+
+    fireEvent.click(screen.getByTestId('chat-plus-trigger'));
+    fireEvent.click(await screen.findByText('Link local code'));
+
+    await waitFor(() => {
+      expect(projectPatchBodies()).toHaveLength(1);
+    });
+    expect(projectPatchBodies()[0]?.metadata?.linkedDirs).toEqual([
+      '/Users/me/work-dir',
+      '/Users/me/reference-dir',
+    ]);
+
+    fireEvent.click(screen.getByTestId('working-dir-trigger'));
+    fireEvent.click(await screen.findByTestId('working-dir-pick'));
+
+    await waitFor(() => {
+      expect(projectPatchBodies()).toHaveLength(2);
+    });
+    expect(projectPatchBodies()[1]?.metadata?.linkedDirs).toEqual([
+      '/Users/me/other-work-dir',
+      '/Users/me/reference-dir',
+    ]);
+
+    fireEvent.click(screen.getByTestId('working-dir-trigger'));
+    fireEvent.click(await screen.findByTestId('working-dir-clear'));
+
+    await waitFor(() => {
+      expect(projectPatchBodies()).toHaveLength(3);
+    });
+    expect(projectPatchBodies()[2]?.metadata?.linkedDirs).toEqual(['/Users/me/reference-dir']);
+    expect(screen.getByTestId('staged-contexts').textContent).toContain('reference-dir');
   });
 
   it('selects an MCP server from @ search and keeps the inline token visible', async () => {
