@@ -98,6 +98,21 @@ const VIDEO_TEMPLATE_SKILL = {
   category: 'video-generation',
 };
 
+const OVERFLOW_PRIORITY_SKILLS = [
+  ['frontend-design', 'Frontend Design', 'design-systems'],
+  ['frontend-dev', 'Frontend Dev', 'design-systems'],
+  ['ui-skills', 'UI Skills', 'design-systems'],
+  ['image-to-code-skill', 'Image to Code', 'web-artifacts'],
+  ['web-artifacts-builder', 'Web Artifacts Builder', 'web-artifacts'],
+  ['artifacts-builder', 'Artifacts Builder', 'web-artifacts'],
+  ['creative-director', 'Creative Director', 'creative-direction'],
+  ['design-brief', 'Design Brief', 'creative-direction'],
+  ['gsap-core', 'GSAP Core', 'animation-motion'],
+  ['gsap-timeline', 'GSAP Timeline', 'animation-motion'],
+  ['gsap-scrolltrigger', 'GSAP ScrollTrigger', 'animation-motion'],
+  ['threejs', 'Three.js', 'web-artifacts'],
+] as const;
+
 const CREATIVE_DIRECTOR_SKILL = {
   ...DESIGN_TASTE_SKILL,
   id: 'creative-director',
@@ -321,6 +336,41 @@ describe('ChatComposer design toolbox', () => {
       const next = ordered[index + 1]!;
       expect(rowNames.indexOf(current)).toBeLessThan(rowNames.indexOf(next));
     }
+  });
+
+  it('keeps non-skill resources in default resources when priority skills overflow', async () => {
+    const { ref } = renderComposer({
+      skills: [
+        SEARCH_SKILL,
+        DEEP_RESEARCH_SKILL,
+        LAST30DAYS_SKILL,
+        FRONTEND_SKILL,
+        BRAINSTORMING_SKILL,
+        MOTION_SKILL,
+        ...OVERFLOW_PRIORITY_SKILLS.map(([id, name, category]) => ({
+          ...DESIGN_TASTE_SKILL,
+          id,
+          name,
+          description: `${name} priority skill.`,
+          triggers: [id],
+          category,
+        })),
+      ],
+    });
+    await flushMounts();
+
+    openToolbox(ref);
+
+    await waitFor(() => expect(screen.getByText('Search')).toBeTruthy());
+    const rowNames = Array.from(
+      document.body.querySelectorAll('.plus-menu__list .plus-menu__item span'),
+      (node) => node.textContent,
+    );
+    expect(rowNames.indexOf('Search')).toBeLessThan(rowNames.indexOf('Research Asset Plugin'));
+    expect(rowNames).toContain('Research Asset Plugin');
+    expect(rowNames).toContain('Figma');
+    expect(rowNames).toContain('index.html');
+    expect(rowNames).toContain('data/proof.csv');
   });
 
   it('stages a one-turn follow-up skill without patching the project skill', async () => {

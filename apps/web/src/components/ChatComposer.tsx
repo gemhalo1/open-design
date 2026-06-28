@@ -162,6 +162,9 @@ type DesignToolboxResource =
   | (DesignToolboxResourceBase & { kind: 'file'; file: ProjectFile });
 
 const DESIGN_TOOLBOX_DEFAULT_RESOURCE_LIMIT = 14;
+const DESIGN_TOOLBOX_DEFAULT_RESERVED_NON_SKILL_SLOTS = 4;
+const DESIGN_TOOLBOX_DEFAULT_SKILL_SOFT_LIMIT =
+  DESIGN_TOOLBOX_DEFAULT_RESOURCE_LIMIT - DESIGN_TOOLBOX_DEFAULT_RESERVED_NON_SKILL_SLOTS;
 
 interface Props {
   projectId: string | null;
@@ -4102,20 +4105,32 @@ function designToolboxDefaultResources(
 ): DesignToolboxResource[] {
   const out: DesignToolboxResource[] = [];
   const seen = new Set<string>();
-  function add(resource: DesignToolboxResource | null | undefined) {
-    if (!resource || seen.has(resource.key)) return;
+  let skillCount = 0;
+  function add(resource: DesignToolboxResource | null | undefined): boolean {
+    if (!resource || seen.has(resource.key) || out.length >= DESIGN_TOOLBOX_DEFAULT_RESOURCE_LIMIT) {
+      return false;
+    }
     seen.add(resource.key);
     out.push(resource);
+    if (resource.kind === 'skill') skillCount += 1;
+    return true;
   }
-  function addByKindId(kind: DesignToolboxResourceKind, id: string) {
-    add(resources.find((resource) => resource.kind === kind && resource.id === id));
+  function addSkill(
+    resource: DesignToolboxResource | null | undefined,
+    reserveNonSkillSlots: boolean,
+  ): boolean {
+    if (!resource || resource.kind !== 'skill') return false;
+    if (reserveNonSkillSlots && skillCount >= DESIGN_TOOLBOX_DEFAULT_SKILL_SOFT_LIMIT) return false;
+    return add(resource);
   }
 
-  for (const resource of resources
+  const skillResources = resources
     .filter((resource) => resource.kind === 'skill')
-    .sort((a, b) => compareDesignToolboxResources(a, b))) {
+    .sort((a, b) => compareDesignToolboxResources(a, b));
+
+  for (const resource of skillResources) {
     if (skillUsePriority(resource.skill) >= 1000) break;
-    add(resource);
+    addSkill(resource, true);
     if (out.length >= DESIGN_TOOLBOX_DEFAULT_RESOURCE_LIMIT) return out;
   }
   for (const action of actions) {
@@ -4123,7 +4138,7 @@ function designToolboxDefaultResources(
       resource.kind === 'skill'
       && action.preferredSkillIds.some((id) => resource.skill.id === id || resource.skill.name === id),
     );
-    add(skill);
+    addSkill(skill, true);
     if (out.length >= DESIGN_TOOLBOX_DEFAULT_RESOURCE_LIMIT) return out;
   }
   for (const term of ['design', 'image', 'video', 'motion', 'figma']) {
@@ -4133,6 +4148,10 @@ function designToolboxDefaultResources(
         add(resource);
       }
     }
+  }
+  for (const resource of skillResources) {
+    addSkill(resource, false);
+    if (out.length >= DESIGN_TOOLBOX_DEFAULT_RESOURCE_LIMIT) return out;
   }
   return out;
 }
