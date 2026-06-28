@@ -248,6 +248,41 @@ describe('listSkills', () => {
     }
   });
 
+  it('preserves utility mode from SKILL.md frontmatter', async () => {
+    const root = fresh();
+    try {
+      const dir = path.join(root, 'utility-helper');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, 'SKILL.md'),
+        [
+          '---',
+          'name: utility-helper',
+          'description: "A workflow helper skill."',
+          'od:',
+          '  mode: utility',
+          '  surface: web',
+          '  preview:',
+          '    type: markdown',
+          '---',
+          '',
+          '# Utility helper body',
+          '',
+        ].join('\n'),
+      );
+
+      const skills = await listSkills(root);
+      expect(skills[0]).toMatchObject({
+        id: 'utility-helper',
+        mode: 'utility',
+        surface: 'web',
+        previewType: 'markdown',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('includes the built-in live-artifact skill catalog entry', async () => {
     const skills = await listSkills(designTemplatesRoot);
     const skill = skills.find((entry: { id: string }) => entry.id === 'live-artifact');
