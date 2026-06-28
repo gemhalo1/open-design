@@ -1827,9 +1827,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     function linkedDirsWithWorkspaceContext(primaryDir: string | null): string[] {
       const primary = primaryDir?.trim();
+      const contextDirs = primary
+        ? workspaceContextLinkedDirList.filter((dir) => dir !== primary)
+        : workspaceContextLinkedDirList;
       return Array.from(new Set([
         ...(primary ? [primary] : []),
-        ...workspaceContextLinkedDirList,
+        ...contextDirs,
       ]));
     }
 
@@ -1856,6 +1859,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         return;
       }
       onProjectMetadataChange?.(result.metadata);
+      const promotedDir = dir.trim();
+      setWorkspaceLinkedDirAdds((current) => {
+        const nextEntries = Object.entries(current).filter(([, tracked]) => (
+          tracked.dir !== promotedDir
+        ));
+        return nextEntries.length === Object.keys(current).length
+          ? current
+          : Object.fromEntries(nextEntries);
+      });
       void rememberRecentDir(dir);
     }
     async function handlePickWorkingDir() {

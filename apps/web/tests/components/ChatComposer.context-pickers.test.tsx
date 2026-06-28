@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { createRef, type ComponentProps } from 'react';
+import { createRef, useState, type ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const trackChatPanelClickMock = vi.hoisted(() => vi.fn());
@@ -17,7 +17,7 @@ vi.mock('../../src/analytics/events', async (importOriginal) => {
 import { ChatComposer, type ChatComposerHandle } from '../../src/components/ChatComposer';
 import { I18nProvider } from '../../src/i18n';
 import type { Locale } from '../../src/i18n/types';
-import type { AppliedPluginSnapshot } from '@open-design/contracts';
+import type { AppliedPluginSnapshot, ProjectMetadata } from '@open-design/contracts';
 import { composerText, pressEnter, typeAndSettle } from '../helpers/lexical-composer';
 
 const COMMUNITY_PLUGIN = {
@@ -503,6 +503,55 @@ describe('ChatComposer context pickers', () => {
     });
     expect(projectPatchBodies()[2]?.metadata?.linkedDirs).toEqual(['/Users/me/reference-dir']);
     expect(screen.getByTestId('staged-contexts').textContent).toContain('reference-dir');
+  });
+
+  it('keeps a promoted context dir as the working dir when its chip is removed', async () => {
+    openFolderPaths = ['/Users/me/shared', '/Users/me/shared'];
+    const onProjectMetadataChange = vi.fn();
+
+    function ControlledComposer() {
+      const [metadata, setMetadata] = useState<ProjectMetadata>({ kind: 'prototype' });
+      return composerElement({
+        projectMetadata: metadata,
+        onProjectMetadataChange: (next) => {
+          onProjectMetadataChange(next);
+          setMetadata(next);
+        },
+      });
+    }
+
+    render(<ControlledComposer />);
+    await flushMounts();
+
+    fireEvent.click(screen.getByTestId('chat-plus-trigger'));
+    fireEvent.click(await screen.findByText('Link local code'));
+
+    await waitFor(() => {
+      expect(projectPatchBodies()).toHaveLength(1);
+    });
+    expect(projectPatchBodies()[0]?.metadata?.linkedDirs).toEqual(['/Users/me/shared']);
+
+    fireEvent.click(screen.getByTestId('working-dir-trigger'));
+    fireEvent.click(await screen.findByTestId('working-dir-pick'));
+
+    await waitFor(() => {
+      expect(projectPatchBodies()).toHaveLength(2);
+    });
+    expect(projectPatchBodies()[1]?.metadata?.linkedDirs).toEqual(['/Users/me/shared']);
+    await waitFor(() => {
+      expect(screen.getByTestId('working-dir-trigger').textContent).toContain('shared');
+    });
+
+    fireEvent.click(screen.getByLabelText('Remove shared'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('staged-contexts')?.textContent ?? '').not.toContain('shared');
+    });
+    expect(projectPatchBodies()).toHaveLength(2);
+    expect(screen.getByTestId('working-dir-trigger').textContent).toContain('shared');
+    expect(onProjectMetadataChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ linkedDirs: ['/Users/me/shared'] }),
+    );
   });
 
   it('selects an MCP server from @ search and keeps the inline token visible', async () => {
