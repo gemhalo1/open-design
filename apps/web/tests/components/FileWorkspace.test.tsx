@@ -1864,6 +1864,104 @@ describe('FileWorkspace sketch save', () => {
     const saved = JSON.parse(savedText) as { elements?: unknown[] };
     expect(saved.elements).toEqual([]);
   });
+
+  it('serializes overlapping sketch autosaves so the latest scene wins', async () => {
+    const file: ProjectFile = {
+      name: 'test.sketch.json',
+      path: 'test.sketch.json',
+      type: 'file',
+      size: 100,
+      mtime: 1700000000,
+      kind: 'sketch',
+      mime: 'application/json',
+    };
+    let resolveFirstSave!: (file: ProjectFile) => void;
+    const firstSave = new Promise<ProjectFile>((resolve) => {
+      resolveFirstSave = resolve;
+    });
+    const savedTexts: string[] = [];
+
+    mockedFetchProjectFileText.mockResolvedValue(
+      JSON.stringify({
+        type: 'excalidraw',
+        version: 2,
+        elements: [],
+        appState: { viewBackgroundColor: '#ffffff' },
+        files: {},
+      }),
+    );
+    mockedWriteProjectTextFile.mockImplementation(async (_projectId, _name, text) => {
+      savedTexts.push(text);
+      return savedTexts.length === 1 ? firstSave : file;
+    });
+
+    render(
+      <FileWorkspace
+        projectId="project-1"
+        projectKind="prototype"
+        files={[file]}
+        liveArtifacts={[]}
+        onRefreshFiles={vi.fn()}
+        isDeck={false}
+        tabsState={{ tabs: ['test.sketch.json'], active: 'test.sketch.json' }}
+        onTabsStateChange={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('excalidraw')).toBeTruthy();
+    });
+
+    vi.useFakeTimers();
+    const props = excalidrawWorkspaceMock.lastProps;
+    if (!props?.onChange) throw new Error('expected Excalidraw onChange');
+
+    act(() => {
+      props.onChange(
+        [{ id: 'baseline', type: 'rectangle', isDeleted: false }],
+        { viewBackgroundColor: '#ffffff' },
+        {},
+      );
+      props.onChange(
+        [{ id: 'autosave-a', type: 'rectangle', isDeleted: false }],
+        { viewBackgroundColor: '#ffffff' },
+        {},
+      );
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+    });
+
+    expect(mockedWriteProjectTextFile).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      props.onChange(
+        [{ id: 'autosave-b', type: 'rectangle', isDeleted: false }],
+        { viewBackgroundColor: '#ffffff' },
+        {},
+      );
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+    });
+
+    expect(mockedWriteProjectTextFile).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirstSave(file);
+      await firstSave;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedWriteProjectTextFile).toHaveBeenCalledTimes(2);
+    const firstSaved = JSON.parse(savedTexts[0]!) as { elements?: Array<{ id?: string }> };
+    const secondSaved = JSON.parse(savedTexts[1]!) as { elements?: Array<{ id?: string }> };
+    expect(firstSaved.elements?.[0]?.id).toBe('autosave-a');
+    expect(secondSaved.elements?.[0]?.id).toBe('autosave-b');
+  });
 });
 
 describe('FileWorkspace add-module menu', () => {

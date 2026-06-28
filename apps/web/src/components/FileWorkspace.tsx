@@ -333,6 +333,21 @@ interface SaveSketchOptions {
   showSaving?: boolean;
 }
 
+interface PendingSketchSave {
+  scene: ExcalidrawSketchScene;
+  revision: number;
+  options: SaveSketchOptions;
+  resolvers: Array<(value: boolean | undefined) => void>;
+}
+
+function mergeSketchSaveOptions(a: SaveSketchOptions, b: SaveSketchOptions): SaveSketchOptions {
+  return {
+    activate: a.activate !== false || b.activate !== false,
+    refreshFiles: a.refreshFiles !== false || b.refreshFiles !== false,
+    showSaving: a.showSaving !== false || b.showSaving !== false,
+  };
+}
+
 function consumeFileWorkspaceTabShortcut(event: KeyboardEvent) {
   event.preventDefault();
   event.stopPropagation();
@@ -536,6 +551,9 @@ export function FileWorkspace({
   const [uploadDir, setUploadDir] = useState<string>('');
   const [sketches, setSketches] = useState<Record<string, SketchState>>({});
   const sketchAutosaveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const sketchSceneRevisionRef = useRef<Map<string, number>>(new Map());
+  const sketchSaveInFlightRef = useRef<Set<string>>(new Set());
+  const pendingSketchSavesRef = useRef<Map<string, PendingSketchSave>>(new Map());
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [projectFolders, setProjectFolders] = useState<ProjectFolder[]>(EMPTY_PROJECT_FOLDERS);
   // Reset the folder list during render — NOT in an effect — when the project
@@ -657,6 +675,7 @@ export function FileWorkspace({
         clearTimeout(timer);
       }
       sketchAutosaveTimersRef.current.clear();
+      sketchSceneRevisionRef.current.clear();
     };
   }, []);
 
@@ -1040,6 +1059,7 @@ export function FileWorkspace({
       setSketches((curr) => {
         const next = { ...curr };
         clearSketchAutosave(name);
+        sketchSceneRevisionRef.current.delete(name);
         delete next[name];
         return next;
       });
@@ -1356,6 +1376,7 @@ export function FileWorkspace({
         const next = { ...curr };
         for (const name of deleted) {
           clearSketchAutosave(name);
+          sketchSceneRevisionRef.current.delete(name);
           delete next[name];
         }
         return next;
@@ -1391,6 +1412,9 @@ export function FileWorkspace({
       if (!entry) return curr;
       const next = { ...curr };
       clearSketchAutosave(oldName);
+      const revision = sketchSceneRevisionRef.current.get(oldName);
+      sketchSceneRevisionRef.current.delete(oldName);
+      if (revision !== undefined) sketchSceneRevisionRef.current.set(renamed.name, revision);
       delete next[oldName];
       next[renamed.name] = entry;
       return next;
@@ -1407,6 +1431,7 @@ export function FileWorkspace({
     // sanitizePath turns it into a real subdirectory on save.
     const name = uploadDir ? `${uploadDir}/${base}` : base;
     const scene = emptySketchScene(name);
+    sketchSceneRevisionRef.current.set(name, 0);
     setSketches((curr) => ({
       ...curr,
       [name]: {
@@ -1461,6 +1486,7 @@ export function FileWorkspace({
     void fetchProjectFileText(projectId, activeTab).then((text) => {
       if (cancelled) return;
       const doc = parseSketchWorkspaceDocument(text);
+      sketchSceneRevisionRef.current.set(activeTab, 0);
       setSketches((curr) => ({
         ...curr,
         [activeTab]: {
@@ -1486,6 +1512,7 @@ export function FileWorkspace({
     scene: ExcalidrawSketchScene,
     options: { markDirty?: boolean; discardLegacyItems?: boolean } = {},
   ) {
+    sketchSceneRevisionRef.current.set(name, (sketchSceneRevisionRef.current.get(name) ?? 0) + 1);
     setSketches((curr) => ({
       ...curr,
       [name]: {
@@ -1512,6 +1539,7 @@ export function FileWorkspace({
 
   function clearSketch(name: string) {
     const scene = emptySketchScene(name);
+    sketchSceneRevisionRef.current.set(name, (sketchSceneRevisionRef.current.get(name) ?? 0) + 1);
     setSketches((curr) => ({
       ...curr,
       [name]: {
@@ -1538,10 +1566,40 @@ export function FileWorkspace({
     name: string,
     sceneOverride?: ExcalidrawSketchScene,
     options: SaveSketchOptions = {},
-  ) {
+  ): Promise<boolean | undefined> {
     clearSketchAutosave(name);
     const entry = sketches[name] ?? (sceneOverride ? defaultSketchState(name, sceneOverride) : null);
     if (!entry) return;
+    const scene = sceneOverride ?? entry.scene;
+    if (sketchSaveInFlightRef.current.has(name)) {
+      if (options.showSaving !== false) {
+        setSketches((curr) => ({
+          ...curr,
+          [name]: {
+            ...(curr[name] ?? entry),
+            saving: true,
+          },
+        }));
+      }
+      return new Promise((resolve) => {
+        const pending = pendingSketchSavesRef.current.get(name);
+        pendingSketchSavesRef.current.set(name, {
+          scene,
+          options: pending ? mergeSketchSaveOptions(pending.options, options) : options,
+          resolvers: [...(pending?.resolvers ?? []), resolve],
+        });
+      });
+    }
+    return runSketchSave(name, entry, scene, options);
+  }
+
+  async function runSketchSave(
+    name: string,
+    entry: SketchState,
+    scene: ExcalidrawSketchScene,
+    options: SaveSketchOptions,
+  ): Promise<boolean | undefined> {
+    sketchSaveInFlightRef.current.add(name);
     const showSaving = options.showSaving !== false;
     if (showSaving) {
       setSketches((curr) => ({
@@ -1552,51 +1610,79 @@ export function FileWorkspace({
         },
       }));
     }
-    const scene = sceneOverride ?? entry.scene;
     const text = serializeExcalidrawSketchScene(scene, name);
     const startedAt = Date.now();
-    const file = await writeProjectTextFile(projectId, name, text);
-    const elapsed = Date.now() - startedAt;
-    // Ensures saving UI shows so the button does not flicker
-    if (showSaving && elapsed < 500) await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
-    if (file) {
-      setSketches((curr) => ({
-        ...curr,
-        [name]: {
-          ...(curr[name] ?? entry),
-          version: 2,
-          rawItems: [],
-          items: [],
-          scene,
-          discardRawItemsOnSave: false,
-          dirty: false,
-          persisted: true,
-          saving: false,
-        },
-      }));
-      // Promote the previously-pending sketch into the persisted tab list.
-      const currentTabs = tabsStateRef.current.tabs;
-      if (options.activate !== false || !currentTabs.includes(name)) {
-        const nextTabs = currentTabs.includes(name) ? currentTabs : [...currentTabs, name];
-        const nextActive = options.activate === false ? (tabsStateRef.current.active ?? null) : name;
-        commitTabsState(workspaceTabsState(nextTabs, nextActive));
+    let result: boolean | undefined;
+    try {
+      const file = await writeProjectTextFile(projectId, name, text);
+      const elapsed = Date.now() - startedAt;
+      // Ensures saving UI shows so the button does not flicker
+      if (showSaving && elapsed < 500) await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      if (file) {
+        const hasPendingSave = pendingSketchSavesRef.current.has(name);
+        setSketches((curr) => {
+          const current = curr[name] ?? entry;
+          return {
+            ...curr,
+            [name]: hasPendingSave
+              ? {
+                ...current,
+                persisted: true,
+                loaded: true,
+                saving: true,
+              }
+              : {
+                ...current,
+                version: 2,
+                rawItems: [],
+                items: [],
+                scene,
+                discardRawItemsOnSave: false,
+                dirty: false,
+                persisted: true,
+                saving: false,
+              },
+          };
+        });
+        if (!hasPendingSave) {
+          // Promote the previously-pending sketch into the persisted tab list.
+          const currentTabs = tabsStateRef.current.tabs;
+          if (options.activate !== false || !currentTabs.includes(name)) {
+            const nextTabs = currentTabs.includes(name) ? currentTabs : [...currentTabs, name];
+            const nextActive = options.activate === false ? (tabsStateRef.current.active ?? null) : name;
+            commitTabsState(workspaceTabsState(nextTabs, nextActive));
+          }
+          if (options.activate !== false) setActiveTab(name);
+          if (options.refreshFiles !== false) {
+            await onRefreshFiles();
+            await refreshProjectFolders();
+          }
+        }
+        result = true;
+      } else {
+        const hasPendingSave = pendingSketchSavesRef.current.has(name);
+        setSketches((curr) => ({
+          ...curr,
+          [name]: {
+            ...(curr[name] ?? entry),
+            saving: hasPendingSave,
+          },
+        }));
+        result = false;
       }
-      if (options.activate !== false) setActiveTab(name);
-      if (options.refreshFiles !== false) {
-        await onRefreshFiles();
-        await refreshProjectFolders();
-      }
-      return true;
-    } else {
-      setSketches((curr) => ({
-        ...curr,
-        [name]: {
-          ...(curr[name] ?? entry),
-          saving: false,
-        },
-      }));
-      return false;
+    } finally {
+      sketchSaveInFlightRef.current.delete(name);
     }
+
+    const pending = pendingSketchSavesRef.current.get(name);
+    if (pending) {
+      pendingSketchSavesRef.current.delete(name);
+      const pendingResult = await saveSketch(name, pending.scene, pending.options);
+      for (const resolve of pending.resolvers) resolve(pendingResult);
+      return pendingResult;
+    }
+
+    return result;
   }
 
   function queueSketchAutosave(name: string, scene: ExcalidrawSketchScene) {
