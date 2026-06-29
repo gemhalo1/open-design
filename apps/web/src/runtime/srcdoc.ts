@@ -2401,11 +2401,27 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   }
   var odSlideMessageBeforeIndex = -1;
   var odDeckBridgeInstallingMessageListener = false;
-  var odHasExternalMessageListener = false;
+  var odHasExternalSlideMessageListener = false;
+  function odMaybeHandlesSlideMessages(listener) {
+    try {
+      var source = '';
+      if (typeof listener === 'function') source = String(listener);
+      else if (listener && typeof listener.handleEvent === 'function') source = String(listener.handleEvent);
+      return /\\bod:slide\\b/.test(source);
+    } catch (_) {
+      return false;
+    }
+  }
   try {
     var odOriginalAddEventListener = window.addEventListener;
     window.addEventListener = function(type, listener, options) {
-      if (type === 'message' && !odDeckBridgeInstallingMessageListener) odHasExternalMessageListener = true;
+      if (
+        type === 'message' &&
+        !odDeckBridgeInstallingMessageListener &&
+        odMaybeHandlesSlideMessages(listener)
+      ) {
+        odHasExternalSlideMessageListener = true;
+      }
       return odOriginalAddEventListener.call(this, type, listener, options);
     };
   } catch (_) {}
@@ -2448,7 +2464,7 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
       report();
       return;
     }
-    if (odHasExternalMessageListener) {
+    if (odHasExternalSlideMessageListener) {
       setTimeout(applyBridgeFallback, 0);
       return;
     }

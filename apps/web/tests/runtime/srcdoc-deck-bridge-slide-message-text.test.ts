@@ -119,6 +119,25 @@ describe('deck bridge - slide message text', () => {
     win.close();
   });
 
+  it('keeps bridge-owned fallback synchronous when unrelated message listeners exist', () => {
+    const { win, slides } = setupDeckThatMentionsSlideMessages();
+    const [first, second] = slides;
+    if (!first || !second) throw new Error('expected two slides');
+
+    win.addEventListener('message', (event) => {
+      if (!event.data || event.data.type !== 'od:theme') return;
+      win.document.documentElement.dataset.theme = String(event.data.theme || '');
+    });
+
+    win.dispatchEvent(
+      new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }),
+    );
+
+    expect(first.style.display).toBe('none');
+    expect(second.style.display).toBe('');
+    win.close();
+  });
+
   it('does not apply a second step when a native slide message handler runs later in the same event', () => {
     const { flushTimers, win, slides } = setupDeckWithNativeSlideMessageHandler();
     const [first, second, third] = slides;
