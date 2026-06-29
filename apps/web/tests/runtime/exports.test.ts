@@ -613,6 +613,28 @@ describe('binary project/design-system downloads', () => {
     expect(await capturedBlob!.text()).toBe('PK-fake-pptx');
   });
 
+  it('requests editable PPTX when the caller selects native shapes and text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('PK-editable-pptx', { status: 200 })),
+    );
+
+    const res = await exportProjectAsPptx({
+      projectId: 'proj 1',
+      fileName: 'decks/pitch.html',
+      editable: true,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledWith('/api/projects/proj%201/export/pptx', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fileName: 'decks/pitch.html', deck: true, editable: true }),
+    });
+    expect(capturedFilename).toBe('pitch.pptx');
+    expect(await capturedBlob!.text()).toBe('PK-editable-pptx');
+  });
+
   it('honors the server Content-Disposition filename over the local fallback', async () => {
     // Production always returns a Content-Disposition (title/RFC-5987 based); the
     // happy-path test above only exercises the no-header fallback. This pins the

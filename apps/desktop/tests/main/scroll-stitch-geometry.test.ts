@@ -1,53 +1,13 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  measureAuthoredSlideBox,
   paginateViewportBand,
   scrollStitchGeometry,
   scrollStitchRowOffset,
   shouldCaptureAsDeck,
-  tallPageChunkHeights,
-  tooTallPdfErrorMessage,
+  solidBgraBuffer,
 } from '../../src/main/deck-capture.js';
-
-// A too-tall page on the PDF path that can't paginate must distinguish a failed
-// debugger attach (retryable "busy") from a CDP command that failed after a
-// successful attach (surface the real, actionable error).
-describe('tooTallPdfErrorMessage', () => {
-  test('no cdpError (attach failed) → retryable busy message', () => {
-    const msg = tooTallPdfErrorMessage(null);
-    expect(msg).toContain('renderer is busy, please retry');
-    expect(msg).not.toMatch(/export as PDF/i);
-  });
-
-  test('cdpError present (attached, later CDP command failed) → surfaces the real error', () => {
-    const msg = tooTallPdfErrorMessage(new Error('Target.captureScreenshot failed: GPU'));
-    expect(msg).toContain('Target.captureScreenshot failed: GPU');
-    expect(msg).not.toContain('renderer is busy');
-  });
-
-  test('non-Error cdpError is stringified', () => {
-    expect(tooTallPdfErrorMessage('boom')).toContain('boom');
-  });
-});
-
-// A non-deck page taller than one image is paginated into a multi-page raster
-// PDF; tallPageChunkHeights computes the per-page chunk heights (logical px).
-describe('tallPageChunkHeights', () => {
-  test('splits a tall page into texture/RAM-bounded chunks, remainder last', () => {
-    // maxChunkDevH 8192 @2x => 4096 logical per page; 10000 -> [4096,4096,1808].
-    const chunks = tallPageChunkHeights(10000, 8192, 2);
-    expect(chunks).toEqual([4096, 4096, 1808]);
-    expect(chunks.reduce((a, b) => a + b, 0)).toBe(10000);
-  });
-
-  test('a page that fits in one chunk yields a single page', () => {
-    expect(tallPageChunkHeights(3000, 8192, 2)).toEqual([3000]);
-  });
-
-  test('never yields a zero-height chunk', () => {
-    for (const c of tallPageChunkHeights(5000, 0, 0)) expect(c).toBeGreaterThan(0);
-  });
-});
 
 // Full-page scroll-stitch geometry must use the REAL captured device width and
 // its true (possibly fractional) pixel ratio. A previous version rounded the
@@ -103,6 +63,54 @@ describe('shouldCaptureAsDeck', () => {
   });
 });
 
+describe('measureAuthoredSlideBox', () => {
+  function fakeElement(opts: {
+    attrs?: Record<string, string | null>;
+    style?: { width?: string; height?: string };
+    offsetWidth?: number;
+    offsetHeight?: number;
+    stage?: HTMLElement | null;
+  }): HTMLElement {
+    return {
+      closest: (selector: string) => (selector === 'deck-stage' ? opts.stage ?? null : null),
+      getAttribute: (name: string) => opts.attrs?.[name] ?? null,
+      style: opts.style ?? {},
+      offsetWidth: opts.offsetWidth ?? 0,
+      offsetHeight: opts.offsetHeight ?? 0,
+    } as unknown as HTMLElement;
+  }
+
+  test('uses deck-stage authored design dimensions instead of preview-scaled slide rects', () => {
+    const stage = {
+      designWidth: 1280,
+      designHeight: 720,
+      getAttribute: () => null,
+    } as unknown as HTMLElement;
+    const slide = fakeElement({
+      stage,
+      // A transformed preview could report 960x540 via getBoundingClientRect();
+      // the authored export geometry must still come from deck-stage.
+      offsetWidth: 960,
+      offsetHeight: 540,
+    });
+    expect(measureAuthoredSlideBox(slide)).toEqual({ w: 1280, h: 720 });
+  });
+
+  test('falls back to deck-stage width/height attributes', () => {
+    const stage = fakeElement({ attrs: { width: '1024', height: '768' } });
+    expect(measureAuthoredSlideBox(fakeElement({ stage }))).toEqual({ w: 1024, h: 768 });
+  });
+
+  test('uses declared slide dimensions before transformed layout fallback', () => {
+    const slide = fakeElement({
+      style: { width: '1600px', height: '900px' },
+      offsetWidth: 800,
+      offsetHeight: 450,
+    });
+    expect(measureAuthoredSlideBox(slide)).toEqual({ w: 1600, h: 900 });
+  });
+});
+
 // The PDF path paginates a long non-deck page into one image per viewport
 // (PAGE_VIEW_H = 1000). paginateViewportBand picks the viewport sub-rectangle
 // for each page so the pages tile the document exactly — no overlap, no gap —
@@ -155,5 +163,19 @@ describe('scrollStitchRowOffset', () => {
     expect(scrollStitchRowOffset(2000, 1.25)).toBe(2500);
     expect(scrollStitchRowOffset(1000, 1.5)).toBe(1500);
     expect(scrollStitchRowOffset(1000, 2)).toBe(2000);
+  });
+});
+
+describe('solidBgraBuffer', () => {
+  test('initializes every pixel as opaque BGRA page background', () => {
+    const buffer = solidBgraBuffer(3, 2, [10, 20, 30, 255]);
+    expect([...buffer]).toEqual([
+      30, 20, 10, 255,
+      30, 20, 10, 255,
+      30, 20, 10, 255,
+      30, 20, 10, 255,
+      30, 20, 10, 255,
+      30, 20, 10, 255,
+    ]);
   });
 });

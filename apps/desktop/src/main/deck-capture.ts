@@ -1,10 +1,37 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { BrowserWindow, nativeImage } from "electron";
 import type { DesktopRenderSlidesInput, DesktopRenderSlidesResult } from "@open-design/sidecar-proto";
 
 import { waitForPrintableContent } from "./pdf-export.js";
+
+// Vendored dom-to-pptx browser UMD (apps/desktop/vendor/dom-to-pptx). Loaded
+// once and injected into the render window for editable PPTX export. The packaged
+// app ships it via electron-builder `extraResources` next to the app under
+// Resources/ (`process.resourcesPath`); dev resolves it from apps/desktop/vendor.
+let cachedDomToPptxBundle: string | null = null;
+async function loadDomToPptxBundle(): Promise<string> {
+  if (cachedDomToPptxBundle != null) return cachedDomToPptxBundle;
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidates = [
+    ...(resourcesPath ? [path.join(resourcesPath, "dom-to-pptx.bundle.js")] : []),
+    path.resolve(here, "../../vendor/dom-to-pptx/dom-to-pptx.bundle.js"),
+    path.resolve(here, "../../../vendor/dom-to-pptx/dom-to-pptx.bundle.js"),
+    path.resolve(here, "dom-to-pptx.bundle.js"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      cachedDomToPptxBundle = await readFile(candidate, "utf8");
+      return cachedDomToPptxBundle;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error("dom-to-pptx vendor bundle not found");
+}
 
 // Returns the rendered images either as on-disk files (when the daemon provided
 // an `outputDir`) or as base64 data URLs (legacy/fallback). Writing files keeps
@@ -176,6 +203,12 @@ export async function renderDeckSlides(
     // Pin the stage to the measured slide size.
     await window.webContents.executeJavaScript(`(${pinDeckStage.toString()})(${stage.w}, ${stage.h})`, true);
 
+    // Editable PPTX: hand the live, laid-out slides to the vendored dom-to-pptx
+    // engine (native shapes/text) instead of capturing images.
+    if (input.editable) {
+      return finish(await renderEditablePptx(window, stage, input.outputDir));
+    }
+
     // Deck slides default to PNG (crisp text, no JPEG artifacts). The CLI image
     // route can explicitly request JPEG via pageImageFormat; PPTX/PDF leave it
     // unset and keep PNG.
@@ -305,6 +338,40 @@ async function showDeckSlide(window: BrowserWindow, i: number, stage: Stage): Pr
   }
 }
 
+// Editable PPTX: every real slide is laid out at once, then handed to the
+// vendored dom-to-pptx engine, which walks each slide's DOM and emits native
+// PowerPoint shapes/text (not images). Returns one .pptx written to outputDir.
+async function renderEditablePptx(
+  window: BrowserWindow,
+  stage: Stage,
+  outputDir: string | undefined,
+): Promise<DesktopRenderSlidesResult> {
+  // dom-to-pptx measures each element's live layout, so all slides must be
+  // simultaneously laid out (decks normally show only the active one).
+  await window.webContents.executeJavaScript(
+    `(${showAllSlides.toString()})(${JSON.stringify(SLIDE_SELECTOR)})`,
+    true,
+  );
+  await nextFrames(window);
+  await window.webContents.executeJavaScript(await loadDomToPptxBundle(), true);
+  const out = (await window.webContents.executeJavaScript(
+    `(${runDomToPptx.toString()})(${JSON.stringify(SLIDE_SELECTOR)})`,
+    true,
+  )) as { b64?: string; error?: string };
+  if (!out || out.error || !out.b64) {
+    return { ok: false, error: out?.error || "editable PPTX export produced no output" };
+  }
+  const buffer = Buffer.from(out.b64, "base64");
+  if (outputDir) {
+    await mkdir(outputDir, { recursive: true });
+    const file = path.join(outputDir, "deck.pptx");
+    await writeFile(file, buffer);
+    return { ok: true, pptxFile: file, width: stage.w, height: stage.h, mode: "deck" };
+  }
+  const mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  return { ok: true, slides: [`data:${mime};base64,${out.b64}`], width: stage.w, height: stage.h, mode: "deck" };
+}
+
 // Shows slide `i` and captures the measured stage rect. Prefers CDP
 // `Page.captureScreenshot` (renders the CURRENT DOM to a fresh frame, so it
 // cannot return a stale composited frame of the previous slide — the
@@ -392,10 +459,6 @@ const PAGE_VIEW_H = 1000;
 // RAM budget for the stitched output buffer (~RGBA). Bounds the worst-case
 // output height regardless of how tall the page is.
 const PAGE_RAM_BUDGET_BYTES = 320 * 1024 * 1024;
-// Conservative floor for the per-machine GPU texture limit if we cannot query
-// it (older/integrated GPUs can be as low as this).
-const FALLBACK_MAX_TEXTURE = 8192;
-
 /**
  * Captures an ordinary page as one long, viewport-independent image.
  *
@@ -403,10 +466,8 @@ const FALLBACK_MAX_TEXTURE = 8192;
  * page one viewport at a time, captures each screen in the state it actually
  * paints at that scroll position, and stitches the frames by their real scroll
  * offset into a single tall image. This is faithful to scroll-driven / parallax
- * pages (a single `captureBeyondViewport` pass renders the whole document at
- * scroll 0 and gets parallax/reveal-on-scroll content wrong). It is RAM-bound,
- * so a page taller than the memory budget refuses (PNG) or paginates into a
- * multi-page raster (the JPEG path that feeds a PDF).
+ * pages. It is RAM-bound, so a page taller than the single-image memory budget
+ * refuses instead of truncating.
  *
  * PDF export (paginate=true) is handled earlier via paginatePageViewports (one
  * image per viewport, not stitched).
@@ -448,7 +509,6 @@ async function capturePage(
     return await paginatePageViewports(window, totalLogical, jpeg, outputDir);
   }
 
-  const maxTexture = await queryMaxTextureSize(window);
   // The window's device-pixel-ratio already scales the capture (2 on retina),
   // exactly like the deck path's capturePage. Report real px via it.
   const dpr = await queryDevicePixelRatio(window);
@@ -457,10 +517,6 @@ async function capturePage(
 
   const dbg = window.webContents.debugger;
   let attached = false;
-  // Set if the debugger attached but a CDP command later threw — distinct from a
-  // failed attach. Lets the too-tall PDF refusal surface the real error vs a
-  // misleading "renderer is busy, retry".
-  let cdpError: unknown = null;
   try {
     dbg.attach("1.3");
     attached = true;
@@ -488,12 +544,10 @@ async function capturePage(
       // is faithful to scroll-driven / parallax pages — each screen is captured
       // in the state it actually paints at that scroll position — unlike a single
       // captureBeyondViewport pass, which renders the whole document at scroll 0
-      // and gets parallax/reveal content wrong. Too-tall pages still refuse (PNG)
-      // or paginate into a multi-page raster (the JPEG/PDF-feeding path) below.
+      // and gets parallax/reveal content wrong. Too-tall image exports refuse;
+      // PDF pagination is keyed off the explicit `paginate` flag above, never the
+      // image encoder choice.
       if (outHpx > ramMaxOutH) {
-        if (jpeg) {
-          return await paginateTallPage(window, dbg, docW, docH, dpr, maxTexture, ramMaxOutH, jpeg, outputDir);
-        }
         return {
           ok: false,
           error: `page is too tall to export as one image (~${docH}px) — export as PDF instead`,
@@ -501,12 +555,8 @@ async function capturePage(
       }
       return await scrollSegmentStitch(window, docH, jpeg, outputDir);
     }
-  } catch (error) {
-    // The debugger attached but a later CDP command failed (Chromium/GPU/clip
-    // error) — remember it so the too-tall PDF refusal below can surface the
-    // real, actionable error instead of the retryable "renderer busy" message
-    // (which is only correct when the debugger could not attach at all).
-    cdpError = error;
+  } catch {
+    // Fall through to the capturePage-based scroll stitch path.
   } finally {
     if (attached) {
       try {
@@ -524,92 +574,16 @@ async function capturePage(
   )) as number;
   const totalLogical = Math.max(PAGE_VIEW_H, Number.isFinite(measured) ? measured : PAGE_VIEW_H);
   // Same budget guard as the debugger path: refuse rather than truncate. The PDF
-  // path normally paginates a too-tall page (paginateTallPage), but that needs
-  // CDP. We reach here either because the debugger could not attach, or because
-  // it attached and a CDP command later failed (cdpError). Surface the real CDP
-  // error in the latter case; only show the retryable "busy" message when the
-  // attach itself failed. Either way, don't tell the user to "export as PDF
-  // instead" — they already chose PDF.
+  // path uses paginatePageViewports before debugger attach, so reaching this
+  // branch means the caller asked for a single image. The encoder (PNG/JPEG) must
+  // not change that contract into a multi-page result.
   if (totalLogical * dpr > ramMaxOutH) {
-    if (jpeg) {
-      return { ok: false, error: tooTallPdfErrorMessage(cdpError) };
-    }
     return {
       ok: false,
       error: `page is too tall to export as one image (~${totalLogical}px) — export as PDF instead`,
     };
   }
   return await scrollSegmentStitch(window, totalLogical, jpeg, outputDir);
-}
-
-// Renders a non-deck page taller than a single image into a MULTI-PAGE raster
-// PDF: the document is split into stacked chunks (each as tall as the GPU
-// texture / RAM budget allows) and every chunk is emitted as its own image, so
-// the daemon assembles one PDF page per chunk. Used only for the PDF path; the
-// single-image `/export/image` path keeps its refusal. Uses captureBeyondViewport
-// per chunk (the page rendered fully — it's only too tall for one texture), which
-// does not duplicate fixed elements (already neutralized in preparePageForCapture).
-async function paginateTallPage(
-  window: BrowserWindow,
-  dbg: Electron.Debugger,
-  docW: number,
-  docH: number,
-  dpr: number,
-  maxTexture: number,
-  ramMaxOutH: number,
-  jpeg: boolean,
-  outputDir: string | undefined,
-): Promise<DesktopRenderSlidesResult> {
-  // Largest per-page chunk (device px) that fits BOTH the GPU texture limit and
-  // the RAM byte budget.
-  const maxChunkDevH = Math.min(maxTexture, ramMaxOutH);
-  const chunks = tallPageChunkHeights(docH, maxChunkDevH, dpr);
-  const images: Array<{ buffer: Buffer; jpeg: boolean }> = [];
-  let offset = 0;
-  for (const chunkH of chunks) {
-    const shot = (await dbg.sendCommand("Page.captureScreenshot", {
-      captureBeyondViewport: true,
-      clip: { x: 0, y: offset, width: docW, height: chunkH, scale: 1 },
-      ...(jpeg ? { format: "jpeg", quality: 82 } : { format: "png" }),
-    })) as { data: string };
-    images.push({ buffer: Buffer.from(shot.data, "base64"), jpeg });
-    offset += chunkH;
-  }
-  return {
-    ok: true,
-    ...(await emitImages(images, outputDir)),
-    width: docW * dpr,
-    height: (chunks[0] ?? docH) * dpr,
-    mode: "page",
-  };
-}
-
-// Splits a document of logical height `docLogicalH` into per-page chunk heights
-// (logical px), each capped to the largest chunk that fits the device texture /
-// RAM budget (`maxChunkDevH`). Exported for tests. The last chunk is the
-// remainder; total always sums back to `docLogicalH`.
-// Error message for a too-tall page on the PDF path that couldn't be paginated.
-// When the debugger attached but a CDP command later failed (`cdpError`), surface
-// the real Chromium/GPU error so it's actionable; only when the attach itself
-// failed (cdpError null/undefined) is the retryable "renderer is busy" message
-// correct. Either way it must not tell the user to "export as PDF" (they did).
-// Exported for tests.
-export function tooTallPdfErrorMessage(cdpError: unknown): string {
-  if (cdpError) {
-    const detail = cdpError instanceof Error ? cdpError.message : String(cdpError);
-    return `couldn't render this long page to PDF: ${detail}`;
-  }
-  return `couldn't render this long page to PDF — the renderer is busy, please retry`;
-}
-
-export function tallPageChunkHeights(docLogicalH: number, maxChunkDevH: number, dpr: number): number[] {
-  const pageLogicalH = Math.max(1, Math.floor(Math.max(1, maxChunkDevH) / Math.max(1, dpr)));
-  const total = Math.max(1, Math.ceil(docLogicalH));
-  const chunks: number[] = [];
-  for (let offset = 0; offset < total; offset += pageLogicalH) {
-    chunks.push(Math.min(pageLogicalH, total - offset));
-  }
-  return chunks;
 }
 
 // Freezes animations/transitions and scroll-prewarms the page so reveal-on-
@@ -632,7 +606,7 @@ async function preparePageForCapture(window: BrowserWindow): Promise<void> {
       true,
     );
     await window.webContents.executeJavaScript(
-      `(async function(){var vh=window.innerHeight||1000;var H=function(){return Math.max(document.documentElement.scrollHeight, document.body?document.body.scrollHeight:0)};for(var y=0;y<H();y+=vh){window.scrollTo(0,y);await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r)})});await new Promise(function(r){setTimeout(r,120)});}window.scrollTo(0,0);await new Promise(function(r){setTimeout(r,200)});return true;})()`,
+      `(async function(){function instant(y){try{document.documentElement.style.scrollBehavior='auto';if(document.body)document.body.style.scrollBehavior='auto'}catch(e){}try{window.scrollTo({left:0,top:y,behavior:'instant'})}catch(e){window.scrollTo(0,y)}try{document.documentElement.scrollTop=y;if(document.body)document.body.scrollTop=y}catch(e){}}var vh=window.innerHeight||1000;var H=function(){return Math.max(document.documentElement.scrollHeight,document.body?document.body.scrollHeight:0)};for(var y=0;y<H();y+=vh){instant(y);await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r)})});await new Promise(function(r){setTimeout(r,120)});}instant(0);await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(r,200)})})});return true;})()`,
       true,
     );
     // Wait for any fonts / images / CSS bg images that loaded during the prewarm.
@@ -650,20 +624,6 @@ async function queryDevicePixelRatio(window: BrowserWindow): Promise<number> {
     return Number.isFinite(v) && v > 0 ? v : 1;
   } catch {
     return 1;
-  }
-}
-
-// Reads the GPU's real max texture size so the single-pass/stitch threshold
-// adapts to the user's hardware instead of a hard-coded guess.
-async function queryMaxTextureSize(window: BrowserWindow): Promise<number> {
-  try {
-    const v = (await window.webContents.executeJavaScript(
-      `(function(){try{var c=document.createElement('canvas');var gl=c.getContext('webgl2')||c.getContext('webgl');return gl?gl.getParameter(gl.MAX_TEXTURE_SIZE):0}catch(e){return 0}})()`,
-      true,
-    )) as number;
-    return Number.isFinite(v) && v > 0 ? v : FALLBACK_MAX_TEXTURE;
-  } catch {
-    return FALLBACK_MAX_TEXTURE;
   }
 }
 
@@ -691,6 +651,26 @@ export function scrollStitchRowOffset(actualY: number, dpr: number): number {
   return Math.round(actualY * dpr);
 }
 
+export type BgraColor = readonly [number, number, number, number];
+
+export function solidBgraBuffer(width: number, height: number, color: BgraColor): Buffer {
+  const size = Math.max(0, Math.floor(width) * Math.floor(height) * 4);
+  const buffer = Buffer.allocUnsafe(size);
+  if (size === 0) return buffer;
+  const pixel = Buffer.from([
+    clampByte(color[2]),
+    clampByte(color[1]),
+    clampByte(color[0]),
+    clampByte(color[3]),
+  ]);
+  const seed = Math.min(size, 4096 * 4);
+  for (let i = 0; i < seed; i += 4) pixel.copy(buffer, i);
+  for (let filled = seed; filled < size; filled *= 2) {
+    buffer.copy(buffer, filled, 0, Math.min(filled, size - filled));
+  }
+  return buffer;
+}
+
 async function scrollSegmentStitch(
   window: BrowserWindow,
   totalLogical: number,
@@ -705,13 +685,11 @@ async function scrollSegmentStitch(
   let H = 0;
   let dpr = 1;
   let bgra: Buffer | null = null;
+  const background = await queryPageBackgroundColor(window);
 
   for (let y = 0; ; y += PAGE_VIEW_H) {
     const target = Math.min(y, maxScroll);
-    const actualY = (await window.webContents.executeJavaScript(
-      `(function(){window.scrollTo(0, ${target});return new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){r(Math.round(window.scrollY||window.pageYOffset||0))},180)})})})})()`,
-      true,
-    )) as number;
+    const actualY = await scrollToCaptureTarget(window, target);
     const image = await window.webContents.capturePage({ x: 0, y: 0, width: PAGE_W, height: PAGE_VIEW_H });
     const bmp = image.toBitmap(); // BGRA
     const size = image.getSize();
@@ -722,7 +700,7 @@ async function scrollSegmentStitch(
       W = geo.width;
       H = geo.height;
       dpr = geo.dpr;
-      bgra = Buffer.alloc(W * H * 4);
+      bgra = solidBgraBuffer(W, H, background);
     }
     const destRow = scrollStitchRowOffset(actualY, dpr);
     if (destRow < H) {
@@ -754,6 +732,32 @@ async function scrollSegmentStitch(
   };
 }
 
+async function scrollToCaptureTarget(window: BrowserWindow, target: number): Promise<number> {
+  return (await window.webContents.executeJavaScript(
+    `(async function(){var target=${JSON.stringify(target)};function maxY(){return Math.max(0,Math.max(document.documentElement.scrollHeight,document.body?document.body.scrollHeight:0)-(window.innerHeight||1000))}function pos(){return window.scrollY||window.pageYOffset||document.documentElement.scrollTop||(document.body?document.body.scrollTop:0)||0}function instant(y){try{document.documentElement.style.scrollBehavior='auto';if(document.body)document.body.style.scrollBehavior='auto'}catch(e){}try{window.scrollTo({left:0,top:y,behavior:'instant'})}catch(e){window.scrollTo(0,y)}try{document.documentElement.scrollTop=y;if(document.body)document.body.scrollTop=y}catch(e){}}var desired=Math.max(0,Math.min(target,maxY()));for(var i=0;i<8;i++){instant(desired);await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r)})});await new Promise(function(r){setTimeout(r,i<2?80:40)});var y=pos();if(Math.abs(y-desired)<=1)return Math.round(y)}return Math.round(pos())})()`,
+    true,
+  )) as number;
+}
+
+async function queryPageBackgroundColor(window: BrowserWindow): Promise<BgraColor> {
+  try {
+    const value = (await window.webContents.executeJavaScript(
+      `(function(){function parseColor(input){if(!input||input==='transparent')return null;var m=String(input).match(/^rgba?\\(([^)]+)\\)$/i);if(!m)return null;var parts=m[1].split(',').map(function(v){return v.trim()});var r=Number(parts[0]);var g=Number(parts[1]);var b=Number(parts[2]);var a=parts.length>3?Math.round(Number(parts[3])*255):255;if(!Number.isFinite(r)||!Number.isFinite(g)||!Number.isFinite(b)||!Number.isFinite(a)||a<=0)return null;return [Math.max(0,Math.min(255,Math.round(r))),Math.max(0,Math.min(255,Math.round(g))),Math.max(0,Math.min(255,Math.round(b))),Math.max(0,Math.min(255,a))]}var styles=[getComputedStyle(document.body||document.documentElement).backgroundColor,getComputedStyle(document.documentElement).backgroundColor];for(var i=0;i<styles.length;i++){var c=parseColor(styles[i]);if(c)return c}return [255,255,255,255]})()`,
+      true,
+    )) as BgraColor;
+    if (Array.isArray(value) && value.length === 4) {
+      return [clampByte(value[0]), clampByte(value[1]), clampByte(value[2]), clampByte(value[3])];
+    }
+  } catch {
+    // Fall back below.
+  }
+  return [255, 255, 255, 255];
+}
+
+function clampByte(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(Number.isFinite(value) ? value : 0)));
+}
+
 // Splits an ordinary (non-deck) page into one image PER VIEWPORT, top to
 // bottom — the PDF path uses this so a long scrolling site becomes a multi-page
 // PDF (one screen per page) instead of one giant page. Each page is a LIVE
@@ -778,10 +782,7 @@ async function paginatePageViewports(
   let height = PAGE_VIEW_H;
   for (let p = 0; p < pageCount; p++) {
     const target = Math.min(p * PAGE_VIEW_H, maxScroll);
-    const actualY = (await window.webContents.executeJavaScript(
-      `(function(){window.scrollTo(0, ${target});return new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){r(Math.round(window.scrollY||window.pageYOffset||0))},180)})})})})()`,
-      true,
-    )) as number;
+    const actualY = await scrollToCaptureTarget(window, target);
     const band = paginateViewportBand(p, actualY, totalLogical);
     const image = await window.webContents.capturePage({
       x: 0,
@@ -868,6 +869,171 @@ function countRealSlides(slideSelector: string): number {
     .filter((el) => !(el as HTMLElement).closest(".mini-slide, .overview, .notes-overlay, .thumb")).length;
 }
 
+// Serialized into the page: lays out every real slide simultaneously (stacked at
+// the origin, opacity 1) so dom-to-pptx can measure each one as its own slide.
+// Decks normally render only the active slide, which would give the others no
+// layout box.
+function showAllSlides(slideSelector: string): number {
+  const slides = Array.prototype.slice
+    .call(document.querySelectorAll(slideSelector))
+    .filter((el) => !(el as HTMLElement).closest(".mini-slide, .overview, .notes-overlay, .thumb"));
+  for (const node of slides) {
+    const el = node as HTMLElement;
+    el.style.setProperty("opacity", "1", "important");
+    el.style.setProperty("visibility", "visible", "important");
+    el.style.setProperty("transform", "none", "important");
+    el.style.setProperty("position", "absolute", "important");
+    el.style.setProperty("left", "0", "important");
+    el.style.setProperty("top", "0", "important");
+    ["active", "visible", "is-active", "current"].forEach((c) => el.classList.add(c));
+  }
+  return slides.length;
+}
+
+// Serialized into the page: runs the injected dom-to-pptx engine over every real
+// slide and returns the .pptx bytes as base64 (or an error). Fonts are
+// auto-detected + embedded; SVGs stay vector (editable in PowerPoint).
+async function runDomToPptx(slideSelector: string): Promise<{ b64?: string; error?: string }> {
+  function isTransparentColor(input: string): boolean {
+    const value = input.trim().toLowerCase();
+    return value === "" || value === "transparent" || value === "rgba(0, 0, 0, 0)";
+  }
+
+  function firstCssColor(input: string): string | null {
+    const rgb = input.match(/rgba?\([^)]*\)/i);
+    if (rgb) return rgb[0];
+    const hex = input.match(/#[0-9a-f]{3,8}\b/i);
+    return hex ? hex[0] : null;
+  }
+
+  function effectiveBackgroundStyle(slide: HTMLElement): {
+    color: string;
+    image: string;
+    position: string;
+    size: string;
+    repeat: string;
+    origin: string;
+    clip: string;
+  } | null {
+    const candidates: Element[] = [];
+    for (let el: Element | null = slide; el; el = el.parentElement) candidates.push(el);
+    if (document.body && !candidates.includes(document.body)) candidates.push(document.body);
+    if (document.documentElement && !candidates.includes(document.documentElement)) {
+      candidates.push(document.documentElement);
+    }
+
+    for (const el of candidates) {
+      const style = getComputedStyle(el);
+      const bgColor = style.backgroundColor;
+      const bgImage = style.backgroundImage;
+      const hasImage = bgImage && bgImage !== "none";
+      const hasColor = bgColor && !isTransparentColor(bgColor);
+      const fallbackColor = hasColor ? bgColor : firstCssColor(bgImage);
+      if (!hasImage && !hasColor) continue;
+      if (!fallbackColor) continue;
+      return {
+        color: fallbackColor,
+        image: bgImage,
+        position: style.backgroundPosition,
+        size: style.backgroundSize,
+        repeat: style.backgroundRepeat,
+        origin: style.backgroundOrigin,
+        clip: style.backgroundClip,
+      };
+    }
+    return null;
+  }
+
+  function ensureExplicitSlideBackgrounds(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll(":scope > [data-od-pptx-bg]").forEach((el) => el.remove());
+      const background = effectiveBackgroundStyle(slide);
+      if (!background) continue;
+
+      const bg = document.createElement("div");
+      bg.setAttribute("data-od-pptx-bg", "true");
+      bg.setAttribute("aria-hidden", "true");
+      bg.style.setProperty("position", "absolute", "important");
+      bg.style.setProperty("inset", "0", "important");
+      bg.style.setProperty("z-index", "0", "important");
+      bg.style.setProperty("pointer-events", "none", "important");
+      bg.style.setProperty("background-color", background.color, "important");
+      bg.style.setProperty("background-image", "none", "important");
+      bg.style.setProperty("background-position", background.position, "important");
+      bg.style.setProperty("background-size", background.size, "important");
+      bg.style.setProperty("background-repeat", background.repeat, "important");
+      bg.style.setProperty("background-origin", background.origin, "important");
+      bg.style.setProperty("background-clip", background.clip, "important");
+
+      const style = getComputedStyle(slide);
+      if (style.position === "static") slide.style.setProperty("position", "relative", "important");
+      if (style.overflow === "visible") slide.style.setProperty("overflow", "hidden", "important");
+      slide.style.setProperty("background-color", background.color, "important");
+      Array.from(slide.children).forEach((child) => {
+        if (child.getAttribute("data-od-pptx-bg") === "true") return;
+        const childStyle = getComputedStyle(child as Element);
+        const element = child as HTMLElement;
+        if (childStyle.position === "static") {
+          element.style.setProperty("position", "relative", "important");
+        }
+        if (childStyle.zIndex === "auto") {
+          element.style.setProperty("z-index", "1", "important");
+        }
+      });
+      slide.prepend(bg);
+    }
+  }
+
+  try {
+    const w = window as unknown as {
+      domToPptx?: { exportToPptx: (target: unknown, options: unknown) => Promise<Blob> };
+    };
+    if (!w.domToPptx || typeof w.domToPptx.exportToPptx !== "function") {
+      return { error: "dom-to-pptx engine did not load" };
+    }
+    const slides = Array.prototype.slice
+      .call(document.querySelectorAll(slideSelector))
+      .filter((el) => !(el as HTMLElement).closest(".mini-slide, .overview, .notes-overlay, .thumb"));
+    if (slides.length === 0) return { error: "no slides to export" };
+    ensureExplicitSlideBackgrounds(slides as HTMLElement[]);
+    // dom-to-pptx assumes `node.className` is a string, but SVG elements expose
+    // an SVGAnimatedString, so its DOM walk throws on decks containing inline SVG.
+    // Normalize those to a plain string in this throwaway render window.
+    document.querySelectorAll("*").forEach((el) => {
+      const cn = (el as { className?: unknown }).className;
+      if (cn != null && typeof cn !== "string") {
+        try {
+          Object.defineProperty(el, "className", {
+            value: (cn as { baseVal?: string }).baseVal ?? "",
+            configurable: true,
+            writable: true,
+          });
+        } catch {
+          // Leave it; dom-to-pptx may still handle this node.
+        }
+      }
+    });
+    const blob = await w.domToPptx.exportToPptx(slides, {
+      fileName: "deck.pptx",
+      skipDownload: true,
+      autoEmbedFonts: true,
+      svgAsVector: true,
+    });
+    if (!blob || typeof (blob as Blob).arrayBuffer !== "function") {
+      return { error: "dom-to-pptx returned no blob" };
+    }
+    const bytes = new Uint8Array(await (blob as Blob).arrayBuffer());
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+    }
+    return { b64: btoa(binary) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 // Deck-only DOM prep (run only once we've decided this is a deck): hide presenter
 // chrome, switch any <deck-stage> runtime to authored (1:1) size, and freeze
 // animations/transitions so each slide (and its reveal-on-show inner elements,
@@ -898,7 +1064,7 @@ function pinDeckStage(w: number, h: number): void {
   const style = document.createElement("style");
   style.textContent =
     `html,body{margin:0!important;padding:0!important;width:${w}px!important;height:${h}px!important;overflow:hidden!important}` +
-    `.deck{width:${w}px!important;height:${h}px!important}`;
+    `.deck,deck-stage{width:${w}px!important;height:${h}px!important}`;
   document.head.appendChild(style);
 }
 
@@ -907,11 +1073,51 @@ function pinDeckStage(w: number, h: number): void {
 // slides via opacity/visibility); if every slide is display:none, force-measures
 // the first one off-screen. Returns the rendered DIP size or null.
 function measureSlide(slideSelector: string): { w: number; h: number } | null {
+  function positiveCssNumber(value: unknown): number | null {
+    if (typeof value === "number") return Number.isFinite(value) && value > 1 ? value : null;
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    const match = /^(\d+(?:\.\d+)?)(?:px)?$/i.exec(trimmed);
+    if (!match) return null;
+    const n = Number(match[1]);
+    return Number.isFinite(n) && n > 1 ? n : null;
+  }
+  function sizePair(w: unknown, h: unknown): { w: number; h: number } | null {
+    const width = positiveCssNumber(w);
+    const height = positiveCssNumber(h);
+    return width != null && height != null ? { w: width, h: height } : null;
+  }
+  function deckStageAuthoredSize(stage: HTMLElement): { w: number; h: number } | null {
+    const byProp = sizePair(
+      (stage as unknown as { designWidth?: unknown }).designWidth,
+      (stage as unknown as { designHeight?: unknown }).designHeight,
+    );
+    if (byProp) return byProp;
+    return sizePair(stage.getAttribute("width"), stage.getAttribute("height"));
+  }
+  function measureAuthored(el: HTMLElement): { w: number; h: number } | null {
+    const stage = el.closest("deck-stage") as HTMLElement | null;
+    const stageSize = stage ? deckStageAuthoredSize(stage) : null;
+    if (stageSize) return stageSize;
+    const attrSize = sizePair(el.getAttribute("width"), el.getAttribute("height"));
+    if (attrSize) return attrSize;
+    const styleSize = sizePair(el.style?.width, el.style?.height);
+    if (styleSize) return styleSize;
+    const computed = window.getComputedStyle?.(el);
+    const computedSize = computed ? sizePair(computed.width, computed.height) : null;
+    if (computedSize) return computedSize;
+    const offsetSize = sizePair(el.offsetWidth, el.offsetHeight);
+    if (offsetSize) return offsetSize;
+    return null;
+  }
+
   const slides = Array.prototype.slice
     .call(document.querySelectorAll(slideSelector))
     .filter((el) => !(el as HTMLElement).closest(".mini-slide, .overview, .notes-overlay, .thumb"));
   if (slides.length === 0) return null;
   for (const node of slides) {
+    const authored = measureAuthored(node as HTMLElement);
+    if (authored) return authored;
     const r = (node as HTMLElement).getBoundingClientRect();
     if (r.width > 1 && r.height > 1) return { w: r.width, h: r.height };
   }
@@ -919,9 +1125,66 @@ function measureSlide(slideSelector: string): { w: number; h: number } | null {
   const prev = el.style.cssText;
   el.style.setProperty("display", "block", "important");
   el.style.setProperty("visibility", "hidden", "important");
+  const authored = measureAuthored(el);
+  if (authored) {
+    el.style.cssText = prev;
+    return authored;
+  }
   const rect = el.getBoundingClientRect();
   el.style.cssText = prev;
   return rect.width > 1 && rect.height > 1 ? { w: rect.width, h: rect.height } : null;
+}
+
+// Exported for focused tests. Reads the authored, untransformed slide box: first
+// from a wrapping <deck-stage> design canvas, then from declared element sizes,
+// then from layout dimensions that transforms do not affect. getBoundingClientRect
+// is intentionally left to the caller as a last resort because it includes
+// fit-to-viewport transforms.
+export function measureAuthoredSlideBox(el: HTMLElement): { w: number; h: number } | null {
+  const stage = el.closest("deck-stage") as HTMLElement | null;
+  const stageSize = stage ? deckStageAuthoredSize(stage) : null;
+  if (stageSize) return stageSize;
+
+  const attrSize = sizePair(el.getAttribute("width"), el.getAttribute("height"));
+  if (attrSize) return attrSize;
+
+  const styleSize = sizePair(el.style?.width, el.style?.height);
+  if (styleSize) return styleSize;
+
+  const view = el.ownerDocument?.defaultView;
+  const computed = view?.getComputedStyle?.(el);
+  const computedSize = computed ? sizePair(computed.width, computed.height) : null;
+  if (computedSize) return computedSize;
+
+  const offsetSize = sizePair(el.offsetWidth, el.offsetHeight);
+  if (offsetSize) return offsetSize;
+
+  return null;
+}
+
+function deckStageAuthoredSize(stage: HTMLElement): { w: number; h: number } | null {
+  const byProp = sizePair(
+    (stage as unknown as { designWidth?: unknown }).designWidth,
+    (stage as unknown as { designHeight?: unknown }).designHeight,
+  );
+  if (byProp) return byProp;
+  return sizePair(stage.getAttribute("width"), stage.getAttribute("height"));
+}
+
+function sizePair(w: unknown, h: unknown): { w: number; h: number } | null {
+  const width = positiveCssNumber(w);
+  const height = positiveCssNumber(h);
+  return width != null && height != null ? { w: width, h: height } : null;
+}
+
+function positiveCssNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) && value > 1 ? value : null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const match = /^(\d+(?:\.\d+)?)(?:px)?$/i.exec(trimmed);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 1 ? n : null;
 }
 
 // Returns a Promise that resolves after the style change has settled for two

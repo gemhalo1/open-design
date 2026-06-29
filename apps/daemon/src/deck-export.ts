@@ -17,6 +17,9 @@ export interface BuildDeckRenderInputOptions {
   daemonUrl: string;
   // Explicit page-vs-deck signal (the web knows whether the artifact is a deck).
   deck?: boolean;
+  // When true, render an editable .pptx (native shapes/text via dom-to-pptx)
+  // instead of screenshot images.
+  editable?: boolean;
   fileName: string;
   index?: number;
   // Directory the desktop renderer writes the rendered images into (returned as
@@ -65,6 +68,7 @@ export async function buildDeckRenderInput(
       baseHref: rawBaseHref(options.daemonUrl, options.projectId, options.fileName),
       html: file.buffer.toString('utf8'),
       ...(options.deck == null ? {} : { deck: options.deck }),
+      ...(options.editable == null ? {} : { editable: options.editable }),
       ...(options.index == null ? {} : { index: options.index }),
       ...(options.outputDir == null ? {} : { outputDir: options.outputDir }),
       ...(options.pageImageFormat == null ? {} : { pageImageFormat: options.pageImageFormat }),

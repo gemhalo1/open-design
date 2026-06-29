@@ -261,6 +261,10 @@ export type DesktopRenderSlidesInput = {
   // elements (carousels, testimonials). When omitted, the renderer falls back to
   // the `.slide`-count heuristic.
   deck?: boolean;
+  // When true, produce an editable .pptx (native PowerPoint shapes/text via the
+  // vendored dom-to-pptx engine) instead of screenshot images. Writes one .pptx
+  // into `outputDir` and returns `pptxFile`.
+  editable?: boolean;
   // When set, render only the slide at this index (deck mode) — used by image
   // export to capture the single slide the user is viewing.
   index?: number;
@@ -295,6 +299,9 @@ export type DesktopRenderSlidesResult = {
   height?: number;
   mode?: "deck" | "page";
   ok: boolean;
+  // Absolute path to the written editable .pptx (set when the request was
+  // `editable` with an `outputDir`).
+  pptxFile?: string;
   slideFiles?: string[];
   slides?: string[];
   width?: number;
@@ -734,9 +741,12 @@ function normalizeDesktopExportPdfInput(input: unknown): DesktopExportPdfInput {
 
 function normalizeDesktopRenderSlidesInput(input: unknown): DesktopRenderSlidesInput {
   const value = assertObject(input, "desktop render slides input");
-  assertKnownKeys(value, ["baseHref", "deck", "html", "index", "outputDir", "pageImageFormat", "stitch", "paginate"], "desktop render slides input");
+  assertKnownKeys(value, ["baseHref", "deck", "editable", "html", "index", "outputDir", "pageImageFormat", "stitch", "paginate"], "desktop render slides input");
   if (value.deck != null && typeof value.deck !== "boolean") {
     throw new Error("desktop render slides deck must be a boolean");
+  }
+  if (value.editable != null && typeof value.editable !== "boolean") {
+    throw new Error("desktop render slides editable must be a boolean");
   }
   if (value.index != null && (typeof value.index !== "number" || !Number.isInteger(value.index) || value.index < 0)) {
     throw new Error("desktop render slides index must be a non-negative integer");
@@ -762,6 +772,7 @@ function normalizeDesktopRenderSlidesInput(input: unknown): DesktopRenderSlidesI
   return {
     ...(value.baseHref == null ? {} : { baseHref: normalizeNonEmptyString(value.baseHref, "desktop render slides baseHref") }),
     ...(value.deck == null ? {} : { deck: value.deck }),
+    ...(value.editable == null ? {} : { editable: value.editable }),
     html: normalizeNonEmptyString(value.html, "desktop render slides html"),
     ...(value.index == null ? {} : { index: value.index }),
     ...(value.outputDir == null ? {} : { outputDir: normalizeNonEmptyString(value.outputDir, "desktop render slides outputDir") }),

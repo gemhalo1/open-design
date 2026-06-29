@@ -4957,6 +4957,7 @@ function HtmlViewer({
   const templateNameId = useId();
   const templateDescriptionId = useId();
   const imageExportTitleId = useId();
+  const pptxExportTitleId = useId();
   // Opt back into the legacy inline-asset srcDoc path via `?forceInline=1`
   // on the host page. Lets users escape-hatch around the URL-load default
   // for non-deck HTML that depends on the in-iframe localStorage shim.
@@ -5055,6 +5056,8 @@ function HtmlViewer({
   const [imageExportModalOpen, setImageExportModalOpen] = useState(false);
   const [imageExportFormat, setImageExportFormat] = useState<ImageExportFormat>('png');
   const [imageExportError, setImageExportError] = useState<string | null>(null);
+  const [pptxExportModalOpen, setPptxExportModalOpen] = useState(false);
+  const [pptxExportMode, setPptxExportMode] = useState<'editable' | 'screenshot'>('editable');
   const imageExportSnapshotDataUrlRef = useRef<string | null>(null);
   // Threads the share-popover click → artifact_export_result(image) pair, the
   // same correlation other export formats get via fireShareExport. The image
@@ -5309,11 +5312,10 @@ function HtmlViewer({
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
   const showDeckNavigation = effectiveDeck && (slideState === null || slideState.count > 0);
-  // Deck signal for EXPORT only — broader than `effectiveDeck`, but narrower
-  // than "any `.slide` class". Runtime-managed decks (`<deck-stage>` /
+  // Extra deck signal for EXPORT only. Runtime-managed decks (`<deck-stage>` /
   // `data-screen-label`) need deck capture even when the viewer's nav bridge
-  // cannot drive them. Ordinary pages can also contain `.slide` carousels or
-  // scroll/parallax sections, so they must stay on full-page capture.
+  // cannot drive them. Plain `.slide` remains covered by `effectiveDeck` below,
+  // preserving the viewer's existing freeform deck behavior.
   const structuredDeckExportSignal = sourceLooksLikeExportableDeck(source);
   const livePreviewSource = inlinedSource ?? source;
   // Annotation modes that should hold the preview still while open. Manual
@@ -7744,7 +7746,7 @@ function HtmlViewer({
     artifactKind === 'deck' ||
     rendererId === 'deck-html' ||
     file.kind === 'presentation';
-  const deckExportSignal = isDeckArtifact || structuredDeckExportSignal;
+  const deckExportSignal = effectiveDeck || isDeckArtifact || structuredDeckExportSignal;
   const isMarkdownArtifact =
     artifactKind === 'markdown-document' ||
     rendererId === 'markdown' ||
@@ -9149,17 +9151,8 @@ function HtmlViewer({
                       }
                       onClick={() => {
                         setDownloadMenuOpen(false);
-                        // Return the promise so the loading toast lasts until the
-                        // real export finishes (not just until it's kicked off).
-                        fireShareExport('pptx', async () => {
-                          const res = await exportProjectAsPptx({
-                            projectId,
-                            fileName: file.name,
-                            title: exportTitle,
-                            deck: true,
-                          });
-                          if (!res.ok) throw new Error('error' in res ? res.error : t('fileViewer.exportPptxNa'));
-                        });
+                        setPptxExportMode('editable');
+                        setPptxExportModalOpen(true);
                       }}
                     >
                       <span className="share-menu-icon"><RemixIcon name="file-ppt-line" size={15} /></span>
@@ -9617,6 +9610,94 @@ function HtmlViewer({
               srcDoc={srcDoc}
             />
           )}
+        </div>,
+        document.body,
+      ) : null}
+      {pptxExportModalOpen && typeof document !== 'undefined' ? createPortal(
+        <div className="modal-backdrop viewer-modal-backdrop image-export-backdrop" role="presentation">
+          <div
+            className="modal deploy-modal image-export-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={pptxExportTitleId}
+          >
+            <div className="modal-head">
+              <div className="kicker">PPTX</div>
+              <h2 id={pptxExportTitleId}>{t('fileViewer.exportPptx')}</h2>
+              <p className="subtitle">{t('fileViewer.exportPptxModalSubtitle')}</p>
+            </div>
+            <div className="deploy-form image-export-form">
+              <fieldset className="image-export-format-field">
+                <legend>{t('fileViewer.exportImageFormatLabel')}</legend>
+                <div className="pptx-export-mode-options">
+                  {([
+                    {
+                      value: 'editable' as const,
+                      title: t('fileViewer.exportPptxEditable'),
+                      hint: t('fileViewer.exportPptxEditableHint'),
+                      recommended: true,
+                    },
+                    {
+                      value: 'screenshot' as const,
+                      title: t('fileViewer.exportPptxScreenshot'),
+                      hint: t('fileViewer.exportPptxScreenshotHint'),
+                      recommended: false,
+                    },
+                  ]).map((opt) => (
+                    <label
+                      key={opt.value}
+                      className={`pptx-export-mode-option${pptxExportMode === opt.value ? ' active' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name="pptx-export-mode"
+                        value={opt.value}
+                        checked={pptxExportMode === opt.value}
+                        onChange={() => setPptxExportMode(opt.value)}
+                      />
+                      <span className="pptx-export-mode-head">
+                        <span className="pptx-export-mode-title">{opt.title}</span>
+                        {opt.recommended ? (
+                          <span className="pptx-export-mode-badge">{t('fileViewer.exportPptxRecommended')}</span>
+                        ) : null}
+                      </span>
+                      <span className="pptx-export-mode-desc">{opt.hint}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="ghost-link button-like"
+                onClick={() => setPptxExportModalOpen(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="viewer-action primary"
+                disabled={!canPptx}
+                onClick={() => {
+                  const editable = pptxExportMode === 'editable';
+                  setPptxExportModalOpen(false);
+                  fireShareExport('pptx', async () => {
+                    const res = await exportProjectAsPptx({
+                      projectId,
+                      fileName: file.name,
+                      title: exportTitle,
+                      deck: true,
+                      editable,
+                    });
+                    if (!res.ok) throw new Error('error' in res ? res.error : t('fileViewer.exportPptxNa'));
+                  });
+                }}
+              >
+                {t('fileViewer.exportPptxConfirm')}
+              </button>
+            </div>
+          </div>
         </div>,
         document.body,
       ) : null}

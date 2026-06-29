@@ -26,6 +26,7 @@ const JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAAv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AfwD/2Q==',
   'base64',
 );
+const PPTX = Buffer.from('PK\x03\x04editable-pptx');
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<boolean> {
   const start = Date.now();
@@ -42,13 +43,20 @@ describe('screenshot export desktop renderer file handoff', () => {
   let exportRenderRoot: string;
   const projectId = 'proj-export-handoff';
   const seenDirs: string[] = [];
+  const seenInputs: DesktopRenderSlidesInput[] = [];
 
   // Stub desktop renderer: assert we were handed an outputDir, write the image
   // files there exactly like the real renderer's emitImages, return file paths.
   const stubRenderer = async (input: DesktopRenderSlidesInput): Promise<DesktopRenderSlidesResult> => {
+    seenInputs.push(input);
     if (!input.outputDir) return { ok: false, error: 'expected an outputDir handoff' };
     seenDirs.push(input.outputDir);
     await mkdir(input.outputDir, { recursive: true });
+    if (input.editable) {
+      const file = path.join(input.outputDir, 'deck.pptx');
+      await writeFile(file, PPTX);
+      return { ok: true, pptxFile: file, width: 1920, height: 1080, mode: 'deck' };
+    }
     const jpeg = input.pageImageFormat === 'jpeg';
     const file = path.join(input.outputDir, jpeg ? 'slide-0.jpeg' : 'slide-0.png');
     await writeFile(file, jpeg ? JPEG : PNG);
@@ -107,6 +115,34 @@ describe('screenshot export desktop renderer file handoff', () => {
     expect(bytes.subarray(0, 2).toString('hex')).toBe('ffd8');
   });
 
+  it('rejects multi-image JPEG image exports instead of truncating to the first chunk', async () => {
+    const chunkingRenderer = async (input: DesktopRenderSlidesInput): Promise<DesktopRenderSlidesResult> => {
+      if (!input.outputDir) return { ok: false, error: 'expected an outputDir handoff' };
+      await mkdir(input.outputDir, { recursive: true });
+      const first = path.join(input.outputDir, 'slide-0.jpeg');
+      const second = path.join(input.outputDir, 'slide-1.jpeg');
+      await writeFile(first, JPEG);
+      await writeFile(second, JPEG);
+      return { ok: true, slideFiles: [first, second], width: 1440, height: 1000, mode: 'page' };
+    };
+    const srv = (await startServer({
+      port: 0,
+      returnServer: true,
+      desktopSlideRenderer: chunkingRenderer,
+    })) as { url: string; server: http.Server };
+    try {
+      const res = await fetch(`${srv.url}/api/projects/${projectId}/export/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: 'index.html', imageFormat: 'jpeg' }),
+      });
+      expect(res.status).toBe(502);
+      expect(await res.text()).toContain('single-image export');
+    } finally {
+      await new Promise<void>((resolve) => srv.server.close(() => resolve()));
+    }
+  });
+
   it('routes legacy generic image export through the screenshot renderer too', async () => {
     const before = seenDirs.length;
     const res = await fetch(`${baseUrl}/api/projects/${projectId}/export`, {
@@ -136,6 +172,23 @@ describe('screenshot export desktop renderer file handoff', () => {
     expect(seenDirs.length).toBe(before + 1); // the screenshot renderer was invoked
     const bytes = Buffer.from(await res.arrayBuffer());
     expect(bytes.subarray(0, 4).toString('latin1')).toBe('%PDF'); // raster PDF assembled from the screenshots
+  });
+
+  it('streams editable PPTX files written by the desktop renderer', async () => {
+    const before = seenInputs.length;
+    const res = await fetch(`${baseUrl}/api/projects/${projectId}/export/pptx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: 'index.html', editable: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain(
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    );
+    expect(seenInputs.at(-1)?.editable).toBe(true);
+    expect(seenInputs.length).toBe(before + 1);
+    const bytes = Buffer.from(await res.arrayBuffer());
+    expect(bytes.equals(PPTX)).toBe(true);
   });
 
   it('rejects unsupported image export formats before rendering', async () => {

@@ -201,6 +201,7 @@ describe("open-design sidecar contract", () => {
         input: {
           baseHref: "http://127.0.0.1:7456/api/projects/proj/raw/deck/",
           deck: true,
+          editable: true,
           html: "<!doctype html><section class=\"slide\">One</section>",
           outputDir: "/data/export-render/abc123",
           pageImageFormat: "jpeg",
@@ -210,12 +211,13 @@ describe("open-design sidecar contract", () => {
         type: SIDECAR_MESSAGES.RENDER_SLIDES,
       }),
     ).toEqual({
-      input: {
-        baseHref: "http://127.0.0.1:7456/api/projects/proj/raw/deck/",
-        deck: true,
-        html: "<!doctype html><section class=\"slide\">One</section>",
-        outputDir: "/data/export-render/abc123",
-        pageImageFormat: "jpeg",
+        input: {
+          baseHref: "http://127.0.0.1:7456/api/projects/proj/raw/deck/",
+          deck: true,
+          editable: true,
+          html: "<!doctype html><section class=\"slide\">One</section>",
+          outputDir: "/data/export-render/abc123",
+          pageImageFormat: "jpeg",
         stitch: true,
         paginate: true,
       },
@@ -231,6 +233,12 @@ describe("open-design sidecar contract", () => {
     expect(() =>
       normalizeDesktopSidecarMessage({
         input: { html: "<p>x</p>", deck: "yes" },
+        type: SIDECAR_MESSAGES.RENDER_SLIDES,
+      }),
+    ).toThrow();
+    expect(() =>
+      normalizeDesktopSidecarMessage({
+        input: { html: "<p>x</p>", editable: "yes" },
         type: SIDECAR_MESSAGES.RENDER_SLIDES,
       }),
     ).toThrow();

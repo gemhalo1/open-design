@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { installMockOpenDesignHost } from '@open-design/host/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ANNOTATION_EVENT } from '../../src/components/PreviewDrawOverlay';
 
@@ -2560,6 +2561,125 @@ describe('FileViewer SVG artifacts', () => {
     expect(downloadItems).not.toContain('Export as PPTX (images)');
     expect(downloadItems).not.toContain('Export as PPTX (editable)');
     expect(downloadItems).not.toContain('Export as Markdown');
+  });
+
+  it('shows PPTX export for freeform .slide decks the viewer already treats as decks', () => {
+    const file = baseFile({
+      name: 'slides.html',
+      path: 'slides.html',
+      mime: 'text/html',
+      kind: 'html',
+      artifactManifest: {
+        version: 1,
+        kind: 'html',
+        title: 'Slides',
+        entry: 'slides.html',
+        renderer: 'html',
+        exports: ['html'],
+      },
+    });
+
+    render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={file}
+        liveHtml='<html><body><section class="slide">One</section><section class="slide">Two</section></body></html>'
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /download/i }));
+
+    const downloadItems = screen.getAllByRole('menuitem').map((item) => item.textContent ?? '');
+    expect(downloadItems).toContain('Export as PPTX');
+  });
+
+  it('opens a PPTX mode dialog and defaults to editable export', async () => {
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:pptx'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const restoreHost = installMockOpenDesignHost();
+    const fetchMock = vi.fn(async () => new Response('PK-editable-pptx', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const file = baseFile({
+      name: 'slides.html',
+      path: 'slides.html',
+      mime: 'text/html',
+      kind: 'html',
+      artifactManifest: {
+        version: 1,
+        kind: 'html',
+        title: 'Slides',
+        entry: 'slides.html',
+        renderer: 'html',
+        exports: ['html'],
+      },
+    });
+
+    try {
+      render(
+        <FileViewer
+          projectId="project-1"
+          projectKind="prototype"
+          file={file}
+          liveHtml='<html><body><section class="slide">One</section><section class="slide">Two</section></body></html>'
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /download/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /Export as PPTX/i }));
+
+      const dialog = await screen.findByRole('dialog', { name: /Export as PPTX/i });
+      const options = within(dialog).getAllByRole('radio') as HTMLInputElement[];
+      const editableOption = options.find((option) => option.value === 'editable');
+      const screenshotOption = options.find((option) => option.value === 'screenshot');
+      expect(editableOption).toBeTruthy();
+      expect(screenshotOption).toBeTruthy();
+      expect(editableOption!.checked).toBe(true);
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /^Export$/i }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/projects/project-1/export/pptx',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({
+              fileName: 'slides.html',
+              title: 'slides',
+              deck: true,
+              editable: true,
+            }),
+          }),
+        );
+      });
+    } finally {
+      restoreHost();
+      if (originalCreateObjectUrl) {
+        Object.defineProperty(URL, 'createObjectURL', {
+          configurable: true,
+          value: originalCreateObjectUrl,
+        });
+      } else {
+        Reflect.deleteProperty(URL, 'createObjectURL');
+      }
+      if (originalRevokeObjectUrl) {
+        Object.defineProperty(URL, 'revokeObjectURL', {
+          configurable: true,
+          value: originalRevokeObjectUrl,
+        });
+      } else {
+        Reflect.deleteProperty(URL, 'revokeObjectURL');
+      }
+    }
   });
 
   it('does not show an export-started toast when desktop PDF export is canceled', async () => {
