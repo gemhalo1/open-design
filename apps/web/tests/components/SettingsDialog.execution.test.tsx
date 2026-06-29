@@ -417,15 +417,14 @@ describe('SettingsDialog execution settings BYOK interactions', () => {
     expect(dialog.classList.contains('settings-fullscreen')).toBe(false);
   });
 
-  it('renders BYOK protocol tabs and toggles API key visibility', () => {
+  it('renders BYOK provider preset tabs and toggles API key visibility', () => {
     renderSettingsDialog();
 
+    expect(screen.getByRole('tablist', { name: en['settings.protocolAria'] })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Anthropic' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tab', { name: 'OpenAI' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Azure OpenAI' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Google Gemini' })).toBeTruthy();
-    expect(screen.getByText('Protocols')).toBeTruthy();
-    expect(screen.getByText('Gateways')).toBeTruthy();
     expect(screen.getByLabelText('Gateway preset')).toBeTruthy();
     expect(screen.getByLabelText('Model')).toBeTruthy();
     const baseUrlInput = screen.getByLabelText('Base URL') as HTMLInputElement;

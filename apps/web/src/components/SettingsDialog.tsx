@@ -2336,17 +2336,24 @@ export function SettingsDialog({
     },
     {
       id: 'google-ai-studio',
-      title: 'Google AI Studio',
+      title: 'Google Gemini',
       protocol: 'google',
       baseUrl: 'https://generativelanguage.googleapis.com',
       model: 'gemini-3.5-flash',
     },
     {
       id: 'ollama',
-      title: 'Ollama',
+      title: 'Ollama Cloud',
       protocol: 'ollama',
-      baseUrl: 'http://localhost:11434',
-      model: 'gemma3:4b',
+      baseUrl: 'https://ollama.com',
+      model: 'gpt-oss:120b',
+    },
+    {
+      id: 'azure',
+      title: 'Azure OpenAI',
+      protocol: 'azure',
+      baseUrl: '',
+      model: '',
     },
     {
       id: 'siliconflow',
