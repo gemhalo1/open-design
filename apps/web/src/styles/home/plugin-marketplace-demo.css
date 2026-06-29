@@ -1363,6 +1363,26 @@
   background: color-mix(in srgb, var(--text) 2%, var(--bg));
 }
 
+.community-template-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 14px 0 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.community-template-card__foot span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .community-template-card__status {
   flex: 0 0 auto;
   width: 10px;

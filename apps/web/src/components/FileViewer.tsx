@@ -223,6 +223,16 @@ type DeployResultCard = {
   status: string;
   message?: string;
 };
+type ArtifactVersionSnapshot = {
+  id: string;
+  label: string;
+  title: string;
+  time: string;
+  author: string;
+  source: string;
+  summary: string;
+  isCurrent?: boolean;
+};
 const MAX_BRIDGE_COORDINATE = 1_000_000;
 const PREVIEW_VIEWPORT_PRESETS: PreviewViewportPreset[] = [
   {
@@ -267,6 +277,49 @@ const COMMENT_SIDE_DOCK_STACKED_HEIGHT_DEDUCTION =
   (COMMENT_SIDE_DOCK_PADDING * 2) + COMMENT_SIDE_DOCK_GAP + COMMENT_SIDE_DOCK_STACKED_PANEL_HEIGHT;
 const COMMENT_SIDE_DOCK_STACKED_COLLAPSED_HEIGHT_DEDUCTION =
   (COMMENT_SIDE_DOCK_PADDING * 2) + COMMENT_SIDE_DOCK_GAP + COMMENT_SIDE_DOCK_STACKED_RAIL_HEIGHT;
+
+function buildArtifactVersionDemo(fileName: string, projectName?: string): ArtifactVersionSnapshot[] {
+  const baseName = fileName.split('/').pop()?.replace(/\.[^.]+$/, '') || projectName || 'Artifact';
+  return [
+    {
+      id: 'v4',
+      label: 'v4',
+      title: '当前版本',
+      time: '刚刚',
+      author: '你',
+      source: '手动保存',
+      summary: `保留 ${baseName} 当前画布、评论和导出设置。`,
+      isCurrent: true,
+    },
+    {
+      id: 'v3',
+      label: 'v3',
+      title: '优化首屏布局',
+      time: '12 分钟前',
+      author: 'Open Design Agent',
+      source: 'Agent 生成',
+      summary: '调整标题层级、主视觉比例和底部信息密度。',
+    },
+    {
+      id: 'v2',
+      label: 'v2',
+      title: '补充协作反馈',
+      time: '42 分钟前',
+      author: '李娜',
+      source: '评论回写',
+      summary: '根据团队评论更新文案，保留原始版式。',
+    },
+    {
+      id: 'v1',
+      label: 'v1',
+      title: '初始生成',
+      time: '今天 10:24',
+      author: 'Open Design Agent',
+      source: 'Prompt 生成',
+      summary: '由第一轮需求生成的初始文件快照。',
+    },
+  ];
+}
 
 // The five basic style facets the inspect panel exposes. Kept narrow on
 // purpose — open-slide's design tokens panel only edits global tokens, so
@@ -4793,6 +4846,9 @@ function HtmlViewer({
   const [presentMenuOpen, setPresentMenuOpen] = useState(false);
   const [deployMenuOpen, setDeployMenuOpen] = useState(false);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const [versionPanelOpen, setVersionPanelOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState('v4');
+  const [versionActionNote, setVersionActionNote] = useState<string | null>(null);
   const [unifiedActionTab, setUnifiedActionTab] = useState<'share' | 'export' | 'send'>('share');
   const [shareAccess, setShareAccess] = useState<'private' | 'workspace' | 'everyone'>('private');
   const [shareAccessMenuOpen, setShareAccessMenuOpen] = useState(false);
@@ -4817,6 +4873,12 @@ function HtmlViewer({
   }, [shareAccess]);
   const [templateDescription, setTemplateDescription] = useState('');
   const [templateSaveError, setTemplateSaveError] = useState<string | null>(null);
+  const artifactVersionSnapshots = useMemo(
+    () => buildArtifactVersionDemo(file.name, projectName),
+    [file.name, projectName],
+  );
+  const selectedVersionSnapshot =
+    artifactVersionSnapshots.find((item) => item.id === selectedVersionId) ?? artifactVersionSnapshots[0];
   const [deployment, setDeployment] = useState<WebDeploymentInfo | null>(null);
   const [deploymentsByProvider, setDeploymentsByProvider] = useState<Partial<Record<WebDeployProviderId, WebDeploymentInfo>>>({});
   const [deployModalOpen, setDeployModalOpen] = useState(false);
@@ -7131,6 +7193,15 @@ function HtmlViewer({
   }, [deployMenuOpen, downloadMenuOpen]);
 
   useEffect(() => {
+    if (!versionPanelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setVersionPanelOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [versionPanelOpen]);
+
+  useEffect(() => {
     if (!inTabPresent) return;
     const bodyStyle = document.body.style;
     const previousChromeHeight = bodyStyle.getPropertyValue('--workspace-tabs-chrome-height');
@@ -8993,6 +9064,29 @@ function HtmlViewer({
             </div>
           ) : null}
           {rawCanShare || rawCanDownload ? (
+            <button
+              type="button"
+              className={`chrome-action chrome-action-secondary chrome-action-with-label chrome-action-text-only${versionPanelOpen ? ' is-active' : ''}`}
+              aria-expanded={versionPanelOpen}
+              aria-label="历史版本"
+              onClick={() => {
+                setDeployMenuOpen(false);
+                setDownloadMenuOpen(false);
+                setShareAccessMenuOpen(false);
+                setVersionPanelOpen((v) => {
+                  if (!v) {
+                    setSelectedVersionId('v4');
+                    setVersionActionNote(null);
+                  }
+                  return !v;
+                });
+              }}
+            >
+              <RemixIcon name="history-line" size={15} />
+              <span>历史版本</span>
+            </button>
+          ) : null}
+          {rawCanShare || rawCanDownload ? (
             <div className="chrome-file-action-menus" ref={shareRef}>
               <div className="share-menu chrome-share-menu chrome-share-menu--unified">
                 <button
@@ -9287,6 +9381,90 @@ function HtmlViewer({
             </div>
           ) : null}
         </>)}
+      {versionPanelOpen ? (
+        <aside className="artifact-version-panel" aria-label="历史版本">
+          <header className="artifact-version-panel__head">
+            <div>
+              <p>历史版本</p>
+              <strong>{file.name.split('/').pop() || file.name}</strong>
+            </div>
+            <button
+              type="button"
+              className="artifact-version-panel__close"
+              aria-label="关闭历史版本"
+              onClick={() => setVersionPanelOpen(false)}
+            >
+              <RemixIcon name="close-line" size={17} />
+            </button>
+          </header>
+          <div className="artifact-version-panel__preview" aria-label="版本预览">
+            {source ? (
+              <iframe
+                title="版本预览"
+                srcDoc={source}
+                sandbox="allow-scripts allow-same-origin"
+              />
+            ) : null}
+            <div className="artifact-version-panel__preview-caption">
+              <span>{selectedVersionSnapshot?.label ?? 'v4'}</span>
+              <strong>{selectedVersionSnapshot?.title ?? '当前版本'}</strong>
+            </div>
+          </div>
+          {versionActionNote ? (
+            <p className="artifact-version-panel__note">{versionActionNote}</p>
+          ) : null}
+          <div className="artifact-version-list">
+            {artifactVersionSnapshots.map((snapshot) => (
+              <button
+                key={snapshot.id}
+                type="button"
+                className={`artifact-version-card${selectedVersionId === snapshot.id ? ' is-selected' : ''}`}
+                aria-pressed={selectedVersionId === snapshot.id}
+                onClick={() => {
+                  setSelectedVersionId(snapshot.id);
+                  setVersionActionNote(null);
+                }}
+              >
+                <span className="artifact-version-card__mark">{snapshot.label}</span>
+                <span className="artifact-version-card__body">
+                  <span className="artifact-version-card__title">
+                    {snapshot.title}
+                    {snapshot.isCurrent ? <em>当前</em> : null}
+                  </span>
+                  <span className="artifact-version-card__meta">
+                    修改人：{snapshot.author} · {snapshot.time} · {snapshot.source}
+                  </span>
+                  <span className="artifact-version-card__summary">{snapshot.summary}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <footer className="artifact-version-panel__foot">
+            <button
+              type="button"
+              className="artifact-version-panel__restore"
+              disabled={viewerOnly || selectedVersionSnapshot?.isCurrent}
+              title={viewerOnly ? viewerOnlyDisabledTitle : undefined}
+              onClick={() => {
+                if (!selectedVersionSnapshot) return;
+                setVersionActionNote(`已恢复到 ${selectedVersionSnapshot.label}，当前状态已自动保存为新版本。`);
+              }}
+            >
+              <RemixIcon name="arrow-go-back-line" size={15} />
+              恢复此版本
+            </button>
+            <button
+              type="button"
+              className="artifact-version-panel__copy"
+              disabled={viewerOnly}
+              title={viewerOnly ? viewerOnlyDisabledTitle : undefined}
+              onClick={() => setVersionActionNote('已复制为新项目，原文件保持不变。')}
+            >
+              复制为新项目
+            </button>
+          </footer>
+        </aside>
+      ) : null}
       <div className="viewer-body" ref={previewBodyRef}>
         {source === null ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>

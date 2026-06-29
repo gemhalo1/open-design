@@ -168,6 +168,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, open, onClose, 
                   setCreditsOpen(false);
                   onUpgrade?.();
                 }}
+                memberCreditNotice={cloudWorkspace && !canManageWorkspace}
               />
             ) : null}
             {accountOpen ? (

@@ -24,13 +24,14 @@ interface Props {
   onClose: () => void;
   info: CreditsInfo;
   onUpgrade: () => void;
+  memberCreditNotice?: boolean;
 }
 
 function fmt(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-export function CreditsPanel({ open, onClose, info, onUpgrade }: Props) {
+export function CreditsPanel({ open, onClose, info, onUpgrade, memberCreditNotice = false }: Props) {
   if (!open) return null;
 
   return (
@@ -63,6 +64,14 @@ export function CreditsPanel({ open, onClose, info, onUpgrade }: Props) {
           查看使用情况
           <Icon name="chevron-right" size={14} />
         </button>
+
+        {memberCreditNotice ? (
+          <div className="credits-panel__member-notice">
+            <strong>额度不足？</strong>
+            <p>你当前是 Member，不能自行续额度。需要更多额度时，可以提醒团队 Admin 提额。</p>
+            <button type="button" onClick={onClose}>提醒 Admin 提额</button>
+          </div>
+        ) : null}
       </div>
     </>
   );

@@ -121,7 +121,7 @@ import { CommunityView } from './CommunityView';
 import { resolveCommunityTemplatePreset } from './community-template-presets';
 import { ContentPlanView } from './ContentPlanView';
 import { MembersView } from './MembersView';
-import { TeamDashboardView } from './TeamDashboardView';
+import { TeamDashboardView, type TeamDashboardAutoRechargeTarget } from './TeamDashboardView';
 import { WorkspaceSettingsView } from './WorkspaceSettingsView';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
 import { EntryBlankState } from './EntryBlankState';
@@ -519,6 +519,7 @@ export function EntryShell({
   const [localModeTipDismissed, setLocalModeTipDismissed] = useState<boolean>(readLocalModeTipDismissed);
   const [cloudSignInOnly, setCloudSignInOnly] = useState(false);
   const [lowCreditsOpen, setLowCreditsOpen] = useState(false);
+  const [autoRechargeTarget, setAutoRechargeTarget] = useState<TeamDashboardAutoRechargeTarget | null>(null);
   // Invitee acceptance flow (email link → 账号校验 → 确认加入 → 开始协作).
   const [inviteFlowOpen, setInviteFlowOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<InviteRole>('editor');
@@ -554,6 +555,7 @@ export function EntryShell({
   const cloudWorkspace = demoUseMode === 'cloud';
   const canManageWorkspace = cloudWorkspace && canManageWorkspaceScenario(demoScenario);
   const canOwnWorkspace = cloudWorkspace && (demoScenario === 'home' || demoScenario === 'owner');
+  const canEditTeamProjects = cloudWorkspace && demoScenario !== 'viewer' && demoScenario !== 'invite-viewer';
 
   useEffect(() => {
     if (cloudWorkspace) return;
@@ -974,7 +976,15 @@ export function EntryShell({
           navigate({ kind: 'home', view: 'home' });
         }
       }}
-      onLowCredits={() => setLowCreditsOpen(true)}
+      onLowCredits={() => {
+        setAutoRechargeTarget(null);
+        setLowCreditsOpen(true);
+      }}
+      onAutoRecharge={(scope) => {
+        setAutoRechargeTarget(scope === 'member' ? { kind: 'member', name: '李娜', role: 'Editor' } : { kind: 'team' });
+        setDemoPlan('team');
+        setLowCreditsOpen(true);
+      }}
       onAcceptInvite={(role) => {
         setInviteRole(role);
         setInviteFlowOpen(true);
@@ -988,7 +998,7 @@ export function EntryShell({
         // a fresh sign-up starts on 免费版; an invited user joins a 团队版.
         if (s === 'onboarding-new') setDemoPlan('free');
         else if (s !== 'home') setDemoPlan(demoUseMode === 'local' ? 'max' : 'team');
-        if (s === 'home') {
+        if (s === 'home' || s === 'invite-viewer') {
           navigate({ kind: 'home', view: 'home' });
         } else if (s === 'onboarding-new' || isInviteScenario(s)) {
           window.history.replaceState(null, '', isInviteScenario(s) ? '/onboarding#invite' : '/onboarding');
@@ -1003,17 +1013,24 @@ export function EntryShell({
       {demoBar}
       <InsufficientCreditsDialog
         open={lowCreditsOpen}
-        plan={demoPlan}
-        onClose={() => setLowCreditsOpen(false)}
+        plan={autoRechargeTarget ? 'team' : demoPlan}
+        onClose={() => {
+          setLowCreditsOpen(false);
+          setAutoRechargeTarget(null);
+        }}
         onUpgrade={(target) => {
           setLowCreditsOpen(false);
+          setAutoRechargeTarget(null);
           setDemoPlan(target);
           fireCelebration('升级生效，额度已提升');
         }}
         onBuyPack={(packLabel) => {
           setLowCreditsOpen(false);
+          setAutoRechargeTarget(null);
           fireCelebration(packLabel.includes('自动充值') ? packLabel : `${packLabel}已到账，额度已提升`);
         }}
+        autoRechargeScope={autoRechargeTarget?.kind ?? 'team'}
+        autoRechargeMemberName={autoRechargeTarget?.kind === 'member' ? autoRechargeTarget.name : undefined}
       />
       <InviteAcceptanceFlow
         open={inviteFlowOpen}
@@ -1041,14 +1058,15 @@ export function EntryShell({
     const inviteScenario = isInviteScenario(demoScenario)
       ? demoScenario
       : null;
+    const inviteRequiresOnboarding = inviteScenario === 'invite-editor-new';
     return (
       <div className="entry-shell entry-shell--no-header entry-shell--onboarding">
         <main className="entry-onboarding-modal" aria-label={t('settings.welcomeTitle')}>
-          {inviteScenario ? (
+          {inviteScenario && !inviteRequiresOnboarding ? (
             <WorkspaceInviteFlow
               key={`${inviteScenario}-${demoUseMode}-${demoPlan}`}
-              scenario={inviteScenario}
-              initiallySignedIn={demoUseMode === 'cloud' && demoPlan === 'team'}
+              scenario="invite-editor"
+              initiallySignedIn={inviteScenario === 'invite-editor-existing' || (demoUseMode === 'cloud' && demoPlan === 'team')}
             />
           ) : (
             <OnboardingView
@@ -1068,6 +1086,7 @@ export function EntryShell({
               onFinish={finishOnboarding}
               onThemeChange={onThemeChange}
               finishAfterCloudSignIn={cloudSignInOnly}
+              compactInviteOnboarding={inviteRequiresOnboarding}
               onGoBuild={() => {
                 onCompleteOnboarding();
                 setPendingDesignSystemCreateEntry('onboarding');
@@ -1256,6 +1275,7 @@ export function EntryShell({
                   onDelete={onDeleteProject}
                   onRename={onRenameProject}
                   canAssignInviteRoles={canManageWorkspace}
+                  canManageProjectCollection={canEditTeamProjects}
                 />
               )}
             </div>
@@ -1266,10 +1286,18 @@ export function EntryShell({
               <MembersView solo={isSolo} />
             </div>
             <div data-testid="entry-view-dashboard" data-active={view === 'dashboard' ? 'true' : 'false'} {...inactiveViewProps(view === 'dashboard')}>
-              <TeamDashboardView />
+              <TeamDashboardView
+                isAdmin={canManageWorkspace}
+                isTeamPlan={demoPlan === 'team'}
+                onAutoRecharge={(target) => {
+                  setAutoRechargeTarget(target);
+                  setDemoPlan('team');
+                  setLowCreditsOpen(true);
+                }}
+              />
             </div>
             <div data-testid="entry-view-workspace-settings" data-active={view === 'workspace-settings' ? 'true' : 'false'} {...inactiveViewProps(view === 'workspace-settings')}>
-              <WorkspaceSettingsView />
+              <WorkspaceSettingsView hasActiveSubscription={demoPlan === 'team'} />
             </div>
             <div data-testid="entry-view-design-systems" data-active={view === 'design-systems' ? 'true' : 'false'} {...inactiveViewProps(view === 'design-systems')}>
               {designSystemsLoading ? (
@@ -1366,6 +1394,7 @@ function OnboardingView({
   onFinish,
   onThemeChange,
   finishAfterCloudSignIn = false,
+  compactInviteOnboarding = false,
   onGoBuild,
 }: {
   config: AppConfig;
@@ -1387,6 +1416,7 @@ function OnboardingView({
   onFinish: () => void;
   onThemeChange: (theme: AppTheme) => void;
   finishAfterCloudSignIn?: boolean;
+  compactInviteOnboarding?: boolean;
   onGoBuild: () => void;
 }) {
   const t = useT();
@@ -2815,19 +2845,21 @@ function OnboardingView({
                     setProfile((current) => ({ ...current, role: value }));
                   }}
                 />
-                <OnboardingChipField
-                  label={t('settings.onboardingOrgSizeLabel')}
-                  value={profile.orgSize}
-                  options={orgSizeOptions}
-                  onChange={(value) => {
-                    if (typeof value === 'string' && value) {
-                      emitOnboardingClick('organization_size', 'select_option', {
-                        organization_size: value,
-                      });
-                    }
-                    setProfile((current) => ({ ...current, orgSize: value }));
-                  }}
-                />
+                {compactInviteOnboarding ? null : (
+                  <OnboardingChipField
+                    label={t('settings.onboardingOrgSizeLabel')}
+                    value={profile.orgSize}
+                    options={orgSizeOptions}
+                    onChange={(value) => {
+                      if (typeof value === 'string' && value) {
+                        emitOnboardingClick('organization_size', 'select_option', {
+                          organization_size: value,
+                        });
+                      }
+                      setProfile((current) => ({ ...current, orgSize: value }));
+                    }}
+                  />
+                )}
                 <OnboardingChipField
                   label={t('settings.onboardingUseCaseLabel')}
                   value={profile.useCase}
@@ -2853,19 +2885,21 @@ function OnboardingView({
                     setProfile((current) => ({ ...current, useCase: value }));
                   }}
                 />
-                <OnboardingChipField
-                  label={t('settings.onboardingSourceLabel')}
-                  value={profile.source}
-                  options={sourceOptions}
-                  onChange={(value) => {
-                    if (typeof value === 'string' && value) {
-                      emitOnboardingClick('hear_about_us', 'select_option', {
-                        discovery_source: value,
-                      });
-                    }
-                    setProfile((current) => ({ ...current, source: value }));
-                  }}
-                />
+                {compactInviteOnboarding ? null : (
+                  <OnboardingChipField
+                    label={t('settings.onboardingSourceLabel')}
+                    value={profile.source}
+                    options={sourceOptions}
+                    onChange={(value) => {
+                      if (typeof value === 'string' && value) {
+                        emitOnboardingClick('hear_about_us', 'select_option', {
+                          discovery_source: value,
+                        });
+                      }
+                      setProfile((current) => ({ ...current, source: value }));
+                    }}
+                  />
+                )}
               </div>
             </div>
           ) : null}

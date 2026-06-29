@@ -46,7 +46,7 @@
   filter: brightness(1.05);
 }
 
-/* Seats hint strip (UC-11 echo, display only). */
+/* Seats and team-plan summary (demo billing control). */
 .members__toast {
   align-self: flex-start;
   padding: 9px 16px;
@@ -64,23 +64,150 @@
 }
 
 .members__seats {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--bg-subtle);
+  background: var(--bg-panel);
   color: var(--text-muted);
   font-size: 12.5px;
+}
+.members__seats-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.members__seats-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+.members__seats-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.members__seats-copy span {
+  color: var(--text);
+  font-size: 13px;
+}
+.members__seats-copy small {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 .members__seats strong {
   color: var(--text);
   font-weight: 600;
 }
 .members__seats svg {
-  color: var(--text-soft);
   flex: none;
+}
+.members__seat-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-subtle);
+}
+.members__seat-stepper button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.members__seat-stepper button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.members__seat-stepper strong {
+  min-width: 52px;
+  text-align: center;
+  font-size: 13px;
+}
+.members__seats-benefits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+.members__seats-benefits span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 12px;
+}
+.members__seats-benefits svg {
+  color: var(--accent);
+}
+.members__auto-recharge {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-subtle));
+}
+.members__auto-recharge-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.members__auto-recharge strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.2;
+}
+.members__auto-recharge p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.members__auto-recharge button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 /* Card-like panel that wraps the rows. */
@@ -309,6 +436,21 @@
 }
 
 @media (max-width: 560px) {
+  .members__seats-main {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .members__seat-stepper {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .members__auto-recharge {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .members__auto-recharge button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
   .members__col--joined {
     display: none;
   }

@@ -13,13 +13,15 @@ export type DemoScenario =
   | 'viewer'
   | 'onboarding-new'
   | 'invite-editor'
+  | 'invite-editor-existing'
+  | 'invite-editor-new'
   | 'invite-admin'
   | 'invite-viewer';
 
 export function isInviteScenario(
   s: DemoScenario,
-): s is Extract<DemoScenario, 'invite-editor'> {
-  return s === 'invite-editor';
+): s is Extract<DemoScenario, 'invite-editor' | 'invite-editor-existing' | 'invite-editor-new'> {
+  return s === 'invite-editor' || s === 'invite-editor-existing' || s === 'invite-editor-new';
 }
 
 export function isViewerScenario(s: DemoScenario): boolean {
@@ -55,6 +57,8 @@ interface Props {
   onUseMode: (mode: DemoUseMode) => void;
   /** Fires the "积分不足" upgrade/top-up flow. */
   onLowCredits: () => void;
+  /** Opens the top-tier auto-recharge demo flow. */
+  onAutoRecharge?: (scope: 'team' | 'member') => void;
   /** Launches the invitee acceptance flow (email link → join workspace). */
   onAcceptInvite: (role: InviteRole) => void;
   /** Demo-only collaboration hooks consumed by project pages when mounted. */
@@ -72,8 +76,9 @@ const SCENARIO_CHIPS: Array<{ id: DemoScenario; label: string }> = [
 ];
 
 const ROLE_CHIPS: Array<{ id: DemoScenario; label: string; invite?: boolean }> = [
-  { id: 'invite-editor', label: '接受邀请网页端', invite: true },
-  { id: 'invite-viewer', label: '接受邀请客户端', invite: true },
+  { id: 'invite-editor-existing', label: '接受邀请网页端', invite: true },
+  { id: 'invite-editor-new', label: '接受邀请客户端未注册', invite: true },
+  { id: 'invite-viewer', label: '接受邀请客户端已注册', invite: true },
 ];
 
 const VIEW_CHIPS: Array<{ id: DemoScenario; label: string }> = [
@@ -132,7 +137,7 @@ function labelForUseMode(useMode: DemoUseMode): string {
   return USE_MODE_CHIPS.find((chip) => chip.id === useMode)?.label ?? 'Cloud';
 }
 
-function Bar({ page, onPage, scenario, onScenario, plan, onPlan, useMode, onUseMode, onLowCredits, onAcceptInvite, onQueueDemo, onEditDemo }: Props) {
+function Bar({ page, onPage, scenario, onScenario, plan, onPlan, useMode, onUseMode, onLowCredits, onAutoRecharge, onAcceptInvite, onQueueDemo, onEditDemo }: Props) {
   const [collapsed, setCollapsed] = useState(readCollapsedState);
   const availablePlans = useMode === 'local'
     ? PLAN_CHIPS.filter((chip) => chip.id !== 'team')
@@ -270,6 +275,20 @@ function Bar({ page, onPage, scenario, onScenario, plan, onPlan, useMode, onUseM
                 {c.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="demo-bar__divider" />
+
+        <div className="demo-bar__group">
+          <span className="demo-bar__label">自动充值</span>
+          <div className="demo-bar__chips">
+            <button type="button" className="demo-bar__chip" onClick={() => onAutoRecharge?.('team')}>
+              所有员工
+            </button>
+            <button type="button" className="demo-bar__chip" onClick={() => onAutoRecharge?.('member')}>
+              单个员工
+            </button>
           </div>
         </div>
 

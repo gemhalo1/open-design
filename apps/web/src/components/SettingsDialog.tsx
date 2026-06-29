@@ -5092,6 +5092,7 @@ export function SettingsDialog({
             onPlan={onDemoPlan}
             onUseMode={onDemoUseMode}
             onLowCredits={onDemoLowCredits ?? (() => {})}
+            onAutoRecharge={onDemoLowCredits ? (() => onDemoLowCredits()) : undefined}
             onAcceptInvite={onDemoAcceptInvite ?? (() => {})}
             onQueueDemo={onDemoQueue}
             onEditDemo={onDemoEdit}

@@ -37,6 +37,13 @@ const MOCK_MEMBERS: Member[] = [
 ];
 
 const ROLE_OPTIONS: Role[] = ['所有者', '管理员', '成员'];
+const MIN_TEAM_SEATS = 3;
+const TEAM_PLAN_COPY = [
+  '资产共享与管理：项目 / 设计系统 / 插件',
+  '协作：评论 / 变更 / 历史版本',
+  '基于角色的权限管理：Owner / Manager / Editor / Viewer',
+  '团队用量面板与计费管理',
+];
 
 interface PendingInvite {
   email: string;
@@ -57,6 +64,8 @@ export function MembersView({ solo = false }: { solo?: boolean }) {
     Object.fromEntries(MOCK_MEMBERS.map((m) => [m.id, m.role])),
   );
   const [removedMemberIds, setRemovedMemberIds] = useState<Set<string>>(() => new Set());
+  const [teamSeats, setTeamSeats] = useState(MIN_TEAM_SEATS);
+  const [teamTier, setTeamTier] = useState({ name: 'Team 80', tokens: 80 });
 
   // A solo plan that hasn't locally upgraded behaves single-seat.
   const isSolo = solo && !upgraded;
@@ -65,7 +74,8 @@ export function MembersView({ solo = false }: { solo?: boolean }) {
   const members = MOCK_MEMBERS.filter((m) => activeMemberIds.has(m.id) && !removedMemberIds.has(m.id));
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const seatsUsed = members.length + pendingInvites.length;
-  const seatsTotal = isSolo ? 1 : 3;
+  const seatsTotal = isSolo ? 1 : teamSeats;
+  const teamTokenTotal = teamTier.tokens * teamSeats;
 
   function setRole(id: string, role: Role) {
     setRoles((prev) => ({ ...prev, [id]: role }));
@@ -100,18 +110,30 @@ export function MembersView({ solo = false }: { solo?: boolean }) {
     window.setTimeout(() => setToast(null), 3200);
   }
 
+  function adjustTeamSeats(delta: number) {
+    setTeamSeats((current) => Math.max(MIN_TEAM_SEATS, current + delta));
+  }
+
+  function openSeatPurchase() {
+    setUpgradeOpen(true);
+  }
+
   // "升级到团队版" confirmed → confetti, flip to team, then auto-send the
   // queued invites so they land in the member list as pending.
-  function handleUpgradeConfirm() {
+  function handleUpgradeConfirm(config?: { seatCount: number; tierName: string; tokens: number }) {
     setUpgradeOpen(false);
     setUpgraded(true);
+    if (config) {
+      setTeamSeats(config.seatCount);
+      setTeamTier({ name: config.tierName, tokens: config.tokens });
+    }
     setConfettiOn(true);
     window.setTimeout(() => setConfettiOn(false), 2600);
     if (queuedInvites.length > 0) {
       sendInvites(queuedInvites);
       setQueuedInvites([]);
     } else {
-      setToast('已升级到团队版');
+      setToast(`已升级到 ${config?.tierName ?? teamTier.name}`);
       window.setTimeout(() => setToast(null), 3200);
     }
   }
@@ -135,16 +157,53 @@ export function MembersView({ solo = false }: { solo?: boolean }) {
       {toast ? <div className="members__toast">{toast}</div> : null}
 
       <div className="members__seats">
-        <Icon name="info" size={14} />
-        {isSolo ? (
-          <span>
-            席位 <strong>{seatsUsed}/{seatsTotal}</strong> 已用 · 免费版仅含 1 个席位，升级团队版可邀请协作
+        <div className="members__seats-main">
+          <span className="members__seats-icon" aria-hidden>
+            <Icon name="info" size={14} />
           </span>
-        ) : (
-          <span>
-            席位 <strong>{seatsUsed}/{seatsTotal}</strong> 已用 · 团队版默认含 3 个席位
-          </span>
-        )}
+          <div className="members__seats-copy">
+            <span>
+              席位 <strong>{seatsUsed}/{seatsTotal}</strong> 已用 ·{' '}
+              {isSolo ? '免费版仅含 1 个席位，升级团队版可邀请协作' : `${teamTier.name} · ${teamTokenTotal} Token / 团队`}
+            </span>
+            <small>{isSolo ? '团队版最少 3 个席位，按席位计费。' : '最少 3 个席位，可按团队增长继续增加。'}</small>
+          </div>
+          {!isSolo ? (
+            <div className="members__seat-stepper" aria-label="团队席位数量">
+              <button
+                type="button"
+                onClick={() => adjustTeamSeats(-1)}
+                disabled={teamSeats <= MIN_TEAM_SEATS}
+                aria-label="减少席位"
+              >
+                -
+              </button>
+              <strong>{teamSeats} seats</strong>
+              <button type="button" onClick={openSeatPurchase} aria-label="增加席位">
+                +
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <div className="members__seats-benefits">
+          {TEAM_PLAN_COPY.map((item) => (
+            <span key={item}>
+              <Icon name="check" size={12} /> {item}
+            </span>
+          ))}
+        </div>
+        {!isSolo ? (
+          <div className="members__auto-recharge">
+            <span className="members__auto-recharge-icon" aria-hidden>
+              <Icon name="refresh" size={14} />
+            </span>
+            <div>
+              <strong>建议开启自动充值</strong>
+              <p>团队额度低于阈值时自动补充，避免协作和 Agent 任务中断。</p>
+            </div>
+            <button type="button">开启自动充值</button>
+          </div>
+        ) : null}
       </div>
 
       <div className="members__panel">
@@ -247,6 +306,9 @@ export function MembersView({ solo = false }: { solo?: boolean }) {
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}
         onConfirm={handleUpgradeConfirm}
+        initialSeatCount={isSolo ? teamSeats : teamSeats + 1}
+        minSeatCount={isSolo ? MIN_TEAM_SEATS : teamSeats + 1}
+        mode={isSolo ? 'upgrade' : 'seats'}
       />
       {confettiOn ? <Confetti /> : null}
     </div>

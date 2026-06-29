@@ -54,11 +54,22 @@ interface Props {
   onUpgrade: (target: DemoPlan) => void;
   /** Saved an auto-recharge setting for top tiers. */
   onBuyPack: (packLabel: string) => void;
+  autoRechargeScope?: 'team' | 'member';
+  autoRechargeMemberName?: string;
 }
 
-export function InsufficientCreditsDialog({ open, plan, onClose, onUpgrade, onBuyPack }: Props) {
+export function InsufficientCreditsDialog({
+  open,
+  plan,
+  onClose,
+  onUpgrade,
+  onBuyPack,
+  autoRechargeScope = 'team',
+  autoRechargeMemberName = '李娜',
+}: Props) {
   const targets = UPGRADE_TARGETS[plan];
   const isTopTier = targets.length === 0;
+  const isMemberRecharge = autoRechargeScope === 'member';
 
   const [selectedTier, setSelectedTier] = useState<DemoPlan>(targets[0]?.plan ?? 'team');
   const [selectedLimit, setSelectedLimit] = useState<AutoRechargeLimit>('unlimited');
@@ -81,12 +92,18 @@ export function InsufficientCreditsDialog({ open, plan, onClose, onUpgrade, onBu
         <h2 className="credit-upgrade__title">{isTopTier ? '自动充值' : '积分已用尽'}</h2>
         <p className="credit-upgrade__subtitle">
           {isTopTier
-            ? '保存配置不会立即扣费；余额不高于 US$5 时才会扣费。'
+            ? isMemberRecharge
+              ? `为 ${autoRechargeMemberName} 单独开启额度。保存配置不会立即扣费；该成员余额低于阈值时才会自动补充。`
+              : '默认为所有员工开启额度。保存配置不会立即扣费；团队余额低于阈值时才会自动补充。'
             : '继续使用需要更多积分。升级到更高版本可立即提升额度，费用按当前周期已使用天数补差价。'}
         </p>
 
         {isTopTier ? (
           <div className="credit-upgrade__auto">
+            <div className="credit-upgrade__payment">
+              <span>作用范围</span>
+              <strong>{isMemberRecharge ? `${autoRechargeMemberName} · 单成员额度` : '所有员工 · 统一额度'}</strong>
+            </div>
             <div className="credit-upgrade__payment">
               <span>默认用订阅支付方式，可随时管理。</span>
               <button

@@ -1,30 +1,73 @@
 // Upgrade-to-team guidance dialog.
 //
-// Shown when a free-plan user tries to invite collaborators. Demo-only:
-// surfaces the team-plan value props and a single upgrade CTA, no billing.
+// Demo-only billing picker shown when a free-plan user tries to invite
+// collaborators. Prices are represented as seat fees and token allowance.
 
+import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  initialSeatCount?: number;
+  minSeatCount?: number;
+  mode?: 'upgrade' | 'seats';
   /** "升级到团队版" — defaults to onClose when omitted. */
-  onConfirm?: () => void;
+  onConfirm?: (config: { seatCount: number; tierId: string; tierName: string; tokens: number }) => void;
 }
 
+const DEFAULT_SEAT_COUNT = 3;
+const TEAM_TIERS = [
+  { id: 'starter', name: 'Team 40', tokens: 40, hint: '小团队协作入门' },
+  { id: 'growth', name: 'Team 80', tokens: 80, hint: '常规项目协作', recommended: true },
+  { id: 'scale', name: 'Team 220', tokens: 220, hint: '高频生成与评审' },
+];
 const TEAM_BENEFITS = [
   '资产共享与管理：项目 / 设计系统 / 插件',
   '协作：评论 / 变更 / 历史版本',
-  '基于角色的权限管理（管理员 / 编辑者 / 查看者）',
+  '基于角色的权限管理（Owner / Manager / Editor / Viewer）',
   '团队用量面板与计费管理',
-  '自定义网站部署域名',
 ];
 
-export function UpgradeTeamDialog({ open, onClose, onConfirm }: Props) {
+export function UpgradeTeamDialog({
+  open,
+  onClose,
+  onConfirm,
+  initialSeatCount = DEFAULT_SEAT_COUNT,
+  minSeatCount = DEFAULT_SEAT_COUNT,
+  mode = 'upgrade',
+}: Props) {
+  const [selectedTierId, setSelectedTierId] = useState('growth');
+  const [seatCount, setSeatCount] = useState(Math.max(initialSeatCount, minSeatCount));
+
+  useEffect(() => {
+    if (!open) return;
+    setSeatCount(Math.max(initialSeatCount, minSeatCount));
+  }, [initialSeatCount, minSeatCount, open]);
+
   if (!open) return null;
 
+  const selectedTier = TEAM_TIERS.find((tier) => tier.id === selectedTierId) ?? TEAM_TIERS[1];
+  const selectedTierName = selectedTier?.name ?? 'Team 80';
+  const selectedTokens = selectedTier?.tokens ?? 80;
+  const purchaseSeatsMode = mode === 'seats';
+
+  function adjustSeatCount(delta: number) {
+    setSeatCount((current) => Math.max(minSeatCount, current + delta));
+  }
+
+  function handleConfirm() {
+    onConfirm?.({
+      seatCount,
+      tierId: selectedTier?.id ?? 'growth',
+      tierName: selectedTierName,
+      tokens: selectedTokens,
+    });
+    if (!onConfirm) onClose();
+  }
+
   return (
-    <div className="entry-invite" role="dialog" aria-modal="true" aria-label="升级到团队版">
+    <div className="entry-invite" role="dialog" aria-modal="true" aria-label={purchaseSeatsMode ? '购买席位' : '升级到团队版'}>
       <div className="entry-invite__backdrop" onClick={onClose} />
       <div className="upgrade-team">
         <button
@@ -36,36 +79,84 @@ export function UpgradeTeamDialog({ open, onClose, onConfirm }: Props) {
           <Icon name="close" size={16} />
         </button>
 
-        <div className="upgrade-team__badge" aria-hidden>
-          <Icon name="share" size={20} />
+        <div className="upgrade-team__head">
+          <div className="upgrade-team__badge" aria-hidden>
+            <Icon name="share" size={20} />
+          </div>
+          <div>
+            <h2 className="upgrade-team__title">{purchaseSeatsMode ? '购买更多席位' : '选择团队版档位'}</h2>
+            <p className="upgrade-team__subtitle">
+              {purchaseSeatsMode
+                ? `新增席位会按当前团队档位计费，至少购买到 ${minSeatCount} 个席位。总用量随席位数同步增加。`
+                : `团队版按席位计费，最少 ${minSeatCount} 个席位。不同档位的核心区别是每个席位包含的 Token 用量。`}
+            </p>
+          </div>
         </div>
-        <h2 className="upgrade-team__title">邀请协作者，先升级到团队版</h2>
-        <p className="upgrade-team__subtitle">
-          你当前使用的是免费版，仅含 1 个席位。升级到团队版即可邀请同事、共享资产并进行多人协作。
-        </p>
 
-        <ul className="upgrade-team__benefits">
-          {TEAM_BENEFITS.map((b) => (
-            <li key={b} className="upgrade-team__benefit">
-              <span className="upgrade-team__check" aria-hidden>
-                <Icon name="check" size={13} />
-              </span>
-              {b}
+        <div className="upgrade-team__seat-summary">
+          <span>席位数</span>
+          <span className="upgrade-team__seat-stepper" aria-label="席位数量">
+            <button
+              type="button"
+              onClick={() => adjustSeatCount(-1)}
+              disabled={seatCount <= minSeatCount}
+              aria-label="减少席位"
+            >
+              -
+            </button>
+            <strong>{seatCount} seats</strong>
+            <button type="button" onClick={() => adjustSeatCount(1)} aria-label="增加席位">
+              +
+            </button>
+          </span>
+          <em>总用量 = 单席 Token × {seatCount}</em>
+        </div>
+
+        <div className="upgrade-team__plans" role="radiogroup" aria-label="团队版档位">
+          {TEAM_TIERS.map((tier) => {
+            const isSelected = tier.id === selectedTierId;
+
+            return (
+              <button
+                key={tier.id}
+                type="button"
+                className={`upgrade-team__plan${tier.recommended ? ' is-recommended' : ''}${isSelected ? ' is-selected' : ''}`}
+                role="radio"
+                aria-checked={isSelected ? 'true' : 'false'}
+                onClick={() => setSelectedTierId(tier.id)}
+              >
+                <span className="upgrade-team__plan-top">
+                  <strong>{tier.name}</strong>
+                  {tier.recommended ? <small>推荐</small> : null}
+                </span>
+                <span className="upgrade-team__plan-token">
+                  {tier.tokens}
+                  <small> Token / 席位</small>
+                </span>
+                <span className="upgrade-team__plan-total">
+                  {tier.tokens * seatCount} Token / 团队
+                </span>
+                <span className="upgrade-team__plan-hint">{tier.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <ul className="upgrade-team__benefits" aria-label="团队版能力">
+          {TEAM_BENEFITS.map((benefit) => (
+            <li key={benefit}>
+              <Icon name="check" size={13} />
+              <span>{benefit}</span>
             </li>
           ))}
         </ul>
 
-        <div className="upgrade-team__price">
-          <span className="upgrade-team__price-label">团队版</span>
-          <span className="upgrade-team__price-hint">3 个席位起，按席位计费</span>
-        </div>
-
         <div className="upgrade-team__foot">
           <button type="button" className="entry-invite__btn" onClick={onClose}>
-            暂不升级
+            {purchaseSeatsMode ? '暂不购买' : '暂不升级'}
           </button>
-          <button type="button" className="entry-invite__btn is-primary" onClick={onConfirm ?? onClose}>
-            <Icon name="sparkles" size={14} /> 升级到团队版
+          <button type="button" className="entry-invite__btn is-primary" onClick={handleConfirm}>
+            <Icon name="sparkles" size={14} /> {purchaseSeatsMode ? `购买 ${seatCount} seats` : `升级 ${selectedTierName}`}
           </button>
         </div>
       </div>

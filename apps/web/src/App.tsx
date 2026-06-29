@@ -2172,7 +2172,7 @@ function AppInner() {
       onDemoAcceptInvite={(role) => {
         const scenario: DemoScenario =
           role === 'editor'
-            ? 'invite-editor'
+            ? 'invite-editor-existing'
             : role === 'admin'
               ? 'invite-admin'
               : 'invite-viewer';
@@ -2331,7 +2331,7 @@ function AppInner() {
           onAcceptInvite={(role) => {
             const scenario: DemoScenario =
               role === 'editor'
-                ? 'invite-editor'
+                ? 'invite-editor-existing'
                 : role === 'admin'
                   ? 'invite-admin'
                   : 'invite-viewer';

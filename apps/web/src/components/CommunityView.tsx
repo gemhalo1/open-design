@@ -130,6 +130,13 @@ export function CommunityView({ onRemixTemplate }: CommunityViewProps) {
     return typeMatches && subtypeMatches;
   });
   const typeCount = (type: TemplateDemo['type']) => TEMPLATE_TYPE_COUNTS[type];
+  const handleTemplateAction = (template: TemplateDemo) => {
+    if (isPromptArtifact(template)) {
+      void copyTemplatePrompt(template);
+      return;
+    }
+    onRemixTemplate?.(template.id);
+  };
 
   return (
     <section className="community-template-view" aria-labelledby="community-template-title">
@@ -201,6 +208,18 @@ export function CommunityView({ onRemixTemplate }: CommunityViewProps) {
             >
               <TemplateThumb template={template} />
             </div>
+            <footer className="community-template-card__foot">
+              <span>{template.meta}</span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleTemplateAction(template);
+                }}
+              >
+                {templateActionLabel(template)}
+              </button>
+            </footer>
           </article>
         ))}
       </div>
@@ -208,7 +227,7 @@ export function CommunityView({ onRemixTemplate }: CommunityViewProps) {
         <TemplatePreviewModal
           template={previewTemplate}
           onClose={() => setPreviewTemplate(null)}
-          onRemix={() => onRemixTemplate?.(previewTemplate.id)}
+          onUse={() => handleTemplateAction(previewTemplate)}
         />
       ) : null}
     </section>
@@ -218,11 +237,11 @@ export function CommunityView({ onRemixTemplate }: CommunityViewProps) {
 function TemplatePreviewModal({
   template,
   onClose,
-  onRemix,
+  onUse,
 }: {
   template: TemplateDemo;
   onClose: () => void;
-  onRemix: () => void;
+  onUse: () => void;
 }) {
   return (
     <div className="community-template-preview" role="presentation" onMouseDown={onClose}>
@@ -249,10 +268,25 @@ function TemplatePreviewModal({
         />
         <footer className="community-template-preview__foot">
           <span>{template.meta}</span>
-          <button type="button" onClick={onRemix}>Remix</button>
+          <button type="button" onClick={onUse}>{templateActionLabel(template)}</button>
         </footer>
       </section>
     </div>
+  );
+}
+
+function isPromptArtifact(template: TemplateDemo): boolean {
+  return template.type === 'Image' || template.type === 'Video' || template.type === 'Audio';
+}
+
+function templateActionLabel(template: TemplateDemo): string {
+  return isPromptArtifact(template) ? 'Copy prompt' : 'Remix';
+}
+
+async function copyTemplatePrompt(template: TemplateDemo): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return;
+  await navigator.clipboard.writeText(
+    `Create a ${template.meta.toLowerCase()} artifact titled "${template.title}" for Open Design. Use a polished composition, clear hierarchy, and production-ready visual direction.`,
   );
 }
 

@@ -19,16 +19,48 @@ const TOKEN_RANKING = [
   { name: '王芳', role: 'Reviewer', tokens: '420K', share: 30, color: '#10b981' },
 ] as const;
 
-export function TeamDashboardView() {
+const MEMBER_CREDITS = [
+  { name: '琼羽（你）', role: 'Owner', remaining: '18,400', used: '41,600', status: '充足' },
+  { name: '张伟', role: 'Manager', remaining: '9,800', used: '24,200', status: '正常' },
+  { name: '李娜', role: 'Editor', remaining: '1,200', used: '18,900', status: '偏低' },
+  { name: '王芳', role: 'Viewer', remaining: '320', used: '6,700', status: '需续额' },
+] as const;
+
+export type TeamDashboardAutoRechargeTarget =
+  | { kind: 'team' }
+  | { kind: 'member'; name: string; role: string };
+
+type TeamDashboardViewProps = {
+  isAdmin?: boolean;
+  isTeamPlan?: boolean;
+  onAutoRecharge?: (target: TeamDashboardAutoRechargeTarget) => void;
+};
+
+export function TeamDashboardView({ isAdmin = true, isTeamPlan = false, onAutoRecharge }: TeamDashboardViewProps) {
   return (
     <div className="entry-section team-dashboard">
       <header className="entry-section__head team-dashboard__head">
         <div>
           <h1 className="entry-section__title">数据大盘</h1>
-          <p className="team-dashboard__subtitle">所有者 / 管理员可见 · Nexu 团队最近 30 天</p>
+          <p className="team-dashboard__subtitle">
+            {isAdmin ? 'Owner / Manager 可见 · Nexu 团队最近 30 天' : 'Member 视角 · 仅查看自己的额度状态'}
+          </p>
         </div>
         <span className="team-dashboard__access">UC-10</span>
       </header>
+
+      {isTeamPlan && isAdmin ? (
+        <section className="team-dashboard__recharge-callout" aria-label="自动充值引导">
+          <span className="team-dashboard__recharge-icon" aria-hidden>
+            <Icon name="refresh" size={17} />
+          </span>
+          <div>
+            <h2>开启自动充值，避免团队协作中断</h2>
+            <p>团队版升级后建议设置额度阈值。当团队额度低于阈值时自动补充，避免 Agent 任务和多人协作被打断。</p>
+          </div>
+          <button type="button" onClick={() => onAutoRecharge?.({ kind: 'team' })}>开启自动充值</button>
+        </section>
+      ) : null}
 
       <section className="team-dashboard__hero" aria-label="UC-10 数据大盘">
         <div className="team-dashboard__hero-copy">
@@ -40,6 +72,53 @@ export function TeamDashboardView() {
           <span>最近 30 天</span>
           <span>Demo data</span>
         </div>
+      </section>
+
+      <section className="team-dashboard__credit-card" aria-label="团队额度">
+        <div className="team-dashboard__token-head">
+          <div>
+            <h2>{isAdmin ? '团队成员额度' : '我的额度'}</h2>
+            <p>
+              {isAdmin
+                ? '查看每位成员的剩余额度，并为额度不足的成员续额。'
+                : '当前额度不足时，请联系 Owner 或 Manager 帮你提升额度。'}
+            </p>
+          </div>
+          <span>{isAdmin ? 'Admin' : 'Member'}</span>
+        </div>
+        {isAdmin ? (
+          <div className="team-dashboard__credit-table">
+            {MEMBER_CREDITS.map((member) => (
+              <div className="team-dashboard__credit-row" key={member.name}>
+                <div>
+                  <strong>{member.name}</strong>
+                  <span>{member.role}</span>
+                </div>
+                <div>
+                  <span>剩余</span>
+                  <strong>{member.remaining}</strong>
+                </div>
+                <div>
+                  <span>本周期已用</span>
+                  <strong>{member.used}</strong>
+                </div>
+                <em className={member.status === '需续额' ? 'is-low' : undefined}>{member.status}</em>
+                <button
+                  type="button"
+                  onClick={() => onAutoRecharge?.({ kind: 'member', name: member.name, role: member.role })}
+                >
+                  续额度
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="team-dashboard__member-credit">
+            <strong>剩余额度 320</strong>
+            <p>你当前是 Member，不能自行续额度。需要更多额度时，请联系团队 Admin。</p>
+            <button type="button">提醒 Admin 提额</button>
+          </div>
+        )}
       </section>
 
       <div className="team-dashboard__metric-grid">
@@ -84,6 +163,7 @@ export function TeamDashboardView() {
           ))}
         </div>
       </section>
+
     </div>
   );
 }

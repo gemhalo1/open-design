@@ -4980,6 +4980,38 @@
   cursor: pointer;
 }
 .credits-panel__usage:hover { color: var(--accent); }
+.credits-panel__member-notice {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-subtle));
+}
+.credits-panel__member-notice strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.2;
+}
+.credits-panel__member-notice p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.credits-panel__member-notice button {
+  justify-self: flex-start;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
 .credits-panel__console {
   display: inline-flex;
   align-items: center;
@@ -6339,18 +6371,25 @@
 .upgrade-team {
   position: relative;
   width: 100%;
-  max-width: 440px;
+  max-width: 620px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   padding: 32px 32px 26px;
   border-radius: var(--radius-lg, 16px);
   background: var(--bg-panel);
   border: 1px solid var(--border);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
   animation: entry-invite-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.upgrade-team__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding-right: 28px;
 }
 .upgrade-team__badge {
   width: 48px;
@@ -6368,59 +6407,178 @@
   color: var(--text-strong);
 }
 .upgrade-team__subtitle {
-  margin: 0;
+  margin: 8px 0 0;
   font-size: 13px;
   line-height: 1.55;
   color: var(--text-muted);
 }
-.upgrade-team__benefits {
-  list-style: none;
-  margin: 4px 0;
-  padding: 0;
+.upgrade-team__seat-summary {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.upgrade-team__benefit {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  font-size: 13px;
-  color: var(--text);
-  line-height: 1.4;
-}
-.upgrade-team__check {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
-  margin-top: 1px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, #8b5cf6 16%, transparent);
-  color: #7c3aed;
-}
-.upgrade-team__price {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px 14px;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm, 8px);
   background: var(--bg-subtle);
-  border: 1px solid var(--border-soft);
+  font-size: 13px;
+  color: var(--text-muted);
 }
-.upgrade-team__price-label {
-  font-size: 13.5px;
-  font-weight: 650;
+.upgrade-team__seat-summary strong {
   color: var(--text-strong);
+  font-size: 14px;
 }
-.upgrade-team__price-hint {
+.upgrade-team__seat-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-panel);
+}
+.upgrade-team__seat-stepper button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-subtle);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.upgrade-team__seat-stepper button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.upgrade-team__seat-stepper strong {
+  min-width: 52px;
+  text-align: center;
+}
+.upgrade-team__seat-summary em {
+  margin-left: auto;
+  font-style: normal;
+}
+.upgrade-team__plans {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.upgrade-team__plan {
+  appearance: none;
+  display: grid;
+  gap: 10px;
+  min-height: 150px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+}
+.upgrade-team__plan:hover,
+.upgrade-team__plan.is-selected {
+  border-color: color-mix(in srgb, #8b5cf6 42%, var(--border));
+  background: color-mix(in srgb, #8b5cf6 5%, var(--bg));
+}
+.upgrade-team__plan.is-selected {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #8b5cf6 16%, transparent);
+}
+.upgrade-team__plan-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.upgrade-team__plan-top strong {
+  font-size: 14px;
+}
+.upgrade-team__plan-top small {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #8b5cf6 14%, transparent);
+  color: #7c3aed;
+  font-size: 11px;
+  font-weight: 650;
+}
+.upgrade-team__plan-token {
+  color: var(--text-strong);
+  font-size: 28px;
+  font-weight: 760;
+  line-height: 1;
+}
+.upgrade-team__plan-token small {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 550;
+}
+.upgrade-team__plan-total,
+.upgrade-team__plan-hint {
   font-size: 12px;
   color: var(--text-muted);
+}
+.upgrade-team__plan-total {
+  color: var(--text);
+  font-weight: 650;
+}
+.upgrade-team__benefits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.upgrade-team__benefits li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.upgrade-team__benefits svg {
+  flex: 0 0 auto;
+  color: #7c3aed;
 }
 .upgrade-team__foot {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+
+@media (max-width: 760px) {
+  .upgrade-team {
+    max-width: calc(100vw - 24px);
+    padding: 28px 22px 22px;
+  }
+  .upgrade-team__plans {
+    grid-template-columns: 1fr;
+  }
+  .upgrade-team__seat-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 14px;
+  }
+  .upgrade-team__seat-summary em {
+    margin-left: 0;
+  }
+  .upgrade-team__benefits {
+    grid-template-columns: 1fr;
+  }
 }

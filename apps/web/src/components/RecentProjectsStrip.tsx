@@ -47,8 +47,10 @@ interface Props {
   space?: SpaceKind;
   /** Demo-only: Cloud has team visibility, CLI/BYOK does not. */
   collaborationEnabled?: boolean;
-  /** Owner / Manager can choose invited roles; Editor / Viewer invite members. */
+  /** Owner / Manager can invite teammates and choose invited roles. */
   canAssignInviteRoles?: boolean;
+  /** Owner / Manager-only collection actions: invite, bulk delete, and team-space moves. */
+  canManageProjectCollection?: boolean;
 }
 
 type BrowseTab = 'projects' | 'design-systems' | 'templates';
@@ -198,6 +200,7 @@ export function RecentProjectsStrip({
   limit = 6,
   collaborationEnabled = true,
   canAssignInviteRoles = true,
+  canManageProjectCollection = true,
 }: Props) {
   const t = useT();
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -210,6 +213,9 @@ export function RecentProjectsStrip({
     action: 'to-team' | 'to-personal';
   } | null>(null);
   const [moveDontRemind, setMoveDontRemind] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(() => new Set());
+  const [locallyDeletedIds, setLocallyDeletedIds] = useState<Set<string>>(() => new Set());
   // Projects flipped private → shared via "转入团队空间" (demo-local).
   const [movedToTeam, setMovedToTeam] = useState<Set<string>>(() => new Set());
   // Projects flipped shared → private via "移出团队空间" (demo-local).
@@ -236,6 +242,7 @@ export function RecentProjectsStrip({
         return { project, meta };
       })
       .filter(({ project, meta }) => {
+        if (locallyDeletedIds.has(project.id)) return false;
         const ownerMatches =
           ownerFilter === 'all'
           || (ownerFilter === 'mine' && meta.ownerName === '我')
@@ -244,7 +251,7 @@ export function RecentProjectsStrip({
         return ownerMatches && kindMatches;
       })
       .slice(0, limit),
-    [displayProjects, kindFilter, limit, movedToPersonal, movedToTeam, ownerFilter, space],
+    [displayProjects, kindFilter, limit, locallyDeletedIds, movedToPersonal, movedToTeam, ownerFilter, space],
   );
   const [coverByProject, setCoverByProject] = useState<
     Record<string, { kind: 'html' | 'image' | 'video' | 'logo'; name: string } | null>
@@ -256,7 +263,23 @@ export function RecentProjectsStrip({
   const menuContainerRef = useRef<HTMLDivElement | null>(null);
   const renameTitleId = useId();
   const confirmTitleId = useId();
-  const actionsAvailable = Boolean(onDelete || onRename);
+  const actionsAvailable = canManageProjectCollection && Boolean(onDelete || onRename || collaborationEnabled);
+  const activeSelectionMode = canManageProjectCollection && selectionMode;
+  const selectedCount = selectedProjectIds.size;
+  const selectedProjectNames = visibleProjectCards
+    .filter(({ project }) => selectedProjectIds.has(project.id))
+    .map(({ project }) => project.name);
+  const canMoveToTeam = canManageProjectCollection && collaborationEnabled && space !== 'team';
+  const canMoveToPersonal = canManageProjectCollection && collaborationEnabled && space !== 'drafts';
+
+  useEffect(() => {
+    setSelectedProjectIds((current) => {
+      if (current.size === 0) return current;
+      const visibleIds = new Set(visibleProjectCards.map(({ project }) => project.id));
+      const next = new Set([...current].filter((id) => visibleIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleProjectCards]);
 
   useEffect(() => {
     if (!menuOpenId) return;
@@ -379,6 +402,69 @@ export function RecentProjectsStrip({
     await onDelete(target.id);
   }
 
+  function toggleSelection(projectId: string) {
+    setSelectedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }
+
+  function exitSelectionMode() {
+    setSelectionMode(false);
+    setSelectedProjectIds(new Set());
+  }
+
+  async function batchDeleteSelected() {
+    if (selectedProjectIds.size === 0) return;
+    const ids = [...selectedProjectIds];
+    setLocallyDeletedIds((current) => {
+      const next = new Set(current);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    exitSelectionMode();
+    if (!onDelete) return;
+    await Promise.all(
+      ids
+        .filter((id) => !id.startsWith('demo-'))
+        .map((id) => Promise.resolve(onDelete(id))),
+    );
+  }
+
+  function batchMoveSelected(action: 'to-team' | 'to-personal') {
+    if (selectedProjectIds.size === 0) return;
+    const ids = [...selectedProjectIds];
+    if (action === 'to-team') {
+      setMovedToTeam((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.add(id));
+        return next;
+      });
+      setMovedToPersonal((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setMovedToPersonal((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.add(id));
+        return next;
+      });
+      setMovedToTeam((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+    exitSelectionMode();
+  }
+
   return (
     <section className="recent-projects" data-testid="recent-projects-strip">
       <header className="recent-projects__head">
@@ -389,13 +475,30 @@ export function RecentProjectsStrip({
           ) : null}
         </div>
         <div className="recent-projects__controls">
-          {collaborationEnabled && space === 'team' ? (
+          {collaborationEnabled && space === 'team' && canAssignInviteRoles ? (
             <button
               type="button"
               className="recent-projects__invite"
               onClick={() => setInviteOpen(true)}
             >
               <Icon name="share" size={15} /> 邀请同事
+            </button>
+          ) : null}
+          {canManageProjectCollection ? (
+            <button
+              type="button"
+              className={`recent-projects__select-toggle${selectionMode ? ' is-active' : ''}`}
+              aria-pressed={selectionMode}
+              onClick={() => {
+                if (selectionMode) {
+                  exitSelectionMode();
+                } else {
+                  setSelectionMode(true);
+                  setMenuOpenId(null);
+                }
+              }}
+            >
+              多选
             </button>
           ) : null}
           <div className="recent-projects__filter-wrap">
@@ -482,8 +585,47 @@ export function RecentProjectsStrip({
           </div>
         </div>
       </header>
+      {activeSelectionMode ? (
+        <div className="recent-projects__bulkbar" role="toolbar" aria-label="批量操作">
+          <span className="recent-projects__bulkbar-count">
+            已选择 <strong>{selectedCount}</strong> 个项目
+          </span>
+          <div className="recent-projects__bulkbar-actions">
+            {canMoveToTeam ? (
+              <button
+                type="button"
+                disabled={selectedCount === 0}
+                onClick={() => batchMoveSelected('to-team')}
+              >
+                <Icon name="import" size={13} /> 转入团队空间
+              </button>
+            ) : null}
+            {canMoveToPersonal ? (
+              <button
+                type="button"
+                disabled={selectedCount === 0}
+                onClick={() => batchMoveSelected('to-personal')}
+              >
+                <Icon name="log-out" size={13} /> 移出团队空间
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="danger"
+              disabled={selectedCount === 0}
+              title={selectedProjectNames.join('、')}
+              onClick={() => void batchDeleteSelected()}
+            >
+              <Icon name="trash" size={13} /> 批量删除
+            </button>
+            <button type="button" className="ghost" onClick={exitSelectionMode}>
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div
-        className={`recent-projects__row recent-projects__row--${view}${menuOpenId ? ' recent-projects__row--menu-open' : ''}`}
+        className={`recent-projects__row recent-projects__row--${view}${menuOpenId ? ' recent-projects__row--menu-open' : ''}${activeSelectionMode ? ' is-selecting' : ''}`}
         role="list"
       >
         {visibleProjectCards.map(({ project, meta }) => {
@@ -496,17 +638,38 @@ export function RecentProjectsStrip({
           const isActive =
             !publishedDesignSystem &&
             (status === 'running' || status === 'queued' || status === 'awaiting_input');
+          const selected = selectedProjectIds.has(project.id);
           return (
             <div
               key={project.id}
               role="listitem"
-              className={`recent-projects__card${designSystemProject ? ' is-design-system-project' : ''}${menuOpenId === project.id ? ' is-menu-open' : ''}`}
+              className={`recent-projects__card${designSystemProject ? ' is-design-system-project' : ''}${menuOpenId === project.id ? ' is-menu-open' : ''}${activeSelectionMode && selected ? ' is-selected' : ''}`}
               data-project-id={project.id}
             >
+              {activeSelectionMode ? (
+                <button
+                  type="button"
+                  className="recent-projects__select-check"
+                  aria-pressed={selected}
+                  aria-label={selected ? `取消选择 ${project.name}` : `选择 ${project.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSelection(project.id);
+                  }}
+                >
+                  <span aria-hidden>{selected ? '✓' : ''}</span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="recent-projects__card-main"
-                onClick={() => onOpen(project.id)}
+                onClick={() => {
+                  if (activeSelectionMode) {
+                    toggleSelection(project.id);
+                  } else {
+                    onOpen(project.id);
+                  }
+                }}
                 title={project.name}
               >
                 <div
@@ -568,7 +731,7 @@ export function RecentProjectsStrip({
                   </div>
                 </div>
               </button>
-              {actionsAvailable ? (
+              {actionsAvailable && !selectionMode ? (
                 <div
                   className="recent-projects__card-menu-anchor"
                   ref={menuOpenId === project.id ? menuContainerRef : undefined}
