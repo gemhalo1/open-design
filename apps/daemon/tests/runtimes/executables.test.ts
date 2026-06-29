@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import { relative, resolve } from 'node:path';
 import {
-  assert, chmodSync, claude, deepseek, gemini, join, minimalAgentDef, mkdirSync, mkdtempSync, resolveAgentExecutable, rmSync, tmpdir, withEnvSnapshot, withPlatform, writeFileSync,
+  assert, chmodSync, claude, codex, deepseek, gemini, join, minimalAgentDef, mkdirSync, mkdtempSync, resolveAgentExecutable, rmSync, tmpdir, withEnvSnapshot, withPlatform, writeFileSync,
 } from './helpers/test-helpers.js';
 
 const fsTest = process.platform === 'win32' ? test.skip : test;
@@ -505,6 +505,151 @@ fsTest(
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
       rmSync(realVpHome, { recursive: true, force: true });
+    }
+  },
+);
+
+// The official OpenAI Codex desktop app (bundle id `com.openai.codex`) ships
+// the `codex` CLI inside `Codex.app/Contents/Resources/codex` and does NOT add
+// it to PATH unless the user runs the app's "Install command line tool"
+// action. App-only installs must still be detected so the agent picker doesn't
+// show Codex as "not installed" while a healthy native binary sits in the
+// bundle. `~/Applications` honors OD_AGENT_HOME so the case stays deterministic.
+fsTest(
+  'resolveAgentExecutable finds codex inside ~/Applications/Codex.app when PATH is empty',
+  () => {
+    const home = mkdtempSync(join(tmpdir(), 'od-codex-app-bundle-'));
+    try {
+      return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () =>
+        withPlatform('darwin', () => {
+          const bundleDir = join(
+            home,
+            'Applications',
+            'Codex.app',
+            'Contents',
+            'Resources',
+          );
+          const codexBin = join(bundleDir, 'codex');
+          mkdirSync(bundleDir, { recursive: true });
+          writeFileSync(codexBin, '');
+          chmodSync(codexBin, 0o755);
+          process.env.OD_AGENT_HOME = home;
+          process.env.PATH = '/usr/bin:/bin';
+
+          const resolved = resolveAgentExecutable(codex);
+          assert.equal(resolved, codexBin);
+        }),
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  },
+);
+
+// A real PATH/npm/Homebrew install is a deliberate CLI install and must
+// outrank the app-bundle fallback.
+fsTest(
+  'resolveAgentExecutable prefers a PATH codex over the Codex.app bundle',
+  () => {
+    const home = mkdtempSync(join(tmpdir(), 'od-codex-app-bundle-precedence-'));
+    try {
+      return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () =>
+        withPlatform('darwin', () => {
+          const bundleDir = join(
+            home,
+            'Applications',
+            'Codex.app',
+            'Contents',
+            'Resources',
+          );
+          mkdirSync(bundleDir, { recursive: true });
+          const bundleCodex = join(bundleDir, 'codex');
+          writeFileSync(bundleCodex, '');
+          chmodSync(bundleCodex, 0o755);
+
+          const pathBin = join(home, 'path-bin');
+          mkdirSync(pathBin, { recursive: true });
+          const pathCodex = join(pathBin, 'codex');
+          writeFileSync(pathCodex, '');
+          chmodSync(pathCodex, 0o755);
+
+          process.env.OD_AGENT_HOME = home;
+          process.env.PATH = pathBin;
+
+          const resolved = resolveAgentExecutable(codex);
+          assert.equal(resolved, pathCodex);
+        }),
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  },
+);
+
+// The Codex.app fallback is macOS-only; on other platforms an identically
+// laid-out directory must not be treated as an install.
+fsTest(
+  'resolveAgentExecutable ignores Codex.app bundle on non-darwin platforms',
+  () => {
+    const home = mkdtempSync(join(tmpdir(), 'od-codex-app-bundle-linux-'));
+    try {
+      return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () =>
+        withPlatform('linux', () => {
+          const bundleDir = join(
+            home,
+            'Applications',
+            'Codex.app',
+            'Contents',
+            'Resources',
+          );
+          const codexBin = join(bundleDir, 'codex');
+          mkdirSync(bundleDir, { recursive: true });
+          writeFileSync(codexBin, '');
+          chmodSync(codexBin, 0o755);
+          process.env.OD_AGENT_HOME = home;
+          process.env.PATH = '/usr/bin:/bin';
+
+          const resolved = resolveAgentExecutable(codex);
+          assert.equal(resolved, null);
+        }),
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  },
+);
+
+// The app-bundle fallback is codex-specific. A different agent that happens to
+// ship a `codex`-named binary must not be resolved out of the Codex.app bundle.
+fsTest(
+  'resolveAgentExecutable does not apply the Codex.app fallback to non-codex agents',
+  () => {
+    const home = mkdtempSync(join(tmpdir(), 'od-codex-app-bundle-id-'));
+    try {
+      return withEnvSnapshot(['PATH', 'OD_AGENT_HOME'], () =>
+        withPlatform('darwin', () => {
+          const bundleDir = join(
+            home,
+            'Applications',
+            'Codex.app',
+            'Contents',
+            'Resources',
+          );
+          const codexBin = join(bundleDir, 'codex');
+          mkdirSync(bundleDir, { recursive: true });
+          writeFileSync(codexBin, '');
+          chmodSync(codexBin, 0o755);
+          process.env.OD_AGENT_HOME = home;
+          process.env.PATH = '/usr/bin:/bin';
+
+          const resolved = resolveAgentExecutable(
+            minimalAgentDef({ id: 'gemini', bin: 'codex' }),
+          );
+          assert.equal(resolved, null);
+        }),
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
     }
   },
 );
