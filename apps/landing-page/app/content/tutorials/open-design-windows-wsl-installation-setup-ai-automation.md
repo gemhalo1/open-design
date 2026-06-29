@@ -77,8 +77,8 @@ Go to [open-design.ai](https://open-design.ai/) and click **Download desktop**. 
 This is the route AI Automation demonstrates. Working inside your Ubuntu shell with Node 24 active, clone the repository and start the web runtime:
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
-cd open-design
+git clone https://github.com/nexu-io/open-design.git ~/open-design
+cd ~/open-design
 corepack enable && pnpm install
 pnpm tools-dev run web
 ```
@@ -97,7 +97,7 @@ Prefer to skip the GUI and call Open Design as an MCP server inside your agent? 
 mkdir -p ~/.local/bin
 cat > ~/.local/bin/od <<'EOF'
 #!/usr/bin/env bash
-repo="$HOME/open-design"     # your clone path from Option B
+repo="$HOME/open-design"     # the ~/open-design clone from Option B
 cd "$repo" || exit 127
 exec corepack pnpm exec od "$@"
 EOF
