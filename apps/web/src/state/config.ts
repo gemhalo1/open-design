@@ -480,6 +480,24 @@ function isValidOrbitTime(time: string): boolean {
   return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
 }
 
+function isBedrockRuntimeBaseUrl(baseUrl: string): boolean {
+  return (baseUrl || '').toLowerCase().includes('bedrock-runtime');
+}
+
+function downgradeUnsupportedChatProtocol(config: AppConfig): void {
+  if (
+    config.apiProtocol !== 'bedrock'
+    && !isBedrockRuntimeBaseUrl(config.baseUrl)
+  ) {
+    return;
+  }
+
+  config.apiProtocol = DEFAULT_CONFIG.apiProtocol;
+  config.baseUrl = DEFAULT_CONFIG.baseUrl;
+  config.model = DEFAULT_CONFIG.model;
+  config.apiProviderBaseUrl = DEFAULT_CONFIG.apiProviderBaseUrl;
+}
+
 function inferApiProtocol(model: string, baseUrl: string): ApiProtocol {
   try {
     const normalized = (baseUrl || '').toLowerCase();
@@ -495,7 +513,6 @@ function inferApiProtocol(model: string, baseUrl: string): ApiProtocol {
     // APP-Code attribution header even though the wire shape is
     // OpenAI-compatible.
     if (normalized.includes('aihubmix.com')) return 'aihubmix';
-    if (normalized.includes('bedrock-runtime')) return 'bedrock';
     return isOpenAICompatible(model, baseUrl) ? 'openai' : 'anthropic';
   } catch {
     // Preserve the rest of the user's settings even if an old saved base URL is
@@ -569,6 +586,8 @@ export function loadConfig(): AppConfig {
       }
       merged.configMigrationVersion = CONFIG_MIGRATION_VERSION;
     }
+
+    downgradeUnsupportedChatProtocol(merged);
 
     // Fixed-origin gateways (e.g. AIHubMix) hide the Base URL field, so a config
     // persisted before the origin was auto-resolved can carry an empty baseUrl.

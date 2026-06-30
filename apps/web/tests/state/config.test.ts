@@ -913,6 +913,48 @@ describe('loadConfig', () => {
     expect(config.apiProtocol).toBe('anthropic');
   });
 
+  it('downgrades legacy Bedrock Runtime configs to the default chat protocol', () => {
+    const legacyConfig: Partial<AppConfig> = {
+      mode: 'api',
+      apiKey: '',
+      baseUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+      model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      agentId: null,
+      skillId: null,
+      designSystemId: null,
+    };
+    store.set('open-design:config', JSON.stringify(legacyConfig));
+
+    const config = loadConfig();
+
+    expect(config.apiProtocol).toBe('anthropic');
+    expect(config.baseUrl).toBe(DEFAULT_CONFIG.baseUrl);
+    expect(config.model).toBe(DEFAULT_CONFIG.model);
+    expect(config.apiProviderBaseUrl).toBe(DEFAULT_CONFIG.apiProviderBaseUrl);
+  });
+
+  it('downgrades explicitly persisted Bedrock configs to the default chat protocol', () => {
+    const savedConfig: Partial<AppConfig> = {
+      mode: 'api',
+      apiProtocol: 'bedrock',
+      apiKey: '',
+      baseUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+      model: 'amazon.nova-lite-v1:0',
+      configMigrationVersion: 1,
+      agentId: null,
+      skillId: null,
+      designSystemId: null,
+    };
+    store.set('open-design:config', JSON.stringify(savedConfig));
+
+    const config = loadConfig();
+
+    expect(config.apiProtocol).toBe('anthropic');
+    expect(config.baseUrl).toBe(DEFAULT_CONFIG.baseUrl);
+    expect(config.model).toBe(DEFAULT_CONFIG.model);
+    expect(config.apiProviderBaseUrl).toBe(DEFAULT_CONFIG.apiProviderBaseUrl);
+  });
+
   it('infers protocol for legacy daemon-mode API fields without changing mode', () => {
     const daemonConfig: Partial<AppConfig> = {
       mode: 'daemon',
