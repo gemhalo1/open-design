@@ -254,7 +254,7 @@ export function SketchEditor({
 
   const currentScene = useCallback((): ExcalidrawSketchScene => {
     const api = apiRef.current;
-    if (!api) return sceneWithoutLibraryItems(sceneRef.current);
+    if (!api) return sceneRef.current;
     return sceneFromExcalidraw(
       api.getSceneElementsIncludingDeleted(),
       api.getAppState(),
@@ -496,11 +496,6 @@ function sceneFromExcalidraw(
     appState: sanitizeExcalidrawAppState(cloneJson<Record<string, unknown> | null>(appState as unknown, null)),
     files: cloneJson<Record<string, unknown>>(files, {}),
   };
-}
-
-function sceneWithoutLibraryItems(scene: ExcalidrawSketchScene): ExcalidrawSketchScene {
-  const { libraryItems: _libraryItems, ...rest } = scene as ExcalidrawSketchScene & { libraryItems?: unknown };
-  return rest;
 }
 
 function isNonDeletedExcalidrawElement(element: unknown): boolean {
