@@ -488,6 +488,24 @@ body::before {
   color: var(--ink);
 }
 .nav-account [hidden] { display: none !important; }
+/* Sign-in focus scrim — dims the page (but not the header chrome at z-index
+   50/60) while the vela login popup is open, so the popup reads as a modal
+   step. Mounted/removed by the account block in `header-enhancer.astro`;
+   `.is-active` drives the fade. */
+.nav-login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(8, 10, 14, 0.55);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.nav-login-overlay.is-active { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-login-overlay { transition: none; }
+}
 /* Avatar menu — a borderless <details> whose summary is the avatar disc. */
 .nav-account-menu {
   position: relative;

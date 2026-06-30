@@ -560,6 +560,7 @@ export function Header({
             data-amr-api={AMR_API_BASE}
             data-amr-login={AMR_LOGIN_URL}
             data-amr-console={AMR_CONSOLE_URL}
+            data-amr-home={href('/')}
           >
             <a className='nav-signin' href={AMR_LOGIN_URL} data-amr-signin>
               {headerCopy.signIn}

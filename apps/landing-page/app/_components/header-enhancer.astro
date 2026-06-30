@@ -202,6 +202,9 @@
     if (account) {
       const api = (account.getAttribute('data-amr-api') || '').replace(/\/$/, '');
       const loginUrl = account.getAttribute('data-amr-login') || '';
+      // Localized Open Design homepage — where the user lands after a
+      // successful popup login ("回到官网首页"). Empty disables the redirect.
+      const homeUrl = account.getAttribute('data-amr-home') || '';
       const signinEl = account.querySelector('[data-amr-signin]');
       const menuEl = account.querySelector('[data-amr-menu]');
       const avatarImg = account.querySelector('[data-amr-avatar]');
@@ -253,6 +256,48 @@
         if (signinEl) signinEl.removeAttribute('hidden');
       };
 
+      // Focus scrim shown on the OD page while the login popup is open, so
+      // the popup reads as a modal step (the iframe-modal alternative is ruled
+      // out by vela's X-Frame-Options + cross-site cookie + OAuth-in-iframe
+      // limits). Mounted on demand and faded via `.is-active`.
+      let overlayEl = null;
+      const showOverlay = () => {
+        if (overlayEl) return;
+        overlayEl = document.createElement('div');
+        overlayEl.className = 'nav-login-overlay';
+        overlayEl.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(overlayEl);
+        requestAnimationFrame(() => {
+          if (overlayEl) overlayEl.classList.add('is-active');
+        });
+      };
+      const hideOverlay = () => {
+        if (!overlayEl) return;
+        const el = overlayEl;
+        overlayEl = null;
+        el.classList.remove('is-active');
+        const drop = () => el.remove();
+        el.addEventListener('transitionend', drop, { once: true });
+        setTimeout(drop, 400); // fallback if transitionend never fires
+      };
+
+      // Send the main window back to the localized OD homepage after login.
+      // Skipped when already on it so a homepage sign-in just swaps in place;
+      // from a sub-page we navigate (the post-load probe re-renders the avatar).
+      const goHome = () => {
+        if (!homeUrl) return;
+        const here = window.location.pathname.replace(/\/+$/, '');
+        const target = homeUrl.replace(/\/+$/, '');
+        if (here !== target) window.location.assign(homeUrl);
+      };
+
+      // One terminal success path for every login completion route.
+      const completeSignIn = (user) => {
+        hideOverlay();
+        showSignedIn(user);
+        goHome();
+      };
+
       // Initial silent probe for an existing session.
       fetchSession().then((user) => {
         if (user) showSignedIn(user);
@@ -264,24 +309,43 @@
       if (signinEl && loginUrl) {
         signinEl.addEventListener('click', (ev) => {
           ev.preventDefault();
+          // Center the popup over the current browser window (multi-monitor
+          // aware: screenLeft/screenTop give the window's screen offset).
+          const W = 480;
+          const H = 720;
+          const dx = window.screenLeft ?? window.screenX ?? 0;
+          const dy = window.screenTop ?? window.screenY ?? 0;
+          const vw = window.innerWidth || document.documentElement.clientWidth || screen.width;
+          const vh = window.innerHeight || document.documentElement.clientHeight || screen.height;
+          const left = Math.round(dx + (vw - W) / 2);
+          const top = Math.round(dy + (vh - H) / 2);
           const popup = window.open(
             loginUrl,
             'od-amr-login',
-            'width=480,height=720,menubar=no,toolbar=no,location=yes',
+            `width=${W},height=${H},left=${left},top=${top},menubar=no,toolbar=no,location=yes`,
           );
+          // Popup blocked (or returned null): fall back to a same-tab navigation
+          // to the login page so the click never dead-ends.
+          if (!popup) {
+            window.location.assign(loginUrl);
+            return;
+          }
+          showOverlay();
           const started = Date.now();
           const POLL_MS = 2000;
           const MAX_MS = 5 * 60 * 1000;
           const timer = setInterval(() => {
             if (Date.now() - started > MAX_MS) {
               clearInterval(timer);
+              hideOverlay();
               return;
             }
-            if (popup && popup.closed) {
+            if (popup.closed) {
               clearInterval(timer);
               // Re-check once: login may have completed just before close.
               fetchSession().then((user) => {
-                if (user) showSignedIn(user);
+                if (user) completeSignIn(user);
+                else hideOverlay();
               });
               return;
             }
@@ -289,9 +353,9 @@
               if (!user) return;
               clearInterval(timer);
               try {
-                if (popup && !popup.closed) popup.close();
+                if (!popup.closed) popup.close();
               } catch {}
-              showSignedIn(user);
+              completeSignIn(user);
             });
           }, POLL_MS);
         });
