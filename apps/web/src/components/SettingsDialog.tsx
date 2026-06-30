@@ -785,6 +785,14 @@ function currentApiProtocolConfig(config: AppConfig): ApiProtocolConfig {
   };
 }
 
+function byokProviderDraftKey(
+  protocol: ApiProtocol,
+  apiProviderBaseUrl: string | null | undefined,
+  baseUrl: string,
+): string {
+  return `${protocol}:${apiProviderBaseUrl ?? `custom:${baseUrl}`}`;
+}
+
 function applyApiProtocolConfig(
   config: AppConfig,
   protocol: ApiProtocol,
@@ -846,7 +854,9 @@ export function updateCurrentApiProtocolConfig(
   const nextApiConfig: ApiProtocolConfig = {
     ...currentApiProtocolConfig(config),
     ...patch,
-    ...(clearedApiKey && defaultModel ? { model: defaultModel } : {}),
+    ...(clearedApiKey && defaultModel && patch.model === undefined
+      ? { model: defaultModel }
+      : {}),
   };
   return applyApiProtocolConfig(
     {
@@ -1224,6 +1234,7 @@ export function SettingsDialog({
     };
   }, []);
   const [showApiKey, setShowApiKey] = useState(false);
+  const byokProviderApiKeyDraftsRef = useRef<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
   const [settingsSidebarCollapsed, setSettingsSidebarCollapsed] = useState(false);
   const [settingsFullscreen, setSettingsFullscreen] = useState(false);
@@ -1666,16 +1677,44 @@ export function SettingsDialog({
   };
   const setByokProvider = (provider: ByokProviderPreset) => {
     setApiModelCustomEditing(false);
+    setShowApiKey(false);
     apiModelUserSelectedRef.current = false;
     focusByokRequiredFieldAfterProtocolSwitchRef.current = !provider.custom;
     setCfg((current) => {
+      const currentApiConfig = currentApiProtocolConfig(current);
+      const currentProtocol = current.apiProtocol ?? 'anthropic';
+      const currentProviderDraftKey = byokProviderDraftKey(
+        currentProtocol,
+        currentApiConfig.apiProviderBaseUrl,
+        currentApiConfig.baseUrl,
+      );
+      byokProviderApiKeyDraftsRef.current[currentProviderDraftKey] =
+        currentApiConfig.apiKey;
+      const nextProviderBaseUrl = provider.custom ? null : provider.baseUrl;
+      const providerChanged = provider.custom
+        ? currentApiConfig.apiProviderBaseUrl !== null
+        : currentProtocol !== provider.protocol ||
+          currentApiConfig.apiProviderBaseUrl !== nextProviderBaseUrl;
       const switched = switchApiProtocolConfig(current, provider.protocol);
+      const switchedApiConfig = currentApiProtocolConfig(switched);
+      const nextProviderDraftKey = byokProviderDraftKey(
+        provider.protocol,
+        nextProviderBaseUrl,
+        provider.custom ? switchedApiConfig.baseUrl : provider.baseUrl,
+      );
+      const scopedApiKey =
+        byokProviderApiKeyDraftsRef.current[nextProviderDraftKey] ??
+        (switchedApiConfig.apiProviderBaseUrl === nextProviderBaseUrl
+          ? switchedApiConfig.apiKey
+          : '');
       if (provider.custom) {
         return updateCurrentApiProtocolConfig(switched, {
+          ...(providerChanged ? { apiKey: scopedApiKey } : {}),
           apiProviderBaseUrl: null,
         });
       }
       return updateCurrentApiProtocolConfig(switched, {
+        ...(providerChanged ? { apiKey: scopedApiKey } : {}),
         baseUrl: provider.baseUrl,
         model: provider.model,
         apiProviderBaseUrl: provider.baseUrl,

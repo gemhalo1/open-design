@@ -468,6 +468,29 @@ describe('SettingsDialog execution settings BYOK interactions', () => {
     ).toBe('https://platform.openai.com/api-keys');
   });
 
+  it('resets API key draft and visibility when switching BYOK provider presets', () => {
+    renderSettingsDialog({
+      apiProtocol: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o',
+      apiProviderBaseUrl: 'https://api.openai.com/v1',
+    });
+
+    const apiKeyInput = screen.getByLabelText('API key') as HTMLInputElement;
+    fireEvent.change(apiKeyInput, { target: { value: 'sk-openai-provider' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    expect(apiKeyInput.value).toBe('sk-openai-provider');
+    expect(apiKeyInput.type).toBe('text');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'DeepSeek' }));
+
+    expect(apiKeyInput.value).toBe('');
+    expect(apiKeyInput.type).toBe('password');
+    expect((screen.getByLabelText('Base URL') as HTMLInputElement).value).toBe(
+      'https://api.deepseek.com',
+    );
+  });
+
   it('keeps BYOK file-editing limits discoverable from the provider heading (issue #1106)', () => {
     // Regression cover: switching from Local CLI to BYOK previously gave no
     // signal that file-editing tools (`Read`/`Write`/`Edit`) are absent on the
