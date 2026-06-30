@@ -1903,6 +1903,10 @@ export function HomeView({
         const dir = workspaceContextLinkedDir(item);
         return dir === null || confirmedContextLinkedDirs.has(dir);
       });
+      if (confirmedContextWorkspaceItems.length !== contextWorkspaceItems.length) {
+        setError('Could not add reference context because a selected folder no longer exists. Remove it or pick it again.');
+        return;
+      }
       const submittedProjectKind =
         submittedActive?.projectKind ?? fallbackProjectKind ?? projectKindForSkill(activeSkill) ?? 'other';
       const submittedProjectMetadata = submittedActive?.mediaSurface

@@ -1298,13 +1298,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           ...(path ? { absolutePath: path } : {}),
         } satisfies WorkspaceContextItem;
       });
+      const trackedByDir = await addLinkedDirs(items.map((item) => workspaceContextLinkedDir(item) ?? ''));
+      if (trackedByDir === false) return;
       for (const item of items) {
         appendWorkspacePrompt(item);
       }
       setProjectReferenceOpen(false);
-
-      const trackedByDir = await addLinkedDirs(items.map((item) => workspaceContextLinkedDir(item) ?? ''));
-      if (trackedByDir === false) return;
       const trackedAdds: Record<string, TrackedWorkspaceLinkedDir> = {};
       for (const item of items) {
         const path = workspaceContextLinkedDir(item);

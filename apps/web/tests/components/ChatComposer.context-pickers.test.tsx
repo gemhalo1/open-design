@@ -608,7 +608,7 @@ describe('ChatComposer context pickers', () => {
     );
   });
 
-  it('still sends referenced project context when linking its directory is rejected', async () => {
+  it('does not stage referenced project context when linking its directory is rejected', async () => {
     const referenceA = {
       id: 'reference-a',
       name: 'Reference A',
@@ -629,6 +629,7 @@ describe('ChatComposer context pickers', () => {
     const onSend = vi.fn();
     renderComposer({ onSend });
     await flushMounts();
+    await typeAndSettle('Review this');
 
     fireEvent.click(screen.getByTestId('chat-plus-trigger'));
     fireEvent.click(await screen.findByTestId('composer-plus-reference-project'));
@@ -636,22 +637,14 @@ describe('ChatComposer context pickers', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reference project' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('staged-contexts').textContent).toContain('ProjectReference A');
-    });
-    await waitFor(() => {
       expect(projectPatchBodies()).toHaveLength(1);
     });
+    expect(screen.queryByTestId('staged-contexts')).toBeNull();
+    expect(composerText()).toBe('Review this');
     fireEvent.click(screen.getByTestId('chat-send'));
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
-    expect(onSend.mock.calls[0]?.[3]?.context?.workspaceItems).toEqual([
-      expect.objectContaining({
-        id: 'project:reference-a',
-        kind: 'project',
-        label: 'Reference A',
-        absolutePath: '/tmp/open-design/missing-reference-a',
-      }),
-    ]);
+    expect(onSend.mock.calls[0]?.[3]?.context?.workspaceItems).toBeUndefined();
   });
 
   it('keeps sent linked-dir workspace context visible and removable after reset', async () => {
