@@ -351,7 +351,7 @@ export function SketchEditor({
         <span className={`sketch-save-state is-${state}`} role="status" aria-live="polite">
           <Icon
             name={saving ? 'spinner' : dirty ? 'alert-triangle' : 'check'}
-            size={13}
+            size={12}
             className={saving ? 'icon-spin' : undefined}
           />
           <span>{label}</span>
@@ -1028,6 +1028,9 @@ function removeSketchMermaidShortcutHints(content: HTMLElement): void {
   const insertButton = findSketchMermaidInsertButton(content);
   if (!insertButton) return;
   for (const hint of Array.from(insertButton.querySelectorAll('kbd'))) {
+    hint.remove();
+  }
+  for (const hint of Array.from(content.querySelectorAll('.ttd-dialog-submit-shortcut'))) {
     hint.remove();
   }
 }

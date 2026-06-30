@@ -252,14 +252,20 @@ describe('SketchEditor save', () => {
     const portal = document.createElement('div');
     portal.className = 'excalidraw-modal-container';
     portal.innerHTML = `
-      <div class="Modal">
-        <div class="Modal__content">
-          <h2>Mermaid to Excalidraw</h2>
-          <textarea placeholder="Write Mermaid diagram definition here..."></textarea>
-          <button type="button">Insert <span>→</span><kbd>Cmd</kbd><kbd>Enter</kbd></button>
-        </div>
-      </div>
-    `;
+	      <div class="Modal">
+	        <div class="Modal__content">
+	          <h2>Mermaid to Excalidraw</h2>
+	          <textarea placeholder="Write Mermaid diagram definition here..."></textarea>
+	          <div class="ttd-dialog-panel-button-container">
+	            <button type="button">Insert <span>→</span></button>
+	            <div class="ttd-dialog-submit-shortcut">
+	              <div class="ttd-dialog-submit-shortcut__key">Cmd</div>
+	              <div class="ttd-dialog-submit-shortcut__key">Enter</div>
+	            </div>
+	          </div>
+	        </div>
+	      </div>
+	    `;
     const insert = portal.querySelector<HTMLButtonElement>('button')!;
     const textarea = portal.querySelector<HTMLTextAreaElement>('textarea')!;
     const onInsert = vi.fn();
@@ -268,6 +274,8 @@ describe('SketchEditor save', () => {
 
     await waitFor(() => expect(portal.classList.contains('od-sketch-modal')).toBe(true));
     expect(insert.querySelector('kbd')).toBeNull();
+    expect(portal.querySelector('.ttd-dialog-submit-shortcut')).toBeNull();
+    expect(portal.querySelector('.ttd-dialog-submit-shortcut__key')).toBeNull();
     expect(insert.textContent).not.toContain('Cmd');
     expect(insert.textContent).not.toContain('Enter');
 
