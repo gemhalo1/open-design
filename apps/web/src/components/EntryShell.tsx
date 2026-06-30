@@ -2646,11 +2646,10 @@ function OnboardingView({
 
           {step === 3 ? null : (
             <div className="onboarding-view__actions">
-              {step === 0 && amrLoginError ? (
-                <span className="onboarding-view__action-status is-error" role="alert">
-                  {amrLoginError}
-                </span>
-              ) : null}
+              {/* The cloud sign-in error belongs to the cloud card only. This
+                  footer is reached exclusively on the local-CLI / BYOK
+                  sub-pages (the cloud path early-returns above), so the cloud
+                  error must not be rendered here. */}
               {step === 0 && amrLoginPending ? (
                 <button
                   type="button"
