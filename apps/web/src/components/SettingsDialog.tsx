@@ -40,11 +40,7 @@ import type { Dict } from '../i18n/types';
 import { AgentIcon } from './AgentIcon';
 import { AgentDiagnosticRow } from './AgentDiagnosticRow';
 import { AmrLoginPill } from './AmrLoginPill';
-<<<<<<< HEAD
-=======
-import { PlanBadge } from './PlanBadge';
 import { orderAgentsWithOpenDesignFirst } from './agentOrdering';
->>>>>>> bb3d826c6 (Refine Open Design CLI picker controls (#4928))
 import {
   AMR_LOGIN_STATUS_EVENT,
   amrLoginStatusEventReason,
