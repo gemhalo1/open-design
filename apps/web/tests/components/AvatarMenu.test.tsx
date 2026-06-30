@@ -141,6 +141,28 @@ describe('AvatarMenu', () => {
     expect(onOpenSettings).toHaveBeenCalledWith('execution');
   });
 
+  it('pins Open Design to the top of the CLI picker', () => {
+    const amrAgent: AgentInfo = {
+      id: 'amr',
+      name: 'Open Design AMR',
+      bin: 'vela',
+      available: true,
+      models: [{ id: 'default', label: 'Default (CLI config)' }],
+    };
+
+    renderMenu({ agents: [codexAgent, claudeAgent, amrAgent] });
+    const menu = openMenu();
+
+    expect(
+      Array.from(menu.querySelectorAll('[data-testid^="avatar-agent-option-"]'))
+        .map((row) => row.getAttribute('data-testid')),
+    ).toEqual([
+      'avatar-agent-option-amr',
+      'avatar-agent-option-codex',
+      'avatar-agent-option-claude',
+    ]);
+  });
+
   it('rescans agents and re-renders newly available CLI entries', async () => {
     function Harness() {
       const [agents, setAgents] = useState<AgentInfo[]>([
