@@ -205,7 +205,6 @@ const AGENT_CLI_ENV_KEYS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['kiro', new Set(['KIRO_BIN'])],
   ['kilo', new Set(['KILO_BIN'])],
   ['opencode', new Set(['OPENCODE_BIN'])],
-  ['byok-opencode', new Set(['OPENCODE_BIN'])],
   ['pi', new Set(['PI_BIN'])],
   ['qoder', new Set(['QODER_BIN'])],
   ['qwen', new Set(['QWEN_BIN'])],
@@ -363,7 +362,7 @@ export function agentCliEnvForAgent(
   agentId: string,
 ): Record<string, string> {
   if (!prefs || typeof agentId !== 'string') return {};
-  const env = prefs[agentId];
+  const env = prefs[agentId === 'byok-opencode' ? 'opencode' : agentId];
   if (!env || typeof env !== 'object' || Array.isArray(env)) return {};
   return { ...env };
 }
