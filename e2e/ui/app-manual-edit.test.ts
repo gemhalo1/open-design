@@ -414,6 +414,28 @@ test('[P0] deck host navigation advances one slide when the deck also handles sl
   await expect(frame.getByText('Slide Three')).toBeHidden();
 });
 
+test('[P0] focused deck keyboard navigation advances one slide when the deck handles keys', async ({ page }) => {
+  await routeMockAgents(page);
+  const projectId = await createEmptyProject(page, 'Deck iframe keyboard single step');
+  await seedDeckArtifact(
+    page,
+    projectId,
+    'iframe-keyboard-deck.html',
+    'Iframe Keyboard Deck',
+    ['Slide One', 'Slide Two', 'Slide Three'],
+    { frameworkDeck: true, handlesKeyboard: true, stopsSlideMessagePropagation: true },
+  );
+  await page.goto(`/projects/${projectId}/files/iframe-keyboard-deck.html`);
+  await openDesignFile(page, 'iframe-keyboard-deck.html');
+
+  const frame = artifactPreviewFrame(page);
+  await expect(frame.getByText('Slide One')).toBeVisible();
+  await frame.locator('body').click();
+  await page.keyboard.press('ArrowRight');
+  await expect(frame.getByText('Slide Two')).toBeVisible();
+  await expect(frame.getByText('Slide Three')).toBeHidden();
+});
+
 test('[P0] deck host navigation works when deck content only mentions slide messages', async ({ page }) => {
   await routeMockAgents(page);
   const projectId = await createEmptyProject(page, 'Deck protocol text');
@@ -726,15 +748,21 @@ async function seedDeckArtifact(
     selfHandlesSlideMessages?: boolean;
     mentionsSlideMessageProtocol?: boolean;
     stopsSlideMessagePropagation?: boolean;
+    handlesKeyboard?: boolean;
+    frameworkDeck?: boolean;
   } = {},
 ) {
   const slideHtml = slides
     .map((slide, index) => `<section class="slide" data-od-id="slide-${index + 1}"${index === 0 ? '' : ' hidden'}><h1>${slide}</h1></section>`)
     .join('\n');
+  const deckHtml = options.frameworkDeck
+    ? `<div class="deck-stage" id="deck-stage">${slideHtml}</div>`
+    : slideHtml;
   const deckChrome = options.stopsSlideMessagePropagation
     ? '<nav><span id="deck-cur">01</span> / <span id="deck-total">03</span></nav>'
     : '';
-  const slideScript = options.selfHandlesSlideMessages || options.stopsSlideMessagePropagation
+  const slideScript =
+    options.selfHandlesSlideMessages || options.stopsSlideMessagePropagation || options.handlesKeyboard
     ? `<script>
     (() => {
       let active = 0;
@@ -762,6 +790,20 @@ async function seedDeckArtifact(
         render();
         ${options.stopsSlideMessagePropagation ? '' : "window.parent.postMessage({ type: 'od:slide-state', active, count: slides.length }, '*');"}
       });
+      ${
+        options.handlesKeyboard
+          ? `function onKey(event) {
+        if (event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        active = Math.min(slides.length - 1, active + 1);
+        render();
+      }
+      window.addEventListener('keydown', onKey, true);
+      document.addEventListener('keydown', onKey, true);
+      document.body.setAttribute('tabindex', '-1');
+      document.body.focus();`
+          : ''
+      }
       render();
       ${options.stopsSlideMessagePropagation ? '' : "window.parent.postMessage({ type: 'od:slide-state', active, count: slides.length }, '*');"}
     })();
@@ -775,7 +817,7 @@ async function seedDeckArtifact(
     {
       data: {
         name: fileName,
-        content: `<!doctype html><html><body>${deckChrome}${slideHtml}${protocolText}${slideScript}</body></html>`,
+        content: `<!doctype html><html><body>${deckChrome}${deckHtml}${protocolText}${slideScript}</body></html>`,
         artifactManifest: {
           version: 1,
           kind: 'deck',

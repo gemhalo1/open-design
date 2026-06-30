@@ -2037,6 +2037,23 @@ function injectDeckBridge(doc: string, initialSlideIndex = 0): string {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var didRestoreInitialSlide = initialSlideIndex <= 0;
+  if (${JSON.stringify(isFrameworkDeck)}) {
+    window.addEventListener('keydown', function(ev){
+      var key = ev && ev.key;
+      if (
+        key !== 'ArrowRight' &&
+        key !== 'PageDown' &&
+        key !== ' ' &&
+        key !== 'ArrowLeft' &&
+        key !== 'PageUp' &&
+        key !== 'Home' &&
+        key !== 'End'
+      ) return;
+      var t = ev.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      ev.stopPropagation();
+    }, true);
+  }
   function slides(){
     // Structured selectors first so decorative .slide markup in non-deck
     // pages (icons, badges, code samples) is not counted as deck slides;

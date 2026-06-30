@@ -6917,6 +6917,7 @@ function HtmlViewer({
   useEffect(() => {
     if (!effectiveDeck || mode !== 'preview') return;
     function onKey(e: KeyboardEvent) {
+      if (document.activeElement === iframeRef.current) return;
       const target = e.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
