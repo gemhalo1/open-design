@@ -500,7 +500,7 @@ describe('HomeView context picker', () => {
     }));
   });
 
-  it('keeps stale referenced projects as first-turn context without linking missing dirs', async () => {
+  it('drops stale referenced projects from first-turn context when their dirs are missing', async () => {
     const referenceProject = {
       id: 'reference-a',
       name: 'Reference A',
@@ -574,21 +574,16 @@ describe('HomeView context picker', () => {
     fireEvent.click(screen.getByTestId('home-hero-submit'));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+    const payload = onSubmit.mock.calls[0]?.[0] as {
+      initialRunContext?: unknown;
+      linkedDirs?: string[];
+    };
+    expect(payload).toEqual(expect.objectContaining({
       prompt: '@Reference A',
       pluginId: DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
-      initialRunContext: {
-        workspaceItems: [
-          expect.objectContaining({
-            id: 'project:reference-a',
-            kind: 'project',
-            label: 'Reference A',
-            absolutePath: '/tmp/open-design/missing-reference-a',
-          }),
-        ],
-      },
     }));
-    expect(onSubmit.mock.calls[0]?.[0]?.linkedDirs).toBeUndefined();
+    expect(payload.initialRunContext).toBeUndefined();
+    expect(payload.linkedDirs).toBeUndefined();
   });
 
   it('keeps a connector context when the prompt has punctuation right after the pill', async () => {

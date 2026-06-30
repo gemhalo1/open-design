@@ -82,7 +82,7 @@ import type { PlaceholderScenario } from './home-hero/placeholderScenarios';
 import { consumePendingHomeChip, HOME_CHIP_INTENT_EVENT } from '../runtime/home-intent';
 import { navigate } from '../router';
 import { setPendingDesignSystemCreateEntry } from '../analytics/ds-create-entry';
-import { workspaceContextLinkedDirs } from './workspace-context';
+import { workspaceContextLinkedDir, workspaceContextLinkedDirs } from './workspace-context';
 import {
   buildHomeMediaComposer,
   homeMediaSurfaceForChipId,
@@ -1898,6 +1898,11 @@ export function HomeView({
                 contextLinkedDirCandidates.map(async (dir) => ((await dirExists(dir)) ? dir : null)),
               )
             ).filter((dir): dir is string => Boolean(dir));
+      const confirmedContextLinkedDirs = new Set(contextLinkedDirs);
+      const confirmedContextWorkspaceItems = contextWorkspaceItems.filter((item) => {
+        const dir = workspaceContextLinkedDir(item);
+        return dir === null || confirmedContextLinkedDirs.has(dir);
+      });
       const submittedProjectKind =
         submittedActive?.projectKind ?? fallbackProjectKind ?? projectKindForSkill(activeSkill) ?? 'other';
       const submittedProjectMetadata = submittedActive?.mediaSurface
@@ -1939,8 +1944,8 @@ export function HomeView({
         contextPlugins,
         contextMcpServers,
         contextConnectors,
-        ...(contextWorkspaceItems.length > 0
-          ? { initialRunContext: { workspaceItems: contextWorkspaceItems } }
+        ...(confirmedContextWorkspaceItems.length > 0
+          ? { initialRunContext: { workspaceItems: confirmedContextWorkspaceItems } }
           : {}),
         attachments: stagedFiles,
         ...(workingDir ? { workingDir } : {}),
