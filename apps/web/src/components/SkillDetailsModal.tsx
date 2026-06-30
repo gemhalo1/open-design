@@ -22,20 +22,28 @@ export function SkillDetailsModal({ skillId, summary, onClose }: Props) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setDetail(null);
+    setLoadError(false);
     void fetchSkill(skillId).then((next) => {
       if (cancelled) return;
+      if (!next) {
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
       setDetail(next);
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [skillId]);
+  }, [skillId, reloadToken]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -49,7 +57,7 @@ export function SkillDetailsModal({ skillId, summary, onClose }: Props) {
     };
   }, []);
 
-  const skill = detail ?? summary;
+  const skill = loadError ? summary : detail ?? summary;
   const title = skill ? localizeSkillName(locale, skill) : skillId;
   const description = skill
     ? localizeSkillDescription(locale, skill) || skill.description
@@ -95,6 +103,25 @@ export function SkillDetailsModal({ skillId, summary, onClose }: Props) {
       </header>
 
       <div className="plugin-details-modal__body">
+        {loadError ? (
+          <section className="plugin-details-modal__section" role="alert">
+            <div className="plugin-details-modal__section-head">
+              <h3 className="plugin-details-modal__section-title">
+                Couldn&apos;t load skill details
+              </h3>
+            </div>
+            <p className="plugin-details-modal__description">
+              The daemon did not return the full skill detail. Try again before using this skill.
+            </p>
+            <button
+              type="button"
+              className="plugin-details-modal__secondary"
+              onClick={() => setReloadToken((current) => current + 1)}
+            >
+              {t('preview.retry')}
+            </button>
+          </section>
+        ) : null}
         {loading && !skill ? (
           <section className="plugin-details-modal__section">
             <p className="plugin-details-modal__section-hint">
@@ -102,7 +129,7 @@ export function SkillDetailsModal({ skillId, summary, onClose }: Props) {
             </p>
           </section>
         ) : null}
-        {description ? (
+        {!loadError && description ? (
           <section className="plugin-details-modal__section">
             <div className="plugin-details-modal__section-head">
               <h3 className="plugin-details-modal__section-title">Overview</h3>
@@ -110,7 +137,7 @@ export function SkillDetailsModal({ skillId, summary, onClose }: Props) {
             <p className="plugin-details-modal__description">{description}</p>
           </section>
         ) : null}
-        {triggers.length > 0 ? (
+        {!loadError && triggers.length > 0 ? (
           <section className="plugin-details-modal__section">
             <div className="plugin-details-modal__section-head">
               <h3 className="plugin-details-modal__section-title">Triggers</h3>
@@ -124,7 +151,7 @@ export function SkillDetailsModal({ skillId, summary, onClose }: Props) {
             </div>
           </section>
         ) : null}
-        {examplePrompt ? (
+        {!loadError && examplePrompt ? (
           <section className="plugin-details-modal__section">
             <div className="plugin-details-modal__section-head">
               <h3 className="plugin-details-modal__section-title">
@@ -134,7 +161,7 @@ export function SkillDetailsModal({ skillId, summary, onClose }: Props) {
             <pre className="plugin-details-modal__query">{examplePrompt}</pre>
           </section>
         ) : null}
-        {detail?.body ? (
+        {!loadError && detail?.body ? (
           <section className="plugin-details-modal__section">
             <div className="plugin-details-modal__section-head">
               <h3 className="plugin-details-modal__section-title">SKILL.md</h3>
