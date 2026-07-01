@@ -2921,7 +2921,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
     expect(screen.queryByText(/^vela$/i)).toBeNull();
   });
 
-  it('keeps the AMR plan badge outside the clipped benefits row', async () => {
+  it('keeps the AMR plan badge on the account row outside the clipped benefits row', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = input.toString();
       if (url === '/api/memory') {
@@ -2961,9 +2961,12 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
     const planBadge = within(amrCardButton).getByText('pro');
     const benefits = amrCardButton.querySelector('.agent-card-benefits');
     const planSlot = planBadge.closest('.agent-card-plan-badge-slot');
+    const accountRow = planBadge.closest('.agent-card-amr-email');
 
     expect(benefits).toBeTruthy();
     expect(planSlot).toBeTruthy();
+    expect(accountRow).toBeTruthy();
+    expect(accountRow?.textContent).toContain('signed-in@example.com');
     expect(planSlot?.getAttribute('aria-hidden')).toBe('true');
     expect(benefits?.contains(planBadge)).toBe(false);
   });
