@@ -60,4 +60,16 @@ describe('ensureReferencedProjectDir', () => {
     // external project — its files live in the user's own baseDir.
     expect(existsSync(path.join(projectsRoot, project.id))).toBe(false);
   });
+
+  it('propagates managed folder materialization failures', async () => {
+    const projectsRoot = makeProjectsRoot();
+    const project = { id: 'reference-managed', metadata: { kind: 'prototype' } };
+    const err = new Error('disk full');
+
+    await expect(
+      ensureReferencedProjectDir(projectsRoot, project, async () => {
+        throw err;
+      }),
+    ).rejects.toThrow('disk full');
+  });
 });

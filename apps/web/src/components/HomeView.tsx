@@ -1889,22 +1889,23 @@ export function HomeView({
           status: item.connector.status,
           ...(item.connector.accountLabel ? { accountLabel: item.connector.accountLabel } : {}),
         }));
-      // A referenced project or linked folder reaches the agent two ways: as
-      // textual workspace context (kept even when the folder is empty or has
-      // been deleted — the agent just reports that) and, for folders that
-      // still exist, as read-only `--add-dir` access. The daemon validates
-      // linkedDirs all-or-nothing, so one missing folder would drop read
-      // access to every reference; we therefore feed it only the dirs that
-      // still exist and never block the submission on a missing one.
+      // Referenced project / local-code folders are required user-selected
+      // inputs. If one disappears before submit, fail loudly instead of sending
+      // workspace text the daemon cannot back with `--add-dir` access.
       const contextLinkedDirCandidates = workspaceContextLinkedDirs(contextWorkspaceItems);
-      const contextLinkedDirs =
+      const missingContextLinkedDirs =
         contextLinkedDirCandidates.length === 0
           ? []
           : (
               await Promise.all(
-                contextLinkedDirCandidates.map(async (dir) => ((await dirExists(dir)) ? dir : null)),
+                contextLinkedDirCandidates.map(async (dir) => ((await dirExists(dir)) ? null : dir)),
               )
             ).filter((dir): dir is string => Boolean(dir));
+      if (missingContextLinkedDirs.length > 0) {
+        setError('A selected reference folder is no longer available. Remove or re-pick it before starting the run.');
+        return;
+      }
+      const contextLinkedDirs = contextLinkedDirCandidates;
       const submittedProjectKind =
         submittedActive?.projectKind ?? fallbackProjectKind ?? projectKindForSkill(activeSkill) ?? 'other';
       const submittedProjectMetadata = submittedActive?.mediaSurface
