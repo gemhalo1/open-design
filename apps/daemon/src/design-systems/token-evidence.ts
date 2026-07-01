@@ -35,6 +35,8 @@ const HEX_COLOR_RE = /#[0-9a-fA-F]{3,8}\b/g;
 const RGBA_COLOR_RE = /rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[\d.]+)?\s*\)/g;
 const HSLA_COLOR_RE = /hsla?\(\s*[\d.]+(?:deg|rad|turn)?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?(?:\s*,\s*[\d.]+)?\s*\)/g;
 const CUSTOM_PROPERTY_RE = /(--[a-zA-Z0-9-_]+)\s*:\s*([^;{}\n]+);/g;
+const MAX_CUSTOM_PROPERTY_VALUE = 120;
+const MAX_GRADIENT_CUSTOM_PROPERTY_VALUE = 1000;
 const FONT_FAMILY_RE = /font-family\s*:\s*([^;\n]+)/g;
 const SPACING_PX_RE = /\b(?:padding|margin|gap|inset|top|left|right|bottom)\s*:\s*(\d+(?:\.\d+)?(?:px|rem|em))/g;
 const RADIUS_RE = /border-radius\s*:\s*([^;\n]+)/g;
@@ -88,10 +90,15 @@ export function extractCssCustomProperties(text: string, file: string): CssCusto
     const name = match[1];
     const value = match[2]?.trim();
     if (name === undefined || value === undefined) continue;
-    if (value.length === 0 || value.length > 120) continue;
+    if (value.length === 0) continue;
+    if (value.length > MAX_CUSTOM_PROPERTY_VALUE && !isLongGradientCustomProperty(value)) continue;
     tokens.push({ name, value, source: file, line: lineNumberAt(text, match.index) });
   }
   return tokens;
+}
+
+function isLongGradientCustomProperty(value: string): boolean {
+  return value.length <= MAX_GRADIENT_CUSTOM_PROPERTY_VALUE && isGradientValue(value);
 }
 
 export function lineNumberAt(text: string, index: number): number {
