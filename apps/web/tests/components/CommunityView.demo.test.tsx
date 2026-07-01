@@ -14,9 +14,9 @@ describe('CommunityView review demo', () => {
     render(<CommunityView />);
 
     expect(screen.getByRole('heading', { name: 'Community' })).toBeTruthy();
-    expect(screen.getByText('Templates only')).toBeTruthy();
-    expect(screen.getByText('Remix → Project')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Remix' })).toHaveLength(4);
+    // The view opens on the Slides type filter, which surfaces the two
+    // remixable slide starters; each exposes a "Remix" action, never "Install".
+    expect(screen.getAllByRole('button', { name: 'Remix' })).toHaveLength(2);
     expect(screen.queryByText('Install')).toBeNull();
   });
 
@@ -28,7 +28,7 @@ describe('CommunityView review demo', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Remix' })[0]!);
 
     expect(onRemixTemplate).toHaveBeenCalledTimes(1);
-    expect(onRemixTemplate).toHaveBeenCalledWith('electric-studio');
+    expect(onRemixTemplate).toHaveBeenCalledWith('portfolio-case-study');
   });
 
   it('keeps each template wired to its own remix id', () => {
@@ -41,10 +41,8 @@ describe('CommunityView review demo', () => {
     }
 
     expect(onRemixTemplate.mock.calls.map(([templateId]) => templateId)).toEqual([
-      'electric-studio',
-      'launch-landing',
-      'founder-memo',
-      'growth-dashboard',
+      'portfolio-case-study',
+      'design-system-docs',
     ]);
   });
 });

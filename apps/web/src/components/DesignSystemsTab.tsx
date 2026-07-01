@@ -46,6 +46,11 @@ interface Props {
   onOpenSystem?: (id: string) => void;
   onSystemsRefresh?: () => Promise<void> | void;
   templates?: ProjectTemplate[];
+  // Opt-in demo seeding. When true the tab folds the hard-coded
+  // DEMO_DESIGN_SYSTEMS / DEMO_TEAM_SYSTEM_IDS fixtures into the daemon-backed
+  // list so the review demo has content to walk through. Off by default so the
+  // production tab (and controlled tests) stay driven purely by `systems`.
+  seedDemoContent?: boolean;
 }
 
 const CATEGORY_ORDER = [
@@ -305,6 +310,7 @@ export function DesignSystemsTab({
   onCreate,
   onOpenSystem,
   onSystemsRefresh,
+  seedDemoContent = false,
 }: Props) {
   const { locale, t } = useI18n();
   const analytics = useAnalytics();
@@ -362,7 +368,9 @@ export function DesignSystemsTab({
   };
   const [designSystemCollection, setDesignSystemCollection] = useState<DesignSystemCollection>('mine');
   // Personal design systems converted to the team scope (demo-local).
-  const [teamSystemIds, setTeamSystemIds] = useState<Set<string>>(() => new Set(DEMO_TEAM_SYSTEM_IDS));
+  const [teamSystemIds, setTeamSystemIds] = useState<Set<string>>(
+    () => new Set(seedDemoContent ? DEMO_TEAM_SYSTEM_IDS : []),
+  );
   const [surfaceFilter, setSurfaceFilter] = useState<SurfaceFilter>('all');
   const [category, setCategory] = useState<string>('All');
   // The master-detail selection — which row renders in the right preview pane.
@@ -378,12 +386,13 @@ export function DesignSystemsTab({
   const q = filter.trim().toLowerCase();
 
   const allSystems = useMemo(() => {
+    if (!seedDemoContent) return systems;
     const existing = new Set(systems.map((system) => system.id));
     return [
       ...systems,
       ...DEMO_DESIGN_SYSTEMS.filter((system) => !existing.has(system.id)),
     ];
-  }, [systems]);
+  }, [systems, seedDemoContent]);
 
   const librarySystems = useMemo(
     () => allSystems.filter((system) => !isUserSystem(system)),
