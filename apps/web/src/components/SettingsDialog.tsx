@@ -4273,7 +4273,6 @@ export function SettingsDialog({
                           const modelSummary = agentModelSummary(a);
                           const amrBenefits = [
                             t('settings.amrBenefitOfficial'),
-                            t('settings.amrBenefitLowerPrice'),
                             t('settings.amrBenefitManyModels'),
                           ];
                           const versionLabel =

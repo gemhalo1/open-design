@@ -2574,7 +2574,7 @@ describe('SettingsDialog execution settings Local CLI interactions', () => {
     expect(screen.queryByText(/vela/i)).toBeNull();
     expect(screen.queryByText(/Not signed in/i)).toBeNull();
     expect(screen.getByText('Official')).toBeTruthy();
-    expect(screen.getByText('Lower cost')).toBeTruthy();
+    expect(screen.queryByText('Lower cost')).toBeNull();
     expect(screen.getByText('Many models')).toBeTruthy();
     expect(screen.queryByText('Limited bonus: +100%')).toBeNull();
     expect(await screen.findByRole('button', { name: 'Authorize' })).toBeTruthy();
