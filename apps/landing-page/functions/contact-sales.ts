@@ -81,16 +81,28 @@ const ALLOWED_BUDGETS = new Set([
   "usd_5k_plus",
   "unsure",
 ]);
-// The /enterprise page submits these budget enum codes; the pricing modal
-// submits free display strings. The card maps a known code to a label and
+// Both the /enterprise page and the pricing modal submit canonical budget enum
+// codes (different buckets); the card maps a known code to a readable label and
 // otherwise shows the raw value.
 const BUDGET_LABELS: Record<string, string> = {
+  // /enterprise buckets
   lt_50: "每月 $50 以下",
   usd_50_200: "每月 $50 – $200",
   usd_200_1k: "每月 $200 – $1,000",
   usd_1k_5k: "每月 $1,000 – $5,000",
   usd_5k_plus: "每月 $5,000 以上",
+  // pricing "Request Team" buckets
+  lt_1k: "每月 $1,000 以下",
+  usd_5k_20k: "每月 $5,000 – $20,000",
+  usd_20k_plus: "每月 $20,000 以上",
   unsure: "还不确定",
+};
+// Canonical team-size enum → readable label (shared by both surfaces).
+const TEAM_SIZE_LABELS: Record<string, string> = {
+  "1-10": "1–10 人",
+  "11-50": "11–50 人",
+  "51-200": "51–200 人",
+  "200+": "200 人以上",
 };
 const ALLOWED_USE_CASES = new Set([
   "product_design",
@@ -198,7 +210,7 @@ function buildFeishuCard(lead: ContactLead): Record<string, unknown> {
           fieldRow("姓名", lead.name),
           fieldRow("企业邮箱", lead.email),
           fieldRow("公司", lead.company),
-          fieldRow("团队规模", lead.teamSize),
+          fieldRow("团队规模", TEAM_SIZE_LABELS[lead.teamSize] ?? lead.teamSize),
           fieldRow("国家 / 地区", lead.location),
           fieldRow("预计席位数", lead.seats),
           fieldRow("预算", BUDGET_LABELS[lead.budget] ?? lead.budget),

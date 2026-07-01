@@ -24,6 +24,8 @@ import {
   STANDARD_MODELS,
   DELIVERABLE_RANGES,
   CREDIT_BONUS_PCT,
+  TEAM_SIZE_VALUES,
+  BUDGET_VALUES,
   type PlanTierId,
 } from '../../_lib/pricing-content';
 import {
@@ -227,11 +229,13 @@ const jsonLd = [
               </li>
               <li class="pr-feat pr-feat-lead pr-feat-task">
                 <span>{fillTemplate(L.deliverableBenefit, { range: DELIVERABLE_RANGES[t.tier as PlanTierId] })}</span>
-                <svg class="pr-info-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" tabindex="0" role="img" aria-label={L.taskTooltip.note}>
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4M12 8h.01" />
-                </svg>
-                <span class="pr-task-tip" role="tooltip">
+                <button type="button" class="pr-info-btn" aria-label={L.taskTooltip.note} aria-describedby={`pr-task-tip-${t.tier}`}>
+                  <svg class="pr-info-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4M12 8h.01" />
+                  </svg>
+                </button>
+                <span class="pr-task-tip" id={`pr-task-tip-${t.tier}`} role="tooltip">
                   <span>{L.taskTooltip.line1}</span>
                   <span>{L.taskTooltip.line2}</span>
                   <span class="pr-task-tip-note">{L.taskTooltip.note}</span>
@@ -379,7 +383,7 @@ const jsonLd = [
             <label class="pr-lead-label" for="pr-lead-teamsize">{LF.fields.teamSize} <span class="pr-opt">{LF.optional}</span></label>
             <select class="pr-lead-input pr-lead-select" id="pr-lead-teamsize" name="teamSize">
               <option value="">{LF.selectPlaceholder}</option>
-              {LF.teamSizeOptions.map((o) => <option value={o}>{o}</option>)}
+              {LF.teamSizeOptions.map((label, i) => <option value={TEAM_SIZE_VALUES[i]}>{label}</option>)}
             </select>
           </div>
           <div class="pr-lead-field">
@@ -398,7 +402,7 @@ const jsonLd = [
             <label class="pr-lead-label" for="pr-lead-budget">{LF.fields.budget} <span class="pr-opt">{LF.optional}</span></label>
             <select class="pr-lead-input pr-lead-select" id="pr-lead-budget" name="budget">
               <option value="">{LF.selectPlaceholder}</option>
-              {LF.budgetOptions.map((o) => <option value={o}>{o}</option>)}
+              {LF.budgetOptions.map((label, i) => <option value={BUDGET_VALUES[i]}>{label}</option>)}
             </select>
           </div>
           <div class="pr-lead-field pr-lead-field-full">
@@ -846,8 +850,18 @@ const jsonLd = [
     background: color-mix(in srgb, var(--brand, #2bd200) 20%, transparent);
     border: 1px solid color-mix(in srgb, var(--brand, #2bd200) 45%, transparent);
   }
-  .pr-info-icon { flex-shrink: 0; color: var(--ink-soft, #aaa); cursor: help; }
-  .pr-info-icon:focus-visible { outline: 2px solid var(--brand, #2bd200); outline-offset: 2px; border-radius: 999px; }
+  .pr-info-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft, #aaa);
+    cursor: help;
+    line-height: 0;
+  }
+  .pr-info-btn:focus-visible { outline: 2px solid var(--brand, #2bd200); outline-offset: 2px; border-radius: 999px; }
+  .pr-info-icon { flex-shrink: 0; }
   /* Hover/focus tooltip explaining how a "design deliverable" is counted. */
   .pr-feat-task { position: relative; }
   .pr-task-tip {

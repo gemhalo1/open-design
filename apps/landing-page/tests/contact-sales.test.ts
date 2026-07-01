@@ -75,13 +75,13 @@ describe("contact-sales validation", () => {
     assert.equal(body.ok, true);
   });
 
-  it("accepts a pricing_team lead with only name + email (team-size/budget as free strings)", async () => {
+  it("accepts a pricing_team lead with only name + email (canonical team-size/budget enums)", async () => {
     const { status, body } = await call({
       name: "Ada",
       email: "ada@acme.com",
       source: "pricing_team",
-      teamSize: "11–50 人",
-      budget: "$1,000–5,000/月",
+      teamSize: "11-50",
+      budget: "usd_1k_5k",
       location: "中国大陆",
       seats: "20",
     });

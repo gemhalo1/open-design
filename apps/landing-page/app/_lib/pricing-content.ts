@@ -105,6 +105,15 @@ export const CREDIT_BONUS_PCT: Record<PlanTierId, number | null> = {
   max: 50,
 };
 
+/**
+ * Canonical, locale-independent keys for the team-lead-form selects. Index-aligned
+ * with each locale's `teamSizeOptions` / `budgetOptions` (which hold only the
+ * visible labels), so the `<option value>` is a stable enum while the text stays
+ * localized. The backend maps these back to readable strings for the lead card.
+ */
+export const TEAM_SIZE_VALUES = ['1-10', '11-50', '51-200', '200+'] as const;
+export const BUDGET_VALUES = ['lt_1k', 'usd_1k_5k', 'usd_5k_20k', 'usd_20k_plus', 'unsure'] as const;
+
 const EN: PricingContent = {
   labels: {
     heroTitle: 'Choose the right plan',
