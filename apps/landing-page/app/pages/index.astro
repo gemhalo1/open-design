@@ -146,6 +146,17 @@ const cobeEnhancerUrl = `/enhancers/cobe.js?v=${
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#efe7d2" />
+
+    {/*
+     * First in <head> on purpose: a non-English visitor on the English root is
+     * redirected to their locale before the browser streams the rest of the
+     * document, so it aborts the wasted first-load instead of fully rendering /
+     * and then bouncing to /zh/ (etc.). The switcher UI wiring inside defers
+     * itself to DOMContentLoaded. Localized roots and canonical / autoredirect
+     * off pages no-op, so English/crawler traffic pays only a tiny inline read.
+     */}
+    <LocaleSwitcherScript />
+
     <title>{title}</title>
     <meta name="description" content={metaDescription} />
     <link rel="canonical" href={canonical} />
@@ -210,7 +221,6 @@ const cobeEnhancerUrl = `/enhancers/cobe.js?v=${
      * 600px still pre-loads roughly one viewport ahead so scrolling stays warm.
      */}
     <PreciseLazyload imgRootMargin="600px 0px" />
-    <LocaleSwitcherScript />
     {/*
      * Enhancement infrastructure — defined before any enhancer runs so the
      * below-the-fold defer helpers are available to every script that follows.
