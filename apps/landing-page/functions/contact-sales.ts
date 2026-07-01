@@ -317,22 +317,28 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({ ok: false, error: "missing_fields" }, 400, origin);
   }
 
+  // Reject unrecognized sources up front. This is a public write endpoint, so a
+  // typoed/unknown source must return 400 rather than silently falling through
+  // to the relaxed path and persisting arbitrary leads.
   const source =
     typeof payload.source === "string" && ALLOWED_SOURCES.has(payload.source)
       ? payload.source
-      : "unknown";
+      : null;
+  if (!source) {
+    return json({ ok: false, error: "invalid_source" }, 400, origin);
+  }
 
   const company = readString(payload.company, MAX_SHORT);
   const teamSize = readString(payload.teamSize, MAX_SHORT);
   const budget = readString(payload.budget, MAX_SHORT);
   const useCases = readUseCases(payload.useCases);
 
-  // The /enterprise form keeps its full contract (company + a known team-size
-  // and budget enum + at least one use case). The lightweight pricing "Request
-  // Team" modal (source 'pricing_team') only needs name + email; its team size
-  // and budget arrive as free display strings and are stored as-is.
+  // `pricing_team` (the lightweight /pricing modal) is the only relaxed caller —
+  // name + email only, with team size/budget as free display strings. Every
+  // other allowlisted source keeps the full contact-form contract: company + a
+  // known team-size/budget enum + at least one use case.
   if (
-    source === "enterprise" &&
+    source !== "pricing_team" &&
     (!company ||
       !ALLOWED_TEAM_SIZES.has(teamSize) ||
       !ALLOWED_BUDGETS.has(budget) ||

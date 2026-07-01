@@ -49,6 +49,19 @@ describe("contact-sales validation", () => {
     assert.equal(body.error, "missing_fields");
   });
 
+  it("rejects an unrecognized or missing source (no silent relaxed write)", async () => {
+    assert.equal((await call({ name: "Ada", email: "ada@acme.com", source: "bogus" })).body.error, "invalid_source");
+    assert.equal((await call({ name: "Ada", email: "ada@acme.com" })).body.error, "invalid_source");
+    // An unknown source must not sneak through the name+email-only path.
+    const typo = await call({ name: "Ada", email: "ada@acme.com", source: "enterprisee" });
+    assert.equal(typo.status, 400);
+    assert.equal(typo.body.error, "invalid_source");
+  });
+
+  it("keeps the in-app `client` source strict too (only pricing_team is relaxed)", async () => {
+    assert.equal((await call({ name: "Ada", email: "ada@acme.com", source: "client" })).body.error, "missing_fields");
+  });
+
   it("keeps the enterprise contract: company + known team-size/budget + a use case are required", async () => {
     assert.equal((await call({ ...ENTERPRISE_OK, company: "" })).body.error, "missing_fields");
     assert.equal((await call({ ...ENTERPRISE_OK, teamSize: "nonsense" })).body.error, "missing_fields");
