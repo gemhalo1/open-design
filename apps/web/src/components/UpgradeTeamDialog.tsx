@@ -1,7 +1,8 @@
 // Upgrade-to-team guidance dialog.
 //
 // Demo-only billing picker shown when a free-plan user tries to invite
-// collaborators. Prices are represented as seat fees and token allowance.
+// collaborators. Team prices are monthly seat fees: workspace base fee +
+// the per-seat token allowance package.
 
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
@@ -13,14 +14,21 @@ interface Props {
   minSeatCount?: number;
   mode?: 'upgrade' | 'seats';
   /** "升级到团队版" — defaults to onClose when omitted. */
-  onConfirm?: (config: { seatCount: number; tierId: string; tierName: string; tokens: number }) => void;
+  onConfirm?: (config: {
+    seatCount: number;
+    tierId: string;
+    tierName: string;
+    pricePerSeat: number;
+    creditPack: string;
+  }) => void;
 }
 
 const DEFAULT_SEAT_COUNT = 3;
+const WORKSPACE_BASE_FEE = 20;
 const TEAM_TIERS = [
-  { id: 'starter', name: '小团队协作入门', tokens: 40 },
-  { id: 'growth', name: '常规项目协作', tokens: 80, recommended: true },
-  { id: 'scale', name: '高频生成与评审', tokens: 220 },
+  { id: 'plus', name: 'Team Plus', pricePerSeat: 40, creditPack: 'Plus 额度包', hint: '小团队协作入门' },
+  { id: 'pro', name: 'Team Pro', pricePerSeat: 80, creditPack: 'Pro 额度包', hint: '常规项目协作', recommended: true },
+  { id: 'max', name: 'Team Max', pricePerSeat: 220, creditPack: 'Max 额度包', hint: '高频生成与评审' },
 ];
 const TEAM_BENEFITS = [
   '资产共享与管理：项目 / 设计系统 / 插件',
@@ -37,7 +45,7 @@ export function UpgradeTeamDialog({
   minSeatCount = DEFAULT_SEAT_COUNT,
   mode = 'upgrade',
 }: Props) {
-  const [selectedTierId, setSelectedTierId] = useState('growth');
+  const [selectedTierId, setSelectedTierId] = useState('pro');
   const [seatCount, setSeatCount] = useState(Math.max(initialSeatCount, minSeatCount));
 
   useEffect(() => {
@@ -48,12 +56,13 @@ export function UpgradeTeamDialog({
   if (!open) return null;
 
   const selectedTier = TEAM_TIERS.find((tier) => tier.id === selectedTierId) ?? TEAM_TIERS[1];
-  const selectedTierName = selectedTier?.name ?? '常规项目协作';
-  const selectedTokens = selectedTier?.tokens ?? 80;
+  const selectedTierName = selectedTier?.name ?? 'Team Pro';
+  const selectedPrice = selectedTier?.pricePerSeat ?? 80;
+  const selectedCreditPack = selectedTier?.creditPack ?? 'Pro 额度包';
   const purchaseSeatsMode = mode === 'seats';
   // Total the user will actually be charged — shown on the CTA so a payment
   // action never hides its amount.
-  const monthlyTotal = selectedTokens * seatCount;
+  const monthlyTotal = selectedPrice * seatCount;
 
   function adjustSeatCount(delta: number) {
     setSeatCount((current) => Math.max(minSeatCount, current + delta));
@@ -62,9 +71,10 @@ export function UpgradeTeamDialog({
   function handleConfirm() {
     onConfirm?.({
       seatCount,
-      tierId: selectedTier?.id ?? 'growth',
+      tierId: selectedTier?.id ?? 'pro',
       tierName: selectedTierName,
-      tokens: selectedTokens,
+      pricePerSeat: selectedPrice,
+      creditPack: selectedCreditPack,
     });
     if (!onConfirm) onClose();
   }
@@ -86,9 +96,15 @@ export function UpgradeTeamDialog({
           <h2 className="upgrade-team__title">{purchaseSeatsMode ? '购买更多席位' : '选择团队版档位'}</h2>
           <p className="upgrade-team__subtitle">
             {purchaseSeatsMode
-              ? `新增席位会按当前团队档位计费，至少购买到 ${minSeatCount} 个席位。月费随席位数同步增加。`
-              : `团队版按席位计费，最少 ${minSeatCount} 个席位。不同档位对应不同的每席位月费。`}
+              ? `新增席位会按当前团队档位计费，至少购买到 ${minSeatCount} 个席位。总费用随席位数同步增加。`
+              : `团队版按席位按月计费，最少 ${minSeatCount} 个席位。每个席位都包含 Workspace 基础功能费和对应额度包。`}
           </p>
+        </div>
+
+        <div className="upgrade-team__pricing-rule" aria-label="团队版价格组成">
+          <strong>Team 版本由两部分组成</strong>
+          <span>Workspace 基础功能费：{WORKSPACE_BASE_FEE} 美元 / 席 / 月，用于团队空间、成员权限、共享资产和数据大盘。</span>
+          <span>Token 额度包：沿用个人 Plus / Pro / Max 的额度层级，叠加到每个席位上。</span>
         </div>
 
         <div className="upgrade-team__seat-summary">
@@ -127,21 +143,20 @@ export function UpgradeTeamDialog({
                   {tier.recommended ? <small>推荐</small> : null}
                 </span>
                 <span className="upgrade-team__plan-token">
-                  <small className="upgrade-team__plan-currency">$</small>
-                  {tier.tokens}
-                  <small> / 席位·月</small>
+                  ${tier.pricePerSeat}
+                  <small> / 席 / 月</small>
                 </span>
-                <span className="upgrade-team__plan-allowance-label">
-                  {seatCount} 席位共含 <strong>${tier.tokens * seatCount}</strong> 等值用量额度
+                <span className="upgrade-team__plan-total">
+                  ${tier.pricePerSeat * seatCount} / 月 · {seatCount} 个席位
                 </span>
+                <span className="upgrade-team__plan-composition">
+                  ${WORKSPACE_BASE_FEE} 基础功能费 + {tier.creditPack}
+                </span>
+                <span className="upgrade-team__plan-hint">{tier.hint}</span>
               </button>
             );
           })}
         </div>
-
-        <p className="upgrade-team__note">
-          「等值用量额度」指该金额可消耗的 AI 用量，按实际 Token 计费。
-        </p>
 
         {/* The benefits are a first-time value-prop; skip them when an
             existing team is just buying more seats — they already know. */}
