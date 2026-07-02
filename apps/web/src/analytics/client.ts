@@ -126,6 +126,32 @@ export function setAnalyticsUserId(userId: string | null): void {
   }
 }
 
+export function setAnalyticsPersonProperties(
+  properties: Record<string, unknown>,
+): void {
+  if (!client) return;
+  const compacted = compactPersonProperties(properties);
+  if (!compacted) return;
+  try {
+    const posthog = client as unknown as {
+      setPersonProperties?: (props: Record<string, unknown>) => void;
+      people?: { set?: (props: Record<string, unknown>) => void };
+      capture?: (event: string, props: Record<string, unknown>) => void;
+    };
+    if (typeof posthog.setPersonProperties === 'function') {
+      posthog.setPersonProperties(compacted);
+      return;
+    }
+    if (typeof posthog.people?.set === 'function') {
+      posthog.people.set(compacted);
+      return;
+    }
+    posthog.capture?.('$set', { $set: compacted });
+  } catch {
+    // best-effort — capture should never throw out of this path.
+  }
+}
+
 // Fetches `/api/analytics/config` once and wires up the exception-tracking
 // module's context — independent of consent state. The error tracker
 // installs its `window.error` / `unhandledrejection` listeners at module
@@ -414,6 +440,31 @@ function restoreSuperProperties(patch?: Record<string, unknown>): void {
   } catch {
     // best-effort.
   }
+}
+
+function compactPersonProperties(
+  properties: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    if (!key || value == null) continue;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed || trimmed === 'unknown') continue;
+      out[key] = trimmed;
+      continue;
+    }
+    if (Array.isArray(value)) {
+      const list = value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry && entry !== 'unknown');
+      if (list.length > 0) out[key] = list;
+      continue;
+    }
+    out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 export function capture(

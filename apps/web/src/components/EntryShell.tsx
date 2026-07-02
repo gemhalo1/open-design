@@ -51,6 +51,7 @@ import {
   beginAmrAuthTracking,
   resolveAmrAuthTracking,
 } from '../analytics/amr-auth';
+import { setOnboardingAttributionPersonProperties } from '../analytics/source-attribution';
 import {
   clearOnboardingSessionId,
   getOrCreateOnboardingSessionId,
@@ -1990,6 +1991,12 @@ function OnboardingView({
     // Persist the survey so later AMR entries (outside onboarding) can forward
     // the visitor's profile to AMR for paid-conversion segmentation.
     saveOnboardingProfile({
+      role: snapshot.role,
+      orgSize: snapshot.orgSize,
+      useCase: snapshot.useCase,
+      source: snapshot.source,
+    });
+    setOnboardingAttributionPersonProperties({
       role: snapshot.role,
       orgSize: snapshot.orgSize,
       useCase: snapshot.useCase,
