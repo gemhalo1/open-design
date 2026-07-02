@@ -6628,6 +6628,35 @@ function MediaProvidersSection({
               );
             })}
           </div>
+          {comingSoonProviders.length > 0 ? (
+            <details className="media-provider-coming-soon">
+              <summary className="memory-details-summary">
+                <span className="memory-details-title">
+                  {t('tasks.comingSoon')}
+                </span>
+                <span className="filter-pill-count">
+                  {comingSoonProviders.length}
+                </span>
+              </summary>
+              <ul className="media-provider-coming-soon-list">
+                {comingSoonProviders.map((provider) => (
+                  <li
+                    key={provider.id}
+                    className="media-provider-coming-soon-item"
+                  >
+                    <div className="media-provider-coming-soon-meta">
+                      <span className="media-provider-name">
+                        {provider.label}
+                      </span>
+                      <span className="media-provider-hint">
+                        {provider.hint}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
         </nav>
         <div className="media-provider-pane">
       {activeProvider && activeEntry ? (
@@ -6786,35 +6815,6 @@ function MediaProvidersSection({
             </button>
           </div>
         </article>
-      ) : null}
-      {comingSoonProviders.length > 0 ? (
-        <details className="library-group media-provider-coming-soon">
-          <summary className="memory-details-summary">
-            <span className="memory-details-title">
-              {t('tasks.comingSoon')}
-            </span>
-            <span className="filter-pill-count">
-              {comingSoonProviders.length}
-            </span>
-          </summary>
-          <ul className="media-provider-coming-soon-list">
-            {comingSoonProviders.map((provider) => (
-              <li
-                key={provider.id}
-                className="media-provider-coming-soon-item"
-              >
-                <div className="media-provider-coming-soon-meta">
-                  <span className="media-provider-name">
-                    {provider.label}
-                  </span>
-                  <span className="media-provider-hint">
-                    {provider.hint}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </details>
       ) : null}
         </div>
       </div>

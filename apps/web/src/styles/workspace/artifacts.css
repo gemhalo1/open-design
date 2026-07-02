@@ -839,29 +839,20 @@
   background: var(--bg-subtle);
 }
 /*
- * "Coming soon" drawer under the media provider list. We render the
- * roadmap providers as a denser, read-only list rather than the same
- * editable cards as the main list — the user can't actually configure
- * these, so giving them the same visual weight is misleading. The
- * <details>/<summary> is styled by the shared .memory-details-summary
- * rules; only the inner list needs new styles.
+ * "Coming soon" section at the bottom of the provider list (left column).
+ * These are roadmap providers the user can't configure yet, so they live
+ * as a collapsed continuation of the list rather than a card under the
+ * detail pane. Rendered as a denser, read-only list; the <details>/
+ * <summary> uses the shared .memory-details-summary rules, so only the
+ * section framing and inner list need styles here.
  */
 .media-provider-coming-soon {
-  margin-top: 12px;
-  max-width: 760px;
-  padding: 10px 12px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.media-provider-coming-soon--nav {
-  margin-top: 0;
-  padding: 8px 10px;
-  background: var(--bg-subtle);
-  border-radius: 12px;
+  margin-top: 8px;
+  padding: 8px 4px 2px;
+  border-top: 1px solid var(--border);
 }
 .media-provider-coming-soon[open] {
-  padding-bottom: 12px;
+  padding-bottom: 6px;
 }
 .media-provider-coming-soon-list {
   list-style: none;
