@@ -40,6 +40,7 @@ const SECTION_MARKERS = [
   ['shared-device-frames', '## Multi-device / multi-screen — shared frames'],
   ['identity-charter', '# Identity and workflow charter (background)'],
   ['slim-core-charter', '# Open Design charter'],
+  ['slim-platform-contracts', '## Platform delivery contracts'],
   ['personal-memory', '## Personal memory (auto-extracted from past chats)'],
   ['memory-intent-gateway', '## Intent gateway — turn short asks into a brief'],
   ['memory-verify-scorecard', '## Self-verify against your verified rules'],

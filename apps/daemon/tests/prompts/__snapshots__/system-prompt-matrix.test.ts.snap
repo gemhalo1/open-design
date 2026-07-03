@@ -311,6 +311,7 @@ exports[`composeSystemPrompt — scenario × section golden matrix > keeps the s
       "ui-locale-override",
       "shared-device-frames",
       "slim-core-charter",
+      "slim-platform-contracts",
       "personal-memory",
       "memory-intent-gateway",
       "memory-verify-scorecard",
@@ -329,7 +330,7 @@ exports[`composeSystemPrompt — scenario × section golden matrix > keeps the s
       "media-dispatch-hint",
       "role-marker-guard",
     ],
-    "totalChars": 36009,
+    "totalChars": 29595,
   },
   "slim-freeform-no-deck-signal": {
     "sections": [
@@ -340,7 +341,7 @@ exports[`composeSystemPrompt — scenario × section golden matrix > keeps the s
       "media-dispatch-hint",
       "role-marker-guard",
     ],
-    "totalChars": 28911,
+    "totalChars": 21518,
   },
 }
 `;

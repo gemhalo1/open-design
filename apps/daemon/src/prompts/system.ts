@@ -31,7 +31,7 @@
  */
 import { renderOfficialDesignerPrompt } from './official-system.js';
 import { renderDiscoveryAndPhilosophy, renderSharedFramesBlock } from './discovery.js';
-import { renderSlimCoreCharter } from './core-slim.js';
+import { PLATFORM_CONTRACTS_BLOCK, renderSlimCoreCharter } from './core-slim.js';
 import { renderDirectionSpecBlock } from './directions.js';
 import { DECK_FRAMEWORK_DIRECTIVE } from './deck-framework.js';
 import { renderMediaGenerationContract } from './media-contract.js';
@@ -724,15 +724,24 @@ export function composeSystemPrompt({
     // multi-target projects (same product across desktop+tablet+phone, or
     // multiple app screens side-by-side). A single-surface prototype never
     // uses it. Gate on the composer-visible platform signal (set at project
-    // creation, stable for the session → fingerprint stays cacheable). The
-    // per-platform contracts themselves stay in DISCOVERY_AND_PHILOSOPHY so
-    // a single-platform prototype keeps the contract for its own platform.
+    // creation, stable for the session → fingerprint stays cacheable). In the
+    // classic stack the per-platform contracts live inside
+    // DISCOVERY_AND_PHILOSOPHY; the slim core moves them to the conditional
+    // PLATFORM_CONTRACTS_BLOCK below so a default single-surface prototype
+    // doesn't carry them.
     const isMultiTargetProject =
       metadata?.platform === 'responsive' ||
       metadata?.platformTargets?.includes('responsive') ||
       (metadata?.platformTargets?.length ?? 0) > 1;
     if (isMultiTargetProject) {
       parts.push(renderSharedFramesBlock(), '\n\n---\n\n');
+    }
+    const hasExplicitPlatformSignal =
+      isMultiTargetProject ||
+      typeof metadata?.platform === 'string' ||
+      (metadata?.platformTargets?.length ?? 0) > 0;
+    if (isSlimCore && hasExplicitPlatformSignal) {
+      parts.push(PLATFORM_CONTRACTS_BLOCK, '\n\n---\n\n');
     }
   }
 
