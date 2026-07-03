@@ -20,6 +20,7 @@ import net from 'node:net';
 import { executionProfileFromStreamFormat, PLUGIN_SHARE_ACTION_PLUGIN_IDS } from '@open-design/contracts';
 import {
   composeSystemPrompt,
+  detectDeckIntentSignal,
   resolveExclusiveSurface,
 } from './prompts/system.js';
 import { emittedRenderableQuestionForm } from './question-form-detect.js';
@@ -4778,6 +4779,7 @@ export async function startServer({
     appliedPluginSnapshotId,
     mediaExecution,
     byokMediaDefaults,
+    freeformDeckSignal,
   }) => {
     const project =
       typeof projectId === 'string' && projectId
@@ -5296,6 +5298,7 @@ export async function startServer({
       ...(pluginBlock ? { pluginBlock } : {}),
       ...(activeStageBlocks ? { activeStageBlocks } : {}),
       userInstructions,
+      freeformDeckSignal,
     });
     // The chat handler also needs to know where the active skill lives
     // on disk so it can stage a per-project copy of its side files
@@ -5765,6 +5768,11 @@ export async function startServer({
         // prompt composer can splice in `## Active stage` blocks.
         // Default ON; set OD_BUNDLED_ATOM_PROMPTS=0 to opt out.
         appliedPluginSnapshotId: run?.appliedPluginSnapshotId ?? null,
+        // Scan the same text the agent will receive (transcript-resending
+        // agents carry prior turns inside `message`), so a deck mention
+        // anywhere in the visible conversation keeps the freeform
+        // maybe-deck framework injected.
+        freeformDeckSignal: detectDeckIntentSignal(message, currentPrompt),
       });
 
     run.designSystemId = designSystemSelection?.id ?? null;
