@@ -122,6 +122,11 @@ export function RecommendedStartRegion({ recommendation, onStart, onDismiss }: P
   }
 
   return (
+    // Delayed accordion reveal (repo's canonical grid-rows expand): the slot
+    // opens from 0fr and pushes the template section down — displacement is
+    // the attention cue, no glint needed for an optional entry.
+    <div className={styles.reveal}>
+      <div className={styles.revealInner}>
     <section
       className={styles.root}
       data-testid="home-recommendation"
@@ -164,5 +169,7 @@ export function RecommendedStartRegion({ recommendation, onStart, onDismiss }: P
         <Icon name="chevron-right" size={14} />
       </button>
     </section>
+      </div>
+    </div>
   );
 }
