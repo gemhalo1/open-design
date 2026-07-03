@@ -22,6 +22,17 @@ import {
   type FacetSelection,
 } from './facets';
 import { sortByVisualAppeal } from './visualScore';
+import { comparePluginGalleryOrder, isSunkToBottom } from './pluginPopularity';
+
+// Push the sunk tiles (default seeds, no-preview, manually-sunk ugly previews)
+// to the end while keeping everything else in its incoming order. The per-facet
+// comparator already sinks them inside a facet; this applies the same to "All".
+function sinkToBottom(list: InstalledPluginRecord[]): InstalledPluginRecord[] {
+  const keep: InstalledPluginRecord[] = [];
+  const sunk: InstalledPluginRecord[] = [];
+  for (const p of list) (isSunkToBottom(p.id) ? sunk : keep).push(p);
+  return [...keep, ...sunk];
+}
 
 export type FilterMode = 'all' | 'saved';
 
@@ -105,15 +116,21 @@ export function usePluginFacets({
     setBootstrapped(true);
   }, [bootstrapped, preferDefaultFacet, visiblePlugins.length, catalog]);
 
-  // The visual-appeal sort is applied at `visiblePlugins` derivation
-  // (above), so any downstream `applyFacetSelection` slice preserves
-  // the ranking. We do not re-sort here because filter + featured
-  // override should both remain stable across selections.
+  // The visual-appeal sort at `visiblePlugins` is the master / "All" browse
+  // order. When a specific facet is selected we re-sort that slice by usage
+  // (OPEND-449): non-prototype facets lead by real usage, the Prototype facet
+  // keeps its curated order, and the default mode-seeds + no-preview tiles sink
+  // to the bottom. "All" stays on the master order so it doesn't read as a
+  // cross-facet usage jumble. Array#sort is stable, so ties keep master order.
   const filtered = useMemo(() => {
-    const base =
-      mode === 'saved'
-        ? savedList
-        : applyFacetSelection(visiblePlugins, selection);
+    if (mode === 'saved') return filterByQuery(savedList, query, locale);
+    const slice = applyFacetSelection(visiblePlugins, selection);
+    const base = selection.category
+      ? [...slice].sort((a, b) => {
+          const curationGoverned = selection.category === 'prototype';
+          return comparePluginGalleryOrder(a.id, b.id, curationGoverned, curationGoverned);
+        })
+      : sinkToBottom(slice);
     return filterByQuery(base, query, locale);
   }, [mode, savedList, visiblePlugins, selection, query, locale]);
 
