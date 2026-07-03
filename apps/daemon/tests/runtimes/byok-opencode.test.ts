@@ -218,4 +218,32 @@ describe('byok-opencode runtime config', () => {
       },
     });
   });
+
+  it('allows keyless local Ollama and normalizes it to the OpenAI-compatible v1 endpoint', () => {
+    const out = buildOpenCodeByokProviderConfig(
+      { protocol: 'ollama', apiKey: '', baseUrl: 'http://localhost:11434' },
+      'llama3.2',
+    );
+
+    expect(out?.modelId).toBe('open-design-byok/llama3.2');
+    expect(out?.env).toEqual({ [BYOK_OPENCODE_API_KEY_ENV]: '' });
+    expect(out?.config).toMatchObject({
+      provider: {
+        [BYOK_OPENCODE_PROVIDER_ID]: {
+          npm: '@ai-sdk/openai-compatible',
+          options: {
+            baseURL: 'http://localhost:11434/v1',
+            apiKey: `{env:${BYOK_OPENCODE_API_KEY_ENV}}`,
+          },
+        },
+      },
+    });
+  });
+
+  it('still requires an API key for non-local Ollama providers', () => {
+    expect(buildOpenCodeByokProviderConfig(
+      { protocol: 'ollama', apiKey: '', baseUrl: 'https://ollama.com' },
+      'gpt-oss:20b',
+    )).toBeNull();
+  });
 });

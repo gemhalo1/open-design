@@ -1507,6 +1507,37 @@ describe('ProjectView conversation run isolation', () => {
     await waitFor(() => expect(playSound).toHaveBeenCalledWith('success-sound'));
   });
 
+  it('routes keyless local Ollama BYOK chats through OpenCode with provider metadata', async () => {
+    listMessages.mockResolvedValue([]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+
+    renderProjectView({
+      ...config,
+      mode: 'api',
+      apiProtocol: 'ollama',
+      apiKey: '',
+      baseUrl: 'http://localhost:11434',
+      model: 'llama3.2',
+    });
+
+    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
+    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
+
+    fireEvent.click(screen.getByTestId('send-message'));
+
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
+    expect(streamViaDaemon).toHaveBeenCalledWith(expect.objectContaining({
+      agentId: 'byok-opencode',
+      byokProvider: {
+        protocol: 'ollama',
+        apiKey: '',
+        baseUrl: 'http://localhost:11434',
+        apiVersion: '',
+      },
+      model: 'llama3.2',
+    }));
+  });
+
   it('keeps Bedrock BYOK chats on the client-side unsupported path', async () => {
     listMessages.mockResolvedValue([]);
 

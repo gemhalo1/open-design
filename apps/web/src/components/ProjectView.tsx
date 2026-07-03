@@ -237,6 +237,7 @@ import { effectiveMaxTokens } from '../state/maxTokens';
 import { effectiveAgentModelChoice } from './agentModelSelection';
 import { mediaExecutionPolicyForProjectMetadata } from '../media/execution-policy';
 import { mediaModelProviderId } from '../media/models';
+import { byokProviderRequiresApiKey } from '../utils/byokProvider';
 import {
   useByokImageModelOptions,
   useByokVideoModelOptions,
@@ -1160,12 +1161,15 @@ function byokMediaDefaultsForRun(input: {
 function byokOpenCodeProviderFromConfig(
   config: AppConfig,
 ): ByokChatProviderConfig | undefined {
-  if (!isOpenCodeByokChatProtocol(config.apiProtocol) || !config.apiKey) {
+  if (
+    !isOpenCodeByokChatProtocol(config.apiProtocol) ||
+    (byokProviderRequiresApiKey(config.apiProtocol, undefined, config.baseUrl) && !config.apiKey.trim())
+  ) {
     return undefined;
   }
   return {
     protocol: config.apiProtocol,
-    apiKey: config.apiKey,
+    apiKey: config.apiKey.trim(),
     baseUrl: config.baseUrl,
     apiVersion:
       config.apiProtocol === 'azure'

@@ -48,7 +48,6 @@ export function buildOpenCodeByokProviderConfig(
   }
   const apiKey = typeof provider.apiKey === 'string' ? provider.apiKey.trim() : '';
   const rawModel = typeof model === 'string' ? model.trim() : '';
-  if (!apiKey || !rawModel || rawModel.toLowerCase() === 'default') return null;
   const defaultBaseUrl = DEFAULT_BASE_URL_BY_PROTOCOL[protocol];
   const baseUrl = normalizeProviderBaseUrl(
     protocol,
@@ -56,6 +55,8 @@ export function buildOpenCodeByokProviderConfig(
       ? provider.baseUrl.trim()
       : defaultBaseUrl,
   );
+  if (requiresApiKey(protocol, baseUrl) && !apiKey) return null;
+  if (!rawModel || rawModel.toLowerCase() === 'default') return null;
   if (!baseUrl && protocol !== 'azure') return null;
 
   const modelId = opencodeByokModelId(rawModel);
@@ -107,9 +108,39 @@ function normalizeProviderBaseUrl(
   }
   if (protocol === 'ollama') {
     if (isExactOrigin(trimmed, 'https://ollama.com')) return 'https://ollama.com/v1';
+    if (isLocalOllamaOriginPath(trimmed)) return `${trimmed}/v1`;
     if (trimmed.endsWith('/api')) return `${trimmed.slice(0, -4)}/v1`;
   }
   return trimmed;
+}
+
+function requiresApiKey(
+  protocol: ByokChatProviderConfig['protocol'],
+  baseUrl: string,
+): boolean {
+  return protocol !== 'ollama' || !isLocalOllamaBaseUrl(baseUrl);
+}
+
+function isLocalOllamaBaseUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function isLocalOllamaOriginPath(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      isLocalOllamaBaseUrl(value) &&
+      (parsed.pathname === '' || parsed.pathname === '/')
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isExactOrigin(value: string, origin: string): boolean {
