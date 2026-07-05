@@ -31,7 +31,7 @@
  */
 import type { ChatSessionMode } from '../api/chat.js';
 import type { ProjectMetadata, ProjectTemplate } from '../api/projects.js';
-import { OFFICIAL_DESIGNER_PROMPT } from './official-system.js';
+import { OFFICIAL_DESIGNER_PROMPT, renderOfficialDesignerPrompt } from './official-system.js';
 import { DISCOVERY_AND_PHILOSOPHY } from './discovery.js';
 import { DECK_FRAMEWORK_DIRECTIVE } from './deck-framework.js';
 import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
@@ -332,7 +332,13 @@ export function composeSystemPrompt({
   // Ask mode skips the multi-thousand-token designer charter entirely — the
   // CHAT_MODE_OVERRIDE above is its self-contained identity. Plan/Design keep it.
   if (!isAskMode) {
-    parts.push('# Identity and workflow charter (background)\n\n', BASE_SYSTEM_PROMPT);
+    // Website Clone runs swap the "don't recreate copyrighted designs" guardrail
+    // for a faithful-reproduction + pre-deploy-checklist rule, mirroring the
+    // daemon prompt so API/BYOK-backed web-clone runs behave identically.
+    parts.push(
+      '# Identity and workflow charter (background)\n\n',
+      renderOfficialDesignerPrompt({ webCloneFidelity: metadata?.intent === 'web-clone' }),
+    );
   }
 
   // Mid-conversation clarification reuses the same `<question-form>` flow as
