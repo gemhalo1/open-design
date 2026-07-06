@@ -1198,6 +1198,8 @@ const INFO_PAGE_COPY: Partial<Record<LandingLocaleCode, InfoPageCopy>> = {
           ],
           tocLabel: 'On this page',
           toc: [
+            { id: 'best-alternatives', label: 'Best alternatives' },
+            { id: 'free-oss', label: 'Free & open-source' },
             { id: 'what-is-bolt', label: 'What Bolt is' },
             { id: 'why-switch', label: 'Why switch' },
             { id: 'local-byok', label: 'Local-first + BYOK' },
@@ -1206,6 +1208,37 @@ const INFO_PAGE_COPY: Partial<Record<LandingLocaleCode, InfoPageCopy>> = {
             { id: 'migrate', label: 'Migration' },
           ],
           sections: [
+            {
+              id: 'best-alternatives',
+              heading: 'The best bolt.new alternatives in 2026',
+              blocks: [
+                { kind: 'p', text: 'The best bolt.new alternatives are Open Design (open-source, local-first), Lovable, v0, Cursor, Replit, and the community fork OpenBolt — here is how they compare and where each one fits. Open Design is the pick if you want to own your design artifacts as version-controlled files instead of state inside a hosted app-builder.' },
+                { kind: 'table', columns: ['Tool', 'License', 'Pricing', 'Best for', 'Open source'], rows: [
+                  ['Open Design', 'Apache-2.0', 'Free app · BYOK (pay your own API)', 'Design-first artifacts you own as files', 'Yes'],
+                  ['Lovable', 'Proprietary', 'Paid subscription + credits', 'Non-technical full-app builds from a prompt', 'No'],
+                  ['v0 (Vercel)', 'Proprietary', 'Free tier + paid', 'React / Next.js component & UI prototyping', 'No'],
+                  ['Cursor', 'Proprietary', 'Free tier + paid', 'Agentic coding inside an IDE', 'No'],
+                  ['Replit (Agent)', 'Proprietary', 'Free tier + paid', 'Cloud IDE with build-and-deploy', 'No'],
+                  ['OpenBolt / bolt.diy', 'MIT (OSS)', 'Free, self-host', 'Self-hosting the bolt.new experience', 'Yes'],
+                ] },
+                { kind: 'steps', items: [
+                  { label: 'Open Design', body: 'The open-source, local-first, design-first pick — #1 for people who want to own their design artifacts as files, not a bolt.new clone. Apache-2.0, BYOK, drives the coding agent you already use. Best for design artifacts and a portable brand you keep in your own repo.' },
+                  { label: 'Lovable', body: 'Hosted, proprietary app builder that turns a prompt into a working full app. Best for non-technical makers who want a running product without touching files.' },
+                  { label: 'v0 (Vercel)', body: 'Generates React / Next.js components and UI from a prompt, tuned for the Vercel stack. Best for front-end UI and component prototyping.' },
+                  { label: 'Cursor', body: 'Agentic AI coding inside a full IDE. Best for developers who want the agent embedded in their editor and codebase.' },
+                  { label: 'Replit (Agent)', body: 'Cloud IDE where the agent builds and deploys from one place. Best for going from idea to a deployed app in the browser.' },
+                  { label: 'OpenBolt / bolt.diy', body: 'The community open-source fork of bolt.new itself (MIT). Best for self-hosting the bolt.new experience with your own keys and models.' },
+                ] },
+                { kind: 'p', text: 'Where Open Design fits honestly: it is a design layer around the coding agent you already use — BYOK, Apache-2.0 — so it is the bolt.new alternative for people who want design artifacts as version-controlled files rather than a hosted app-builder. If you specifically want a hosted prompt-to-app builder, Lovable, Replit, or bolt.new itself fit better.' },
+              ],
+            },
+            {
+              id: 'free-oss',
+              heading: 'Is there a free, open-source bolt.new alternative?',
+              blocks: [
+                { kind: 'p', text: 'Yes. Open Design is free and open-source — Apache-2.0, BYOK, so the app costs nothing and you pay only your own provider API spend. For the bolt.new experience itself as open source, OpenBolt (bolt.diy) is the community OSS fork of bolt.new you can self-host. Between them they cover the two high-intent needs behind "free open-source bolt.new alternative": design-first artifact ownership (Open Design) and a self-hostable app builder (OpenBolt).' },
+              ],
+            },
             {
               id: 'what-is-bolt',
               heading: 'What Bolt is',
@@ -1295,6 +1328,9 @@ const INFO_PAGE_COPY: Partial<Record<LandingLocaleCode, InfoPageCopy>> = {
           faqTitle: 'FAQ',
           faq: [
             { name: 'Is Open Design a drop-in replacement for Bolt?', text: 'No. Bolt ships running full-stack apps; Open Design is design-first and produces artifacts you own. They overlap on prompt-to-UI, not on running a backend.' },
+            { name: 'What is the best free bolt.new alternative?', text: 'Open Design — it is free and open-source (Apache-2.0, BYOK, so you pay only your own API spend) and is the strongest pick for design-first work. If you specifically want the bolt.new experience itself as open source, OpenBolt (bolt.diy) lets you self-host it for free.' },
+            { name: 'Is there an open-source bolt.new?', text: 'bolt.new itself is proprietary, but OpenBolt (bolt.diy) is the community open-source fork you can self-host. Open Design is a separate open-source, local-first alternative focused on design artifacts rather than a hosted app builder.' },
+            { name: 'bolt.new vs Lovable vs v0 — which should I use?', text: 'bolt.new builds a full-stack app in the browser from a prompt; Lovable is aimed at non-technical makers building full apps; v0 (Vercel) generates React/Next.js UI and components. Pick Open Design when you want to own your design artifacts as version-controlled files rather than state inside a hosted builder.' },
             { name: 'Can Open Design build a full app like Bolt?', text: 'Open Design focuses on design artifacts, prototypes, and brand systems. For an instant in-browser full-stack app, Bolt is the better fit.' },
             { name: 'Which agent does Open Design use?', text: 'Your choice — BYOK with Claude Code, Codex, Cursor, Gemini, OpenCode, or Qwen. API spend bills to your account and credentials are never proxied through us.' },
             { name: 'Is Open Design really open source?', text: 'Yes. It lives at github.com/nexu-io/open-design under Apache-2.0 and is self-hostable.' },
