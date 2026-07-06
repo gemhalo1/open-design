@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { access, chmod, cp, mkdir, open, readFile, readdir, readlink, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, open, readFile, readdir, readlink, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -531,12 +531,27 @@ async function writeAssembledApp(
   );
 
   await runProductionInstall(paths.assembledAppRoot);
+
+  // Rewrite the package.json to remove @open-design dependencies entirely.
+  // electron-builder needs valid version strings (not file: protocol) so it
+  // doesn't leave empty directories. But on the installed system, npm must
+  // not see @open-design/* in dependencies at all — if npm encounters them
+  // (e.g. triggered by Electron's module resolution or Node.js process
+  // startup), it tries to fetch them from the registry, fails with 404, and
+  // removes the real files that were already extracted from tarballs.
+  const versionedDeps: Record<string, string> = {};
+  for (const tarball of packed) {
+    const tarballVersion = /-(\d+\.\d+\.\d+)\.tgz$/.exec(tarball.fileName)?.[1];
+    versionedDeps[tarball.packageName] = tarballVersion ?? "0.0.0";
+  }
+  const versionedPkg = { ...packageJson, dependencies: versionedDeps };
+  await writeFile(paths.assembledPackageJsonPath, `${JSON.stringify(versionedPkg, null, 2)}\n`, "utf8");
 }
 
 // --- Step 5: writeLinuxBuilderConfig helper ---
 
 async function writeLinuxBuilderConfig(config: ToolPackConfig, paths: LinuxPaths): Promise<void> {
-  const target = config.to === "dir" ? ["dir"] : ["AppImage"];
+  const target = config.to === "dir" ? ["dir"] : config.to === "deb" ? ["deb"] : ["AppImage"];
   const namespaceToken = sanitizeNamespace(config.namespace);
   const packagedVersion = await readPackagedVersion(config);
   const packageVersion = electronBuilderVersionForAppVersion(packagedVersion);
@@ -587,6 +602,154 @@ async function writeLinuxBuilderConfig(config: ToolPackConfig, paths: LinuxPaths
 
   await mkdir(dirname(paths.appBuilderConfigPath), { recursive: true });
   await writeFile(paths.appBuilderConfigPath, `${JSON.stringify(builderConfig, null, 2)}\n`, "utf8");
+}
+
+async function injectDebPostinst(config: ToolPackConfig, paths: LinuxPaths): Promise<void> {
+  if (config.to !== "deb") return;
+
+  const entries = await readdir(paths.appBuilderOutputRoot);
+  const debFile = entries.find((e) => e.endsWith(".deb"));
+  if (!debFile) return;
+
+  const debPath = join(paths.appBuilderOutputRoot, debFile);
+  const extractDir = join(paths.appBuilderOutputRoot, ".deb-extract");
+
+  await rm(extractDir, { force: true, recursive: true });
+  await mkdir(extractDir, { recursive: true });
+
+  // Extract the deb
+  await execFileAsync("dpkg-deb", ["--raw-extract", debPath, extractDir]);
+
+  // --- Fix 1: Rename install directory /opt/Open Design/ -> /opt/open-design/ ---
+  const oldOptDir = join(extractDir, "opt", "Open Design");
+  const newOptDir = join(extractDir, "opt", "open-design");
+  if (await pathExists(oldOptDir).catch(() => false)) {
+    await rename(oldOptDir, newOptDir);
+
+    // Update any symlinks in the tree that still point at the old path
+    // by replacing them with correct symlinks
+    const oldPrefix = "/opt/Open Design/";
+    const newPrefix = "/opt/open-design/";
+    async function fixSymlinks(dir: string): Promise<void> {
+      const items = await readdir(dir, { withFileTypes: true });
+      for (const item of items) {
+        const full = join(dir, item.name);
+        if (item.isDirectory()) {
+          await fixSymlinks(full);
+        } else if (item.isSymbolicLink()) {
+          const target = await readlink(full);
+          if (target.startsWith(oldPrefix)) {
+            await rm(full);
+            await symlink(target.replace(oldPrefix, newPrefix), full);
+          }
+        }
+      }
+    }
+    await fixSymlinks(newOptDir);
+  }
+
+  // --- Fix 2: Update .desktop file Exec= path and Icon= reference ---
+  const desktopFile = join(extractDir, "usr", "share", "applications", "Open Design.desktop");
+  const desktopFileFixed = join(extractDir, "usr", "share", "applications", "open-design.desktop");
+  if (await pathExists(desktopFile).catch(() => false)) {
+    let content = await readFile(desktopFile, "utf8");
+    content = content
+      .replace(/Exec=.*/, 'Exec=/opt/open-design/open-design %U')
+      .replace(/Icon=Open Design/, 'Icon=open-design')
+      .replace(/^StartupWMClass=.*\n?/m, '');
+    await writeFile(desktopFileFixed, content, "utf8");
+    await rm(desktopFile);
+  }
+
+  // --- Fix 3: Update electron-builder's postrm script (references old path) ---
+  const postrmPath = join(extractDir, "DEBIAN", "postrm");
+  if (await pathExists(postrmPath).catch(() => false)) {
+    let postrm = await readFile(postrmPath, "utf8");
+    postrm = postrm.replace(/\/opt\/Open Design\//g, "/opt/open-design/");
+    await writeFile(postrmPath, postrm, "utf8");
+  }
+
+  // --- Fix 4: Write postinst script with all automatic fixes ---
+  const postinstContent = `#!/bin/bash
+set -e
+
+# Fix icon filename with spaces (electron-builder uses productName as filename)
+ICON_SRC="/usr/share/icons/hicolor/1024x1024/apps/Open Design.png"
+ICON_DST="/usr/share/icons/hicolor/1024x1024/apps/open-design.png"
+DESKTOP_FILE="/usr/share/applications/Open Design.desktop"
+DESKTOP_FILE_FIXED="/usr/share/applications/open-design.desktop"
+
+if [ -f "$ICON_SRC" ] && [ ! -f "$ICON_DST" ]; then
+  mv "$ICON_SRC" "$ICON_DST"
+  for size in 48x48 64x64 128x128 256x256 512x512; do
+    mkdir -p "/usr/share/icons/hicolor/$size/apps"
+    cp "$ICON_DST" "/usr/share/icons/hicolor/$size/apps/open-design.png"
+  done
+fi
+
+if [ -f "$DESKTOP_FILE" ]; then
+  sed 's/Icon=Open Design/Icon=open-design/' "$DESKTOP_FILE" > "$DESKTOP_FILE_FIXED"
+  rm -f "$DESKTOP_FILE"
+fi
+
+gtk-update-icon-cache /usr/share/icons/hicolor/ 2>/dev/null || true
+
+# Create symlink so desktop file Exec path works (binary has a space in its name)
+BIN_TARGET="/opt/open-design/Open Design"
+BIN_LINK="/opt/open-design/open-design"
+if [ -f "$BIN_TARGET" ] && [ ! -e "$BIN_LINK" ]; then
+  ln -sf "$BIN_TARGET" "$BIN_LINK"
+fi
+
+# Fix namespaceBaseRoot in config: remove the key so daemon falls back to
+# Electron userData directory (~/.config/open-design/namespaces/), preventing
+# it from pointing at the build machine's source tree.
+CONFIG_FILE="/opt/open-design/resources/open-design-config.json"
+if [ -f "$CONFIG_FILE" ]; then
+  python3 -c "
+import json, sys
+with open('$CONFIG_FILE', 'r') as f:
+    cfg = json.load(f)
+cfg.pop('namespaceBaseRoot', None)
+with open('$CONFIG_FILE', 'w') as f:
+    json.dump(cfg, f, indent=2)
+    f.write(chr(10))
+" 2>/dev/null || true
+fi
+`;
+
+  await writeFile(join(extractDir, "DEBIAN", "postinst"), postinstContent, "utf8");
+  await chmod(join(extractDir, "DEBIAN", "postinst"), 0o755);
+
+  // --- Fix 5: Strip @open-design/* from app package.json dependencies ---
+  // If npm ever runs in the installed app directory (triggered by Electron
+  // module resolution, Node process startup, etc.), it tries to fetch
+  // @open-design/* from the npm registry, fails with 404, and silently
+  // deletes the real files that were already extracted from tarballs.
+  const appPkgPath = join(extractDir, "opt", "open-design", "resources", "app", "package.json");
+  if (await pathExists(appPkgPath).catch(() => false)) {
+    try {
+      const appPkg = JSON.parse(await readFile(appPkgPath, "utf8")) as Record<string, unknown>;
+      const deps = appPkg.dependencies as Record<string, string> | undefined;
+      if (deps != null) {
+        const stripped: Record<string, string> = {};
+        for (const [name, ver] of Object.entries(deps)) {
+          if (!name.startsWith("@open-design/")) stripped[name] = ver;
+        }
+        appPkg.dependencies = stripped;
+        await writeFile(appPkgPath, `${JSON.stringify(appPkg, null, 2)}\n`, "utf8");
+      }
+    } catch {
+      // Best-effort: failure to strip is non-fatal.
+    }
+  }
+
+  // Repack
+  await rm(debPath, { force: true });
+  await execFileAsync("dpkg-deb", ["--build", extractDir, debPath], {
+    cwd: config.workspaceRoot,
+  });
+  await rm(extractDir, { force: true, recursive: true });
 }
 
 // --- Step 6: runElectronBuilderLinux + findBuiltAppImage helpers ---
@@ -650,6 +813,7 @@ export async function packLinux(config: ToolPackConfig): Promise<LinuxPackResult
   await writeAssembledApp(config, paths, tarballs);
   await writeLinuxBuilderConfig(config, paths);
   await runElectronBuilderLinux(config, paths);
+  await injectDebPostinst(config, paths);
 
   const appImagePath = config.to === "dir" ? null : await findBuiltAppImage(paths);
   return {
