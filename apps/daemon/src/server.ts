@@ -4903,6 +4903,14 @@ export async function startServer({
         ? `\n\n${promptImagePaths.map((p) => `@${p}`).join(' ')}`
         : '',
     ].join('');
+
+    // Split for opencode agent-file path: instructionBlock becomes the agent's
+    // system prompt, userBlock is sent via stdin.
+    const USER_REQUEST_MARKER = '\n# User request\n';
+    const markerIdx = composed.indexOf(USER_REQUEST_MARKER);
+    const instructionBlock = markerIdx >= 0 ? composed.slice(0, markerIdx) : '';
+    const userBlock = markerIdx >= 0 ? composed.slice(markerIdx) : composed;
+
     run.promptTelemetry = buildPromptStackTelemetry({
       composedPrompt: composed,
       sections: [
@@ -6158,6 +6166,28 @@ export async function startServer({
       return;
     }
 
+    const OD_CHAT_AGENT_NAME = 'od-chat';
+    let useOpencodeAgentFile = false;
+    if (def.id === 'opencode' && instructionBlock) {
+      try {
+        const opencodeDir = path.join(effectiveCwd || os.tmpdir(), '.opencode');
+        await fs.promises.mkdir(path.join(opencodeDir, 'agents'), { recursive: true });
+        const agentPath = path.join(opencodeDir, 'agents', `${OD_CHAT_AGENT_NAME}.md`);
+        const agentContent = `---
+description: Open Design chat agent
+mode: primary
+---
+
+${instructionBlock}
+`;
+        await fs.promises.writeFile(agentPath, agentContent);
+        args.push('--agent', OD_CHAT_AGENT_NAME);
+        useOpencodeAgentFile = true;
+      } catch (err) {
+        console.warn('[opencode] agent file write failed, falling back to stdin', err);
+      }
+    }
+
     run.status = 'running';
     run.updatedAt = Date.now();
     send('start', {
@@ -6224,14 +6254,21 @@ export async function startServer({
           ? { [isMiMoContent ? 'MIMOCODE_CONFIG_CONTENT' : 'OPENCODE_CONFIG_CONTENT']: opencodeConfigContent }
           : {}),
       }, agentLaunch);
+      if (def.id === 'opencode') {
+        env.OPENCODE_DISABLE_PROJECT_CONFIG = 'false';
+        env.PWD = effectiveCwd;
+      }
       spawnedAgentEnv = env;
       const invocation = createCommandInvocation({
         command: agentLaunch.launchPath,
         args,
         env,
       });
+      console.warn('[server] opencode chat cmd:', invocation.command, invocation.args.join(' '));
+      console.warn('[server] opencode chat env:', JSON.stringify(env));
       lifecycle.mark('launch_preflight_end');
       lifecycle.mark('process_spawn_start');
+      console.warn('[server] opencode spawn cwd:', effectiveCwd);
       child = spawn(invocation.command, invocation.args, {
         env,
         stdio: [stdinMode, 'pipe', 'pipe'],
@@ -6362,6 +6399,7 @@ export async function startServer({
       // an OpenAI key parked in media-config.
       const memoryOptions = {
         projectRoot: PROJECT_ROOT,
+        cwd: effectiveCwd,
         chatAgentId: typeof agentId === 'string' ? agentId : null,
         chatModel: typeof safeModel === 'string' ? safeModel : null,
         // Scope the extractor's duplicate-turn de-dup to this conversation, so a
@@ -7813,7 +7851,7 @@ export async function startServer({
         }
         run.stdinOpen = true;
       } else {
-        child.stdin.end(composed, 'utf8', markStdinWriteEnd);
+        child.stdin.end(useOpencodeAgentFile ? userBlock : composed, 'utf8', markStdinWriteEnd);
       }
     }
   };

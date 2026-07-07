@@ -63,8 +63,10 @@ import {
 import { resolveProviderConfig } from './media/config.js';
 import { AIHUBMIX_APP_CODE } from './integrations/aihubmix.js';
 import { spawn } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { createCommandInvocation } from '@open-design/platform';
 import {
   applyAgentLaunchEnv,
@@ -878,9 +880,11 @@ async function callLocalCli(provider, system, user, options) {
   // its startup `bun install` in whatever directory the daemon was launched from
   // — clobbering a pnpm workspace (dev checkout). Use a neutral temp cwd.
   const cwd =
-    typeof options?.projectRoot === 'string' && options.projectRoot.trim()
-      ? options.projectRoot
-      : os.tmpdir();
+    typeof options?.cwd === 'string' && options.cwd.trim()
+      ? options.cwd
+      : typeof options?.projectRoot === 'string' && options.projectRoot.trim()
+        ? options.projectRoot
+        : os.tmpdir();
   const prompt = [
     system,
     '',
@@ -890,6 +894,7 @@ async function callLocalCli(provider, system, user, options) {
   ].join('\n');
 
   let args;
+  const OD_MEMORY_AGENT_NAME = 'od-memory-extractor';
   let stdinText = prompt;
   let parseStdout = (raw) => raw.trim();
   if (provider.agentId === 'claude') {
@@ -907,12 +912,29 @@ async function callLocalCli(provider, system, user, options) {
     );
     parseStdout = (raw) => extractJsonEventText(def.eventParser || def.id, raw, def.name);
   } else if (provider.agentId === 'opencode') {
-    // Deliver the prompt on stdin, matching the chat-run path
-    // (def.promptViaStdin). `opencode run`'s `-f, --file` is a yargs array
-    // option that greedily consumes every trailing non-flag token, so
-    // `--file <prompt-file> "<message>"` made OpenCode treat the message
-    // text as a second attachment and exit with "File not found". Bare
-    // `opencode run --format json` reads the message from stdin instead.
+    // Write agent file so the system prompt is sent as a proper system message
+    // via the agent definition, rather than folded into the user message on stdin.
+    const opencodeDir = join(cwd, '.opencode');
+    await mkdir(join(opencodeDir, 'agents'), { recursive: true });
+    const agentPath = join(opencodeDir, 'agents', `${OD_MEMORY_AGENT_NAME}.md`);
+    const agentBody = `${system}\n\nYou are running as a background memory extractor. Do not use tools. Return strict JSON only.`;
+    const agentContent = `---
+description: Background memory extractor
+mode: primary
+permission:
+  read: deny
+  edit: deny
+  bash: deny
+  glob: deny
+  grep: deny
+  webfetch: deny
+  task: deny
+todowrite: deny
+---
+
+${agentBody}
+`;
+    await writeFile(agentPath, agentContent, { flag: 'wx' }).catch(() => {});
     args = def.buildArgs(
       '',
       [],
@@ -920,6 +942,8 @@ async function callLocalCli(provider, system, user, options) {
       { model: provider.model },
       { cwd },
     );
+    args.push('--agent', OD_MEMORY_AGENT_NAME);
+    stdinText = user;
     parseStdout = (raw) => extractJsonEventText(def.eventParser || def.id, raw, def.name);
   } else {
     throw new Error(`Local CLI memory extraction is not supported for ${provider.agentId}`);
@@ -935,11 +959,15 @@ async function callLocalCli(provider, system, user, options) {
     ),
     launch,
   );
+  env.OPENCODE_DISABLE_PROJECT_CONFIG = 'false';
+  env.PWD = cwd;
   const invocation = createCommandInvocation({
     command: launch.launchPath,
     args,
     env,
   });
+  console.warn('[memory-llm] opencode cmd:', invocation.command, invocation.args.join(' '));
+  console.warn('[memory-llm] opencode env:', JSON.stringify(env));
 
   return await new Promise((resolve, reject) => {
     let stdout = '';
@@ -1206,6 +1234,7 @@ async function collectProposedEntries(dataDir, input, options) {
       raw = await callLocalCli(provider, systemPrompt, userPayload, {
         dataDir,
         projectRoot,
+        cwd: options?.cwd,
         localCliRunner: options?.localCliRunner,
       });
     } else if (provider.kind === 'anthropic') {

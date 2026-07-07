@@ -70,6 +70,13 @@ export const opencodeAgentDef = {
       if (options.model && options.model !== 'default') {
         args.push('-m', options.model);
       }
+      const runtimeCwd =
+        typeof runtimeContext.cwd === 'string' && runtimeContext.cwd.trim()
+          ? runtimeContext.cwd.trim()
+          : null;
+      if (runtimeCwd) {
+        args.push('--dir', runtimeCwd);
+      }
       return args;
     },
     promptViaStdin: true,
