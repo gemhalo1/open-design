@@ -49,6 +49,13 @@ async function withFakeAgent<T>(
 ): Promise<T> {
   const dir = await fsp.mkdtemp(join(tmpdir(), 'od-chat-route-bin-'));
   const oldPath = process.env.PATH;
+  if (binName === 'opencode') {
+    // Prepend agent-file reading so the fake CLI also captures content
+    // that the production code path writes to .opencode/agents/od-chat.md
+    // instead of passing it all on stdin.
+    script = `const __agentPrompt = (() => { try { return require('fs').readFileSync(require('path').join(process.cwd(), '.opencode', 'agents', 'od-chat.md'), 'utf8'); } catch (e) { return ''; } })();
+${script.replace("let prompt = '';", "let prompt = __agentPrompt;")}`;
+  }
   try {
     if (process.platform === 'win32') {
       const runner = join(dir, `${binName}-test-runner.cjs`);

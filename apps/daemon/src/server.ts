@@ -234,10 +234,12 @@ export {
 } from './desktop-auth.js';
 import { readCurrentAppVersionInfo } from './app-version.js';
 import {
+  dirHasAttachments,
   findSkillById,
   listSkills,
   resolveSkillId,
   splitDerivedSkillId,
+  withSkillRootPreamble,
 } from './skills.js';
 import { validateLinkedDirs } from './linked-dirs.js';
 import { installFromTarget, uninstallById, sanitizeRepoName } from './library-install.js';
@@ -1413,6 +1415,9 @@ export function composeChatUserRequestForAgent(
       : '(No extra typed instruction.)';
   const transition = formAnswerTransitionForCurrentPrompt(currentPrompt);
   if (!transition) return body;
+  // Avoid duplicating form answers: when the full transcript body already
+  // contains them, skip the transition entirely.
+  if (body.includes('[form answers')) return body;
   if (skip) {
     return [transition, body].join('\n\n');
   }
@@ -3660,7 +3665,9 @@ export async function startServer({
             const { loadPluginLocalSkill } = await import('./plugins/local-skill.js');
             const local = await loadPluginLocalSkill(plugin);
             if (local) {
-              skillBody = local.body + composedSkillBlocks;
+              const hasAttachments = await dirHasAttachments(local.dir);
+              const body = hasAttachments ? withSkillRootPreamble(local.body, local.dir) : local.body;
+              skillBody = body + composedSkillBlocks;
               skillName = local.name;
               activeSkillDir = local.dir;
               registerSkillDir(local.dir);
@@ -4857,7 +4864,7 @@ export async function startServer({
       .filter(Boolean)
       .join('\n\n---\n\n');
     const instructionPrompt = composeLiveInstructionPrompt({
-      daemonSystemPrompt: includeStableInstructions ? daemonSystemPrompt : '',
+      daemonSystemPrompt: includeStableInstructions || def.id === 'opencode' ? daemonSystemPrompt : '',
       runtimeToolPrompt: includeStableInstructions ? runtimeToolPrompt : '',
       clientSystemPrompt: clientInstructionPrompt,
       finalPromptOverride: codexImagegenOverride,
@@ -4906,10 +4913,12 @@ export async function startServer({
 
     // Split for opencode agent-file path: instructionBlock becomes the agent's
     // system prompt, userBlock is sent via stdin.
-    const USER_REQUEST_MARKER = '\n# User request\n';
+    const USER_REQUEST_MARKER = '# User request\n';
     const markerIdx = composed.indexOf(USER_REQUEST_MARKER);
     const instructionBlock = markerIdx >= 0 ? composed.slice(0, markerIdx) : '';
-    const userBlock = markerIdx >= 0 ? composed.slice(markerIdx) : composed;
+    const userBlock = markerIdx >= 0
+      ? composed.slice(markerIdx + USER_REQUEST_MARKER.length).replace(/^\n+/, '').replace(/^## user\n?/, '')
+      : composed;
 
     run.promptTelemetry = buildPromptStackTelemetry({
       composedPrompt: composed,

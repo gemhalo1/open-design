@@ -415,7 +415,7 @@ export function splitDerivedSkillId(id: unknown): DerivedSkillIdParts | null {
 //
 // Authoring guidance lives in the preamble itself so an agent can pick
 // the right form on its own without daemon-side feature detection.
-function withSkillRootPreamble(body: string, dir: string): string {
+export function withSkillRootPreamble(body: string, dir: string): string {
   const referencedFiles = collectReferencedSideFiles(body);
   const folder = skillCwdAliasSegment(dir);
   const skillRootRel = `${SKILLS_CWD_ALIAS}/${folder}`;
@@ -461,7 +461,7 @@ function collectReferencedSideFiles(body: string): string[] {
   return Array.from(files).sort();
 }
 
-async function dirHasAttachments(dir: string): Promise<boolean> {
+export async function dirHasAttachments(dir: string): Promise<boolean> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     return entries.some(
