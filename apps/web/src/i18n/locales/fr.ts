@@ -189,7 +189,7 @@ export const fr: Dict = {
   'designBrowser.status.pageSnapshotFailed': 'Échec de l’enregistrement de l’instantané de page.',
   'designBrowser.status.pageSnapshotSaved': 'Instantané de page enregistré (HTML + CSS).',
   'designBrowser.status.viewDesignFiles': 'Voir les fichiers de design',
-  'designBrowser.status.downloadAssistHint': 'Étape 2 : cliquez ici sur Télécharger la page, attendez le message de réussite de l’instantané enregistré, puis revenez à la carte Étape suivante à gauche et cliquez sur Continuer l’extraction.',
+  'designBrowser.status.downloadAssistHint': 'Lorsque la page est prête, cliquez sur Télécharger la page. Revenez au chat une fois l’enregistrement terminé.',
   'designBrowser.status.desktopDataUnavailable': 'Les données du navigateur desktop ne sont pas disponibles ici.',
   'designBrowser.status.browserDataCleared': 'Données du navigateur effacées.',
   'designBrowser.status.browserDataClearFailed': 'Échec de l’effacement des données du navigateur.',

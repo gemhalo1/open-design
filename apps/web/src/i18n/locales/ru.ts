@@ -189,7 +189,7 @@ export const ru: Dict = {
   'designBrowser.status.pageSnapshotFailed': 'Не удалось сохранить снимок страницы.',
   'designBrowser.status.pageSnapshotSaved': 'Снимок страницы сохранен (HTML + CSS).',
   'designBrowser.status.viewDesignFiles': 'Посмотреть дизайн-файлы',
-  'designBrowser.status.downloadAssistHint': 'Шаг 2: нажмите здесь «Скачать страницу», дождитесь успешного сохранения снимка, затем вернитесь к карточке «Следующий шаг» слева и нажмите «Продолжить извлечение».',
+  'designBrowser.status.downloadAssistHint': 'Когда страница будет готова, нажмите «Скачать страницу». После сохранения вернитесь в чат.',
   'designBrowser.status.desktopDataUnavailable': 'Данные десктопного браузера здесь недоступны.',
   'designBrowser.status.browserDataCleared': 'Данные браузера очищены.',
   'designBrowser.status.browserDataClearFailed': 'Не удалось очистить данные браузера.',

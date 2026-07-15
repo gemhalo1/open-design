@@ -3143,13 +3143,6 @@ export function ProjectView({
         nonce,
         attentionAction: 'download-page',
       });
-      setProjectActionsToast({
-        message: t('chat.brandBrowserAssistDownloadGuideTitle'),
-        details: t('chat.brandBrowserAssistDownloadGuideDetails'),
-        tone: 'default',
-        ttlMs: 12000,
-        scope: 'chat-pane',
-      });
       return { ok: true, action: 'opened' };
     },
     [currentProject.metadata?.brandSourceUrl, t],
@@ -8137,7 +8130,7 @@ export function ProjectView({
           snapshotMessage(liveSnapshot) ||
           fallbackMessage ||
           t('chat.brandBrowserAssistReadFailed'),
-        details: t('chat.brandBrowserAssistDownloadGuideDetails'),
+        details: null,
         tone: 'error',
         ttlMs: 7000,
         scope: 'chat-pane',
